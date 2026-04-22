@@ -37,7 +37,45 @@ public struct Video: Sendable {
     }
 
     public func export(to url: URL) async throws -> URL {
-        fatalError("Not yet implemented")
+        guard !clips.isEmpty else {
+            throw KadrError.noClipsProvided
+        }
+
+        // Check for transitions — not yet implemented
+        if clips.contains(where: { $0 is Transition }) {
+            throw KadrError.notYetImplemented("Transitions arrive in v0.2")
+        }
+
+        // Fast path: single ImageClip
+        if clips.count == 1, let imageClip = clips.first as? ImageClip {
+            let audioURL = imageClip.audioURL ?? audioTracks.first?.url
+            return try await ImageEncoder.encode(
+                image: imageClip.image,
+                duration: imageClip.duration,
+                preset: preset,
+                audioURL: audioURL,
+                to: url
+            )
+        }
+
+        // Multi-clip path: CompositionBuilder → ExportEngine
+        let result = try await CompositionBuilder.build(
+            from: clips,
+            audioTracks: audioTracks,
+            preset: preset
+        )
+
+        let stream = ExportEngine.export(
+            composition: result.composition,
+            audioMix: result.audioMix,
+            preset: preset,
+            to: url
+        )
+
+        // Consume the stream to completion
+        for try await _ in stream {}
+
+        return url
     }
 
     public func exporter(to url: URL) -> Exporter {

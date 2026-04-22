@@ -1,6 +1,6 @@
 import Foundation
 
-public enum Codec: Sendable {
+public enum Codec: Sendable, Equatable {
     case h264
     case hevc
 }
