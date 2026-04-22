@@ -1,0 +1,1 @@
+// KadrError.swift — Typed errors
