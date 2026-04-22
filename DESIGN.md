@@ -1,9 +1,17 @@
+# Kadr — Design Document
+
+## Scope Lock (v0.1)
+
+Kadr v0.1 does image-to-video composition (single, paired, slideshow), video merging, reverse, trim, muted+audio-replace, and H.264/HEVC export with social presets (Reels, Square, Cinema) — accessed via a declarative DSL with async/await throughout. Nothing else ships in v0.1.
+
+## API Examples
+
+```swift
 import Kadr
 import Foundation
 
 @available(iOS 16, macOS 13, *)
 func apiValidationExamples() async throws {
-    // Placeholder values for examples
     let heroImage = PlatformImage()
     let image1 = PlatformImage()
     let image2 = PlatformImage()
@@ -82,7 +90,7 @@ func apiValidationExamples() async throws {
     .audio(url: newMusicURL)
     .export(to: outputURL)
 
-    // 9. Multi-clip with transition (transition engine throws .notYetImplemented in v0.1)
+    // 9. Multi-clip with transition
     _ = try await Video {
         VideoClip(url: clip1URL).trimmed(to: 0...10)
         Transition.fade(duration: 0.5)
@@ -103,3 +111,18 @@ func apiValidationExamples() async throws {
         _ = progress.estimatedTimeRemaining
     }
 }
+```
+
+## Migration: Old API → Kadr
+
+| Old API | Kadr equivalent |
+|---|---|
+| `generate(... .single, ...)` | `Video { ImageClip(img) }.audio(url:).export(to:)` |
+| `generate(... .multiple, ...)` | `Video { pairs.map { ImageClip($0.img).withAudio($0.audio) } }.export(to:)` |
+| `generate(... .singleAudioMultipleImage, ...)` | `Video { images.map { ImageClip($0) } }.audio(url:).export(to:)` |
+| `mergeMovies(videoURLs:)` | `Video { urls.map { VideoClip(url: $0) } }.export(to:)` |
+| `reverseVideo(fromVideo:)` | `Video { VideoClip(url:).reversed() }.export(to:)` |
+| `splitVideo(withURL:atStartTime:andEndTime:)` | `Video { VideoClip(url:).trimmed(to: s...e) }.export(to:)` |
+| `mergeVideoWithAudio(videoUrl:audioUrl:)` | `Video { VideoClip(url:).muted() }.audio(url:).export(to:)` |
+
+**Key insight:** 7 imperative public functions → 3 DSL primitives + modifiers.
