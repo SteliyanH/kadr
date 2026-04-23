@@ -6,7 +6,7 @@ import CoreMedia
 private struct ExportConfig: @unchecked Sendable {
     let composition: AVMutableComposition
     let audioMix: AVMutableAudioMix?
-    let presetName: String
+    let preset: Preset
     let outputURL: URL
     let cancellationToken: CancellationToken
 }
@@ -23,7 +23,7 @@ internal enum ExportEngine {
         let config = ExportConfig(
             composition: composition,
             audioMix: audioMix,
-            presetName: exportPresetName(for: preset),
+            preset: preset,
             outputURL: outputURL,
             cancellationToken: cancellationToken
         )
@@ -37,7 +37,16 @@ internal enum ExportEngine {
 
                     try? FileManager.default.removeItem(at: config.outputURL)
 
-                    guard let exportSession = AVAssetExportSession(asset: config.composition, presetName: config.presetName) else {
+                    // Try preferred preset first, fall back to passthrough if incompatible
+                    let preferredPreset = exportPresetName(for: config.preset)
+                    let compatible = await AVAssetExportSession.compatibility(
+                        ofExportPreset: preferredPreset,
+                        with: config.composition,
+                        outputFileType: .mp4
+                    )
+                    let presetName = compatible ? preferredPreset : AVAssetExportPresetPassthrough
+
+                    guard let exportSession = AVAssetExportSession(asset: config.composition, presetName: presetName) else {
                         throw KadrError.exportFailed(underlying: NSError(domain: "Kadr", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create export session"]))
                     }
 
@@ -46,6 +55,18 @@ internal enum ExportEngine {
                     exportSession.outputURL = config.outputURL
                     exportSession.outputFileType = .mp4
                     exportSession.audioMix = config.audioMix
+
+                    // Apply video composition to enforce preset resolution/frame rate
+                    // (only when using a non-passthrough preset that supports re-encoding)
+                    if compatible, presetName != AVAssetExportPresetPassthrough {
+                        let videoComposition = buildVideoComposition(
+                            for: config.composition,
+                            preset: config.preset
+                        )
+                        if let videoComposition {
+                            exportSession.videoComposition = videoComposition
+                        }
+                    }
 
                     let startTime = Date()
                     continuation.yield(ExportProgress(fractionCompleted: 0))
@@ -78,6 +99,46 @@ internal enum ExportEngine {
         }
     }
 
+    /// Builds an AVMutableVideoComposition that enforces the preset's resolution and frame rate.
+    private static func buildVideoComposition(
+        for composition: AVMutableComposition,
+        preset: Preset
+    ) -> AVMutableVideoComposition? {
+        let videoTracks = composition.tracks(withMediaType: .video)
+        guard !videoTracks.isEmpty else { return nil }
+
+        let videoComposition = AVMutableVideoComposition()
+        videoComposition.renderSize = preset.resolution
+        videoComposition.frameDuration = CMTime(value: 1, timescale: CMTimeScale(preset.frameRate))
+
+        // Create a single instruction spanning the full duration
+        let instruction = AVMutableVideoCompositionInstruction()
+        instruction.timeRange = CMTimeRange(start: .zero, duration: composition.duration)
+
+        // Layer the first video track
+        let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTracks[0])
+
+        // Scale video to fill the preset resolution
+        let trackSize = videoTracks[0].naturalSize
+        if trackSize.width > 0 && trackSize.height > 0 {
+            let scaleX = preset.resolution.width / trackSize.width
+            let scaleY = preset.resolution.height / trackSize.height
+            let scale = max(scaleX, scaleY) // scale to fill
+            let scaledWidth = trackSize.width * scale
+            let scaledHeight = trackSize.height * scale
+            let tx = (preset.resolution.width - scaledWidth) / 2
+            let ty = (preset.resolution.height - scaledHeight) / 2
+            let transform = CGAffineTransform(scaleX: scale, y: scale)
+                .translatedBy(x: tx / scale, y: ty / scale)
+            layerInstruction.setTransform(transform, at: .zero)
+        }
+
+        instruction.layerInstructions = [layerInstruction]
+        videoComposition.instructions = [instruction]
+
+        return videoComposition
+    }
+
     private static func estimateTimeRemaining(progress: Double, startTime: Date) -> TimeInterval? {
         guard progress > 0.05 else { return nil }
         let elapsed = Date().timeIntervalSince(startTime)
@@ -85,9 +146,11 @@ internal enum ExportEngine {
     }
 
     private static func exportPresetName(for preset: Preset) -> String {
-        // AVAssetExportPresetPassthrough avoids re-encoding and works with all input formats.
-        // Sized presets (e.g. 1920x1080) can fail with -16976 on formats that don't support
-        // the chosen decoder/encoder combination.
-        return AVAssetExportPresetPassthrough
+        switch preset.codec {
+        case .hevc:
+            return AVAssetExportPresetHEVCHighestQuality
+        case .h264:
+            return AVAssetExportPresetHighestQuality
+        }
     }
 }
