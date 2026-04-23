@@ -6,7 +6,7 @@ public final class Exporter: @unchecked Sendable {
     internal let audioTracks: [AudioTrack]
     internal let preset: Preset
     internal let outputURL: URL
-    private var isCancelled = false
+    private let cancellationToken = CancellationToken()
 
     internal init(clips: [any Clip], audioTracks: [AudioTrack], preset: Preset, outputURL: URL) {
         self.clips = clips
@@ -16,11 +16,17 @@ public final class Exporter: @unchecked Sendable {
     }
 
     public func run() -> AsyncThrowingStream<ExportProgress, Error> {
-        AsyncThrowingStream { continuation in
+        let token = cancellationToken
+
+        return AsyncThrowingStream { continuation in
             Task { [clips, audioTracks, preset, outputURL] in
                 do {
                     guard !clips.isEmpty else {
                         throw KadrError.noClipsProvided
+                    }
+
+                    if token.isCancelled {
+                        throw KadrError.cancelled
                     }
 
                     if clips.contains(where: { $0 is Transition }) {
@@ -38,7 +44,7 @@ public final class Exporter: @unchecked Sendable {
                             audioURL: audioURL,
                             to: outputURL
                         )
-                        continuation.yield(ExportProgress(fractionCompleted: 1.0))
+                        continuation.yield(ExportProgress(fractionCompleted: 1.0, estimatedTimeRemaining: 0))
                         continuation.finish()
                         return
                     }
@@ -54,7 +60,8 @@ public final class Exporter: @unchecked Sendable {
                         composition: result.composition,
                         audioMix: result.audioMix,
                         preset: preset,
-                        to: outputURL
+                        to: outputURL,
+                        cancellationToken: token
                     )
 
                     for try await progress in stream {
@@ -69,6 +76,6 @@ public final class Exporter: @unchecked Sendable {
     }
 
     public func cancel() {
-        isCancelled = true
+        cancellationToken.cancel()
     }
 }

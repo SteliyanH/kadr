@@ -8,6 +8,7 @@ private struct ExportConfig: @unchecked Sendable {
     let audioMix: AVMutableAudioMix?
     let presetName: String
     let outputURL: URL
+    let cancellationToken: CancellationToken
 }
 
 internal enum ExportEngine {
@@ -16,28 +17,37 @@ internal enum ExportEngine {
         composition: AVMutableComposition,
         audioMix: AVMutableAudioMix?,
         preset: Preset,
-        to outputURL: URL
+        to outputURL: URL,
+        cancellationToken: CancellationToken = CancellationToken()
     ) -> AsyncThrowingStream<ExportProgress, Error> {
         let config = ExportConfig(
             composition: composition,
             audioMix: audioMix,
             presetName: exportPresetName(for: preset),
-            outputURL: outputURL
+            outputURL: outputURL,
+            cancellationToken: cancellationToken
         )
 
         return AsyncThrowingStream { continuation in
             Task {
                 do {
+                    if config.cancellationToken.isCancelled {
+                        throw KadrError.cancelled
+                    }
+
                     try? FileManager.default.removeItem(at: config.outputURL)
 
                     guard let exportSession = AVAssetExportSession(asset: config.composition, presetName: config.presetName) else {
                         throw KadrError.exportFailed(underlying: NSError(domain: "Kadr", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create export session"]))
                     }
 
+                    config.cancellationToken.register(exportSession)
+
                     exportSession.outputURL = config.outputURL
                     exportSession.outputFileType = .mp4
                     exportSession.audioMix = config.audioMix
 
+                    let startTime = Date()
                     continuation.yield(ExportProgress(fractionCompleted: 0))
 
                     exportSession.exportAsynchronously { }
@@ -46,12 +56,13 @@ internal enum ExportEngine {
                     while exportSession.status == .waiting || exportSession.status == .exporting {
                         try await Task.sleep(nanoseconds: 100_000_000) // 100ms
                         let progress = Double(exportSession.progress)
-                        continuation.yield(ExportProgress(fractionCompleted: progress))
+                        let estimated = estimateTimeRemaining(progress: progress, startTime: startTime)
+                        continuation.yield(ExportProgress(fractionCompleted: progress, estimatedTimeRemaining: estimated))
                     }
 
                     switch exportSession.status {
                     case .completed:
-                        continuation.yield(ExportProgress(fractionCompleted: 1.0))
+                        continuation.yield(ExportProgress(fractionCompleted: 1.0, estimatedTimeRemaining: 0))
                         continuation.finish()
                     case .cancelled:
                         continuation.finish(throwing: KadrError.cancelled)
@@ -65,6 +76,12 @@ internal enum ExportEngine {
                 }
             }
         }
+    }
+
+    private static func estimateTimeRemaining(progress: Double, startTime: Date) -> TimeInterval? {
+        guard progress > 0.05 else { return nil }
+        let elapsed = Date().timeIntervalSince(startTime)
+        return elapsed / progress * (1.0 - progress)
     }
 
     private static func exportPresetName(for preset: Preset) -> String {
