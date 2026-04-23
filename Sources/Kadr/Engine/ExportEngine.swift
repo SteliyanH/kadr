@@ -1,6 +1,15 @@
 import AVFoundation
 import CoreMedia
 
+/// Wraps non-Sendable AVFoundation types for safe transfer across concurrency boundaries.
+/// These are only accessed within a single Task body — no concurrent access occurs.
+private struct ExportConfig: @unchecked Sendable {
+    let composition: AVMutableComposition
+    let audioMix: AVMutableAudioMix?
+    let presetName: String
+    let outputURL: URL
+}
+
 internal enum ExportEngine {
 
     static func export(
@@ -9,25 +18,25 @@ internal enum ExportEngine {
         preset: Preset,
         to outputURL: URL
     ) -> AsyncThrowingStream<ExportProgress, Error> {
-        let presetName = exportPresetName(for: preset)
-
-        // Wrap non-Sendable AVFoundation types for safe transfer into the Task.
-        // These values are only used within the single Task body — no concurrent access.
-        nonisolated(unsafe) let composition = composition
-        nonisolated(unsafe) let audioMix = audioMix
+        let config = ExportConfig(
+            composition: composition,
+            audioMix: audioMix,
+            presetName: exportPresetName(for: preset),
+            outputURL: outputURL
+        )
 
         return AsyncThrowingStream { continuation in
             Task {
                 do {
-                    try? FileManager.default.removeItem(at: outputURL)
+                    try? FileManager.default.removeItem(at: config.outputURL)
 
-                    guard let exportSession = AVAssetExportSession(asset: composition, presetName: presetName) else {
+                    guard let exportSession = AVAssetExportSession(asset: config.composition, presetName: config.presetName) else {
                         throw KadrError.exportFailed(underlying: NSError(domain: "Kadr", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create export session"]))
                     }
 
-                    exportSession.outputURL = outputURL
+                    exportSession.outputURL = config.outputURL
                     exportSession.outputFileType = .mp4
-                    exportSession.audioMix = audioMix
+                    exportSession.audioMix = config.audioMix
 
                     continuation.yield(ExportProgress(fractionCompleted: 0))
 
