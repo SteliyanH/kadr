@@ -225,6 +225,26 @@ struct ExportTests {
         }
     }
 
+    @Test func reverseVideoClip() async throws {
+        let videoURL = try await createTestVideo(duration: 2.0)
+        defer { try? FileManager.default.removeItem(at: videoURL) }
+
+        let outputURL = testOutputURL("reverse")
+
+        let result = try await Video {
+            VideoClip(url: videoURL).reversed()
+        }
+        .export(to: outputURL)
+
+        #expect(FileManager.default.fileExists(atPath: result.path))
+
+        let asset = AVURLAsset(url: result)
+        let duration = try await asset.load(.duration)
+        #expect(CMTimeGetSeconds(duration) > 1.5)
+
+        try? FileManager.default.removeItem(at: result)
+    }
+
     @Test func transitionThrowsNotYetImplemented() async throws {
         let videoURL = try await createTestVideo(duration: 1.0)
         defer { try? FileManager.default.removeItem(at: videoURL) }
