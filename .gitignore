@@ -1,0 +1,21 @@
+# Xcode
+DerivedData/
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# macOS
+.DS_Store
+*.swp
+*~
+
+# AI agent folders
+.bmad-agents/
+.claude/
+.cursor/
+.copilot/
