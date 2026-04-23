@@ -1,5 +1,10 @@
 # Kadr
 
+[![CI](https://github.com/SteliyanH/kadr/actions/workflows/ci.yml/badge.svg)](https://github.com/SteliyanH/kadr/actions/workflows/ci.yml)
+[![Swift 6.0](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
+[![Platforms](https://img.shields.io/badge/Platforms-iOS%2016+%20|%20macOS%2013+%20|%20tvOS%2016+%20|%20visionOS%201+-blue.svg)](https://developer.apple.com)
+[![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
+
 **SwiftUI for video. Compose, transform, export — in Swift you actually want to write.**
 
 A modern, declarative Swift library for video composition on Apple platforms. Build videos using a result-builder DSL with async/await throughout.
@@ -9,7 +14,6 @@ A modern, declarative Swift library for video composition on Apple platforms. Bu
 ```swift
 import Kadr
 
-// Single image to video with audio
 let url = try await Video {
     ImageClip(heroImage, duration: 5.0)
 }
@@ -31,6 +35,18 @@ FFmpegKit retired in January 2025. Pixel SDK sunset in February 2025. AVFoundati
 | `splitVideo(at:)` | `Video { VideoClip(url:).trimmed(to: 5...20) }.export(to:)` |
 | `mergeVideoWithAudio(...)` | `Video { VideoClip(url:).muted() }.audio(url:).export(to:)` |
 
+## Comparison
+
+| | Kadr | AVFoundation (raw) | VideoLab | FFmpegKit |
+|---|---|---|---|---|
+| **API style** | Declarative DSL | Imperative | Layer-based | CLI wrapper |
+| **Swift concurrency** | async/await native | Callbacks | No | No |
+| **Swift 6 / Sendable** | Full strict concurrency | Partial | No | No |
+| **Maintained (2026)** | Active | Apple (low-level) | Inactive | Retired (Jan 2025) |
+| **Dependencies** | None (AVFoundation only) | N/A | None | FFmpeg binary |
+| **Learning curve** | Minutes | Hours | Hours | Moderate |
+| **License** | Apache 2.0 | Proprietary | MIT | LGPL |
+
 ## Features
 
 ### v0.1 (current)
@@ -41,18 +57,15 @@ FFmpegKit retired in January 2025. Pixel SDK sunset in February 2025. AVFoundati
 - Clip modifiers: `.trimmed(to:)`, `.reversed()`, `.muted()`, `.withAudio(_:)`
 - Export presets: `.reelsAndShorts`, `.tiktok`, `.square`, `.cinema`, `.custom(...)`
 - H.264 and HEVC codec support
-- Progress reporting via `AsyncThrowingStream`
+- Progress reporting via `AsyncThrowingStream` with time estimation
 - Thumbnail extraction: `VideoClip.thumbnail(at:)`
 - Video metadata: duration, resolution, frame rate
 - Typed errors via `KadrError`
+- Export cancellation support
 
-### v0.2+ (roadmap)
+### Roadmap
 
-- Transitions (fade, slide, dissolve — API exists, engine coming)
-- Text and image overlays
-- Speed ramping / slow-motion
-- Filters and color grading
-- Watermarking
+See [ROADMAP.md](ROADMAP.md) for the full version plan.
 
 ## Examples
 
@@ -107,6 +120,8 @@ dependencies: [
 
 Or in Xcode: File > Add Package Dependencies > enter the repository URL.
 
+**Requires:** Xcode 16+ / Swift 6.0+
+
 ## Platform Support
 
 | Platform | Minimum Version |
@@ -116,8 +131,6 @@ Or in Xcode: File > Add Package Dependencies > enter the repository URL.
 | tvOS | 16.0 |
 | visionOS | 1.0 |
 
-**Swift:** 6.0 with strict concurrency
-
 ## Architecture
 
 Kadr separates the public DSL from the internal engine:
@@ -126,6 +139,10 @@ Kadr separates the public DSL from the internal engine:
 - **Engine layer** — `ImageEncoder`, `CompositionBuilder`, `ExportEngine` (internal, uses AVFoundation)
 
 The DSL is the stable public API. The engine is the implementation detail that can be refactored without breaking semver.
+
+## Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
