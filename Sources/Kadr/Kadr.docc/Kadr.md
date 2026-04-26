@@ -45,6 +45,35 @@ let url = try await Video {
 - ``Transition``
 - ``SlideDirection``
 
+### Layout (v0.3+)
+
+- ``Position``
+- ``Size``
+- ``Anchor``
+- ``LayerID``
+
+### Overlays (v0.3+)
+
+- ``Overlay``
+- ``ImageOverlay``
+- ``TextOverlay``
+- ``TextStyle``
+- ``StickerOverlay``
+
+### Filters (v0.3+)
+
+- ``Filter``
+
+### Cropping (v0.3+)
+
+- ``Video/crop(at:size:anchor:)``
+
+### Sugar (v0.3+)
+
+- ``BackgroundMusic``
+- ``TitleSequence``
+- ``Timecode``
+
 ### Export
 
 - ``Exporter``

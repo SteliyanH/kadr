@@ -11,7 +11,8 @@ extension VideoClip {
             isReversed: isReversed,
             isMuted: isMuted,
             replacementAudioURL: replacementAudioURL,
-            speedRate: rate
+            speedRate: rate,
+            filters: filters
         )
     }
 }

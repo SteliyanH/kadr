@@ -12,10 +12,11 @@ internal enum CompositionBuilder {
     static func build(
         from clips: [any Clip],
         audioTracks: [AudioTrack],
-        preset: Preset
+        preset: Preset,
+        cropRect: CGRect? = nil
     ) async throws -> CompositionResult {
         if clips.contains(where: { $0 is Transition }) {
-            return try await buildWithTransitions(clips: clips, audioTracks: audioTracks, preset: preset)
+            return try await buildWithTransitions(clips: clips, audioTracks: audioTracks, preset: preset, cropRect: cropRect)
         }
         return try await buildSimple(clips: clips, audioTracks: audioTracks, preset: preset)
     }
@@ -68,6 +69,18 @@ internal enum CompositionBuilder {
                 if imageClip.audioURL != nil {
                     clipAudioRanges.append(CMTimeRange(start: beforeIP, duration: CMTimeSubtract(insertionPoint, beforeIP)))
                 }
+            } else if let title = clip as? TitleSequence {
+                // Render the title to a PlatformImage at the export's render size, then
+                // dispatch via the existing ImageClip insertion path.
+                let titleImage = title.render(at: preset.resolution)
+                let imageClip = ImageClip(titleImage, duration: title.duration)
+                try await insertImageClip(
+                    imageClip,
+                    videoTrack: compositionVideoTrack,
+                    audioTrack: compositionAudioTrack,
+                    at: &insertionPoint,
+                    preset: preset
+                )
             }
         }
 
@@ -86,7 +99,8 @@ internal enum CompositionBuilder {
     private static func buildWithTransitions(
         clips: [any Clip],
         audioTracks: [AudioTrack],
-        preset: Preset
+        preset: Preset,
+        cropRect: CGRect? = nil
     ) async throws -> CompositionResult {
         // 1. Plan: walk clips, validate, produce media items + transition-after links
         let plan = try planTransitions(clips: clips)
@@ -128,6 +142,10 @@ internal enum CompositionBuilder {
             } else if let imageClip = item.clip as? ImageClip {
                 try await insertImageClip(imageClip, videoTrack: videoTrack, audioTrack: audioTrack, at: &insertionPoint, preset: preset)
                 contributesAudio = imageClip.audioURL != nil
+            } else if let title = item.clip as? TitleSequence {
+                let titleImage = title.render(at: preset.resolution)
+                let imageClip = ImageClip(titleImage, duration: title.duration)
+                try await insertImageClip(imageClip, videoTrack: videoTrack, audioTrack: audioTrack, at: &insertionPoint, preset: preset)
             }
             let placedDuration = CMTimeSubtract(insertionPoint, durationBefore)
             let timeRange = CMTimeRange(start: startTime, duration: placedDuration)
@@ -150,7 +168,8 @@ internal enum CompositionBuilder {
             placements: placements,
             videoTracks: videoTracks,
             preset: preset,
-            totalDuration: totalDuration
+            totalDuration: totalDuration,
+            cropRect: cropRect
         )
 
         // 5. Audio crossfade ramps for clip audio on alternating tracks
@@ -283,11 +302,14 @@ internal enum CompositionBuilder {
         placements: [Placement],
         videoTracks: [AVMutableCompositionTrack],
         preset: Preset,
-        totalDuration: CMTime
+        totalDuration: CMTime,
+        cropRect: CGRect? = nil
     ) -> AVMutableVideoComposition {
         let videoComposition = AVMutableVideoComposition()
-        videoComposition.renderSize = preset.resolution
+        videoComposition.renderSize = cropRect?.size ?? preset.resolution
         videoComposition.frameDuration = CMTime(value: 1, timescale: CMTimeScale(preset.frameRate))
+        let cropOffset = cropRect?.origin ?? .zero
+        let cropTransform = CGAffineTransform(translationX: -cropOffset.x, y: -cropOffset.y)
 
         var instructions: [AVMutableVideoCompositionInstruction] = []
 
@@ -311,7 +333,7 @@ internal enum CompositionBuilder {
             if CMTimeCompare(soloEnd, soloStart) > 0 {
                 let inst = AVMutableVideoCompositionInstruction()
                 inst.timeRange = CMTimeRange(start: soloStart, duration: CMTimeSubtract(soloEnd, soloStart))
-                inst.layerInstructions = [makeLayerInstruction(for: track, preset: preset)]
+                inst.layerInstructions = [makeLayerInstruction(for: track, preset: preset, cropTransform: cropTransform)]
                 instructions.append(inst)
             }
 
@@ -325,9 +347,9 @@ internal enum CompositionBuilder {
                     let xRange = CMTimeRange(start: soloEnd, duration: outgoing.duration)
                     let inst = AVMutableVideoCompositionInstruction()
                     inst.timeRange = xRange
-                    let outLayer = makeLayerInstruction(for: track, preset: preset)
+                    let outLayer = makeLayerInstruction(for: track, preset: preset, cropTransform: cropTransform)
                     outLayer.setOpacityRamp(fromStartOpacity: 1.0, toEndOpacity: 0.0, timeRange: xRange)
-                    let inLayer = makeLayerInstruction(for: incomingTrack, preset: preset)
+                    let inLayer = makeLayerInstruction(for: incomingTrack, preset: preset, cropTransform: cropTransform)
                     inLayer.setOpacityRamp(fromStartOpacity: 0.0, toEndOpacity: 1.0, timeRange: xRange)
                     inst.layerInstructions = [outLayer, inLayer]
                     instructions.append(inst)
@@ -338,7 +360,7 @@ internal enum CompositionBuilder {
                     let outRange = CMTimeRange(start: soloEnd, duration: halfDur)
                     let outInst = AVMutableVideoCompositionInstruction()
                     outInst.timeRange = outRange
-                    let outLayer = makeLayerInstruction(for: track, preset: preset)
+                    let outLayer = makeLayerInstruction(for: track, preset: preset, cropTransform: cropTransform)
                     outLayer.setOpacityRamp(fromStartOpacity: 1.0, toEndOpacity: 0.0, timeRange: outRange)
                     outInst.layerInstructions = [outLayer]
                     instructions.append(outInst)
@@ -347,7 +369,7 @@ internal enum CompositionBuilder {
                     let inRange = CMTimeRange(start: inStart, duration: halfDur)
                     let inInst = AVMutableVideoCompositionInstruction()
                     inInst.timeRange = inRange
-                    let inLayer = makeLayerInstruction(for: incomingTrack, preset: preset)
+                    let inLayer = makeLayerInstruction(for: incomingTrack, preset: preset, cropTransform: cropTransform)
                     inLayer.setOpacityRamp(fromStartOpacity: 0.0, toEndOpacity: 1.0, timeRange: inRange)
                     inInst.layerInstructions = [inLayer]
                     instructions.append(inInst)
@@ -363,12 +385,20 @@ internal enum CompositionBuilder {
                     let outBase = baseTransform(for: track, preset: preset) ?? .identity
                     let outEnd = outBase.concatenating(CGAffineTransform(translationX: offset.x, y: offset.y))
                     let outLayer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
-                    outLayer.setTransformRamp(fromStart: outBase, toEnd: outEnd, timeRange: xRange)
+                    outLayer.setTransformRamp(
+                        fromStart: outBase.concatenating(cropTransform),
+                        toEnd:     outEnd.concatenating(cropTransform),
+                        timeRange: xRange
+                    )
 
                     let inBase = baseTransform(for: incomingTrack, preset: preset) ?? .identity
                     let inStart = inBase.concatenating(CGAffineTransform(translationX: -offset.x, y: -offset.y))
                     let inLayer = AVMutableVideoCompositionLayerInstruction(assetTrack: incomingTrack)
-                    inLayer.setTransformRamp(fromStart: inStart, toEnd: inBase, timeRange: xRange)
+                    inLayer.setTransformRamp(
+                        fromStart: inStart.concatenating(cropTransform),
+                        toEnd:     inBase.concatenating(cropTransform),
+                        timeRange: xRange
+                    )
 
                     inst.layerInstructions = [outLayer, inLayer]
                     instructions.append(inst)
@@ -382,11 +412,15 @@ internal enum CompositionBuilder {
 
     private static func makeLayerInstruction(
         for track: AVMutableCompositionTrack,
-        preset: Preset
+        preset: Preset,
+        cropTransform: CGAffineTransform = .identity
     ) -> AVMutableVideoCompositionLayerInstruction {
         let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
         if let base = baseTransform(for: track, preset: preset) {
-            layer.setTransform(base, at: .zero)
+            layer.setTransform(base.concatenating(cropTransform), at: .zero)
+        } else if cropTransform != .identity {
+            // No base transform but we still need to apply the crop offset
+            layer.setTransform(cropTransform, at: .zero)
         }
         return layer
     }
@@ -528,11 +562,23 @@ internal enum CompositionBuilder {
                 guard duckLevel >= 0 && duckLevel <= 1 else {
                     throw KadrError.invalidDuckingLevel(duckLevel)
                 }
+                // Compute the time ranges already occupied by fade ramps so we can skip
+                // overlapping ducking ramps. AVMutableScheduledAudioParameters throws
+                // an exception if two ramps overlap, so explicit avoidance is required.
+                var fadeRanges: [CMTimeRange] = []
+                if CMTimeCompare(audioTrack.fadeInDuration, .zero) > 0 {
+                    fadeRanges.append(CMTimeRange(start: .zero, duration: audioTrack.fadeInDuration))
+                }
+                if CMTimeCompare(audioTrack.fadeOutDuration, .zero) > 0 {
+                    let fadeStart = CMTimeSubtract(insertDuration, audioTrack.fadeOutDuration)
+                    fadeRanges.append(CMTimeRange(start: fadeStart, duration: audioTrack.fadeOutDuration))
+                }
                 applyDucking(
                     on: params,
                     baseVolume: audioTrack.volumeLevel,
                     duckLevel: duckLevel,
-                    over: clipAudioRanges
+                    over: clipAudioRanges,
+                    excluding: fadeRanges
                 )
             }
 
@@ -545,15 +591,28 @@ internal enum CompositionBuilder {
     /// Apply per-range ducking ramps on a music track's audio mix parameters.
     /// At each clip-audio range, fades the music down from `baseVolume` to `baseVolume * duckLevel`
     /// over a short window at the start, then back up at the end.
+    ///
+    /// Ducking ramps that overlap any range in `excluding` (typically the fade-in/fade-out
+    /// ranges) are skipped — AVFoundation's audio mix parameters reject overlapping ramps.
     private static func applyDucking(
         on params: AVMutableAudioMixInputParameters,
         baseVolume: Double,
         duckLevel: Double,
-        over ranges: [CMTimeRange]
+        over ranges: [CMTimeRange],
+        excluding excludedRanges: [CMTimeRange] = []
     ) {
         let rampDuration = CMTime(seconds: 0.1, preferredTimescale: 600)
         let baseFloat = Float(baseVolume)
         let duckedFloat = Float(baseVolume * duckLevel)
+
+        func overlapsAnyExcluded(_ range: CMTimeRange) -> Bool {
+            for excluded in excludedRanges {
+                if CMTimeRangeGetIntersection(range, otherRange: excluded).duration > .zero {
+                    return true
+                }
+            }
+            return false
+        }
 
         for range in ranges {
             // Skip ranges shorter than 2× ramp (no useful duck window)
@@ -561,18 +620,24 @@ internal enum CompositionBuilder {
                 continue
             }
             // Ramp down at the start
-            params.setVolumeRamp(
-                fromStartVolume: baseFloat,
-                toEndVolume: duckedFloat,
-                timeRange: CMTimeRange(start: range.start, duration: rampDuration)
-            )
+            let downRange = CMTimeRange(start: range.start, duration: rampDuration)
+            if !overlapsAnyExcluded(downRange) {
+                params.setVolumeRamp(
+                    fromStartVolume: baseFloat,
+                    toEndVolume: duckedFloat,
+                    timeRange: downRange
+                )
+            }
             // Ramp up at the end
             let upStart = CMTimeSubtract(range.end, rampDuration)
-            params.setVolumeRamp(
-                fromStartVolume: duckedFloat,
-                toEndVolume: baseFloat,
-                timeRange: CMTimeRange(start: upStart, duration: rampDuration)
-            )
+            let upRange = CMTimeRange(start: upStart, duration: rampDuration)
+            if !overlapsAnyExcluded(upRange) {
+                params.setVolumeRamp(
+                    fromStartVolume: duckedFloat,
+                    toEndVolume: baseFloat,
+                    timeRange: upRange
+                )
+            }
         }
     }
 
@@ -589,6 +654,12 @@ internal enum CompositionBuilder {
 
         if clip.isReversed {
             assetURL = try await ReverseProcessor.reverse(videoAt: assetURL)
+        }
+
+        // Filters pre-render to a temporary file before composition. Order: reverse
+        // first (so filters operate on the reversed frames), then filters.
+        if !clip.filters.isEmpty {
+            assetURL = try await FilterProcessor.apply(filters: clip.filters, to: assetURL)
         }
 
         let asset = AVURLAsset(url: assetURL)
