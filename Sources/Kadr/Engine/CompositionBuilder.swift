@@ -6,6 +6,7 @@ internal enum CompositionBuilder {
     struct CompositionResult: @unchecked Sendable {
         let composition: AVMutableComposition
         let audioMix: AVMutableAudioMix?
+        let videoComposition: AVMutableVideoComposition?
     }
 
     static func build(
@@ -13,10 +14,22 @@ internal enum CompositionBuilder {
         audioTracks: [AudioTrack],
         preset: Preset
     ) async throws -> CompositionResult {
+        if clips.contains(where: { $0 is Transition }) {
+            return try await buildWithTransitions(clips: clips, audioTracks: audioTracks, preset: preset)
+        }
+        return try await buildSimple(clips: clips, audioTracks: audioTracks, preset: preset)
+    }
+
+    // MARK: - No-transition path (single video track)
+
+    private static func buildSimple(
+        clips: [any Clip],
+        audioTracks: [AudioTrack],
+        preset: Preset
+    ) async throws -> CompositionResult {
         let composition = AVMutableComposition()
         var insertionPoint: CMTime = .zero
 
-        // Create reusable composition tracks
         guard let compositionVideoTrack = composition.addMutableTrack(
             withMediaType: .video,
             preferredTrackID: kCMPersistentTrackID_Invalid
@@ -30,14 +43,9 @@ internal enum CompositionBuilder {
         )
 
         for clip in clips {
-            if clip is Transition {
-                throw KadrError.notYetImplemented("Transitions arrive in v0.2")
-            }
-
             if let videoClip = clip as? VideoClip {
                 try await insertVideoClip(
                     videoClip,
-                    into: composition,
                     videoTrack: compositionVideoTrack,
                     audioTrack: compositionAudioTrack,
                     at: &insertionPoint,
@@ -46,7 +54,6 @@ internal enum CompositionBuilder {
             } else if let imageClip = clip as? ImageClip {
                 try await insertImageClip(
                     imageClip,
-                    into: composition,
                     videoTrack: compositionVideoTrack,
                     audioTrack: compositionAudioTrack,
                     at: &insertionPoint,
@@ -55,7 +62,309 @@ internal enum CompositionBuilder {
             }
         }
 
-        // Add video-level audio tracks
+        let audioMix = try await buildBackgroundAudioMix(
+            composition: composition,
+            audioTracks: audioTracks,
+            totalDuration: insertionPoint
+        )
+
+        return CompositionResult(composition: composition, audioMix: audioMix, videoComposition: nil)
+    }
+
+    // MARK: - Transition path (alternating tracks + custom videoComposition)
+
+    private static func buildWithTransitions(
+        clips: [any Clip],
+        audioTracks: [AudioTrack],
+        preset: Preset
+    ) async throws -> CompositionResult {
+        // 1. Plan: walk clips, validate, produce media items + transition-after links
+        let plan = try planTransitions(clips: clips)
+
+        // 2. Build composition with two alternating video + audio tracks
+        let composition = AVMutableComposition()
+
+        guard
+            let videoTrackA = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
+            let videoTrackB = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
+        else {
+            throw KadrError.exportFailed(underlying: NSError(domain: "Kadr", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create video tracks"]))
+        }
+        let audioTrackA = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
+        let audioTrackB = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
+
+        let videoTracks = [videoTrackA, videoTrackB]
+        let audioTracksAB = [audioTrackA, audioTrackB]
+
+        // 3. Place each media item; track its actual time range on its assigned track
+        var placements: [Placement] = []
+        var cursor: CMTime = .zero
+
+        for (index, item) in plan.items.enumerated() {
+            let trackIndex = index % 2
+            let videoTrack = videoTracks[trackIndex]
+            let audioTrack = audioTracksAB[trackIndex]
+
+            // Pull cursor back by the incoming transition's duration so this clip overlaps the previous
+            let startTime = cursor
+            var insertionPoint = startTime
+
+            let durationBefore = insertionPoint
+            if let videoClip = item.clip as? VideoClip {
+                try await insertVideoClip(videoClip, videoTrack: videoTrack, audioTrack: audioTrack, at: &insertionPoint, preset: preset)
+            } else if let imageClip = item.clip as? ImageClip {
+                try await insertImageClip(imageClip, videoTrack: videoTrack, audioTrack: audioTrack, at: &insertionPoint, preset: preset)
+            }
+            let placedDuration = CMTimeSubtract(insertionPoint, durationBefore)
+            let timeRange = CMTimeRange(start: startTime, duration: placedDuration)
+            placements.append(Placement(trackIndex: trackIndex, timeRange: timeRange, transitionAfter: item.transitionAfter))
+
+            // Advance cursor: full clip duration minus the outgoing transition (so next clip overlaps)
+            cursor = CMTimeAdd(startTime, placedDuration)
+            if let outgoing = item.transitionAfter {
+                cursor = CMTimeSubtract(cursor, outgoing.duration)
+            }
+        }
+
+        let totalDuration = placements.last.map { $0.timeRange.end } ?? .zero
+
+        // 4. Build the videoComposition with per-segment instructions
+        let videoComposition = buildVideoComposition(
+            placements: placements,
+            videoTracks: videoTracks,
+            preset: preset,
+            totalDuration: totalDuration
+        )
+
+        // 5. Audio crossfade ramps for clip audio on alternating tracks
+        var audioMixParameters = buildClipAudioCrossfadeParams(placements: placements, audioTracks: audioTracksAB)
+
+        // 6. Background audio tracks (same as simple path)
+        let bgParams = try await buildBackgroundAudioMixParameters(
+            composition: composition,
+            audioTracks: audioTracks,
+            totalDuration: totalDuration
+        )
+        audioMixParameters.append(contentsOf: bgParams)
+
+        var audioMix: AVMutableAudioMix?
+        if !audioMixParameters.isEmpty {
+            let mix = AVMutableAudioMix()
+            mix.inputParameters = audioMixParameters
+            audioMix = mix
+        }
+
+        return CompositionResult(composition: composition, audioMix: audioMix, videoComposition: videoComposition)
+    }
+
+    // MARK: - Transition planning
+
+    private struct PlannedItem {
+        let clip: any Clip
+        let transitionAfter: Transition?
+    }
+
+    private struct Plan {
+        let items: [PlannedItem]
+    }
+
+    private struct Placement {
+        let trackIndex: Int
+        let timeRange: CMTimeRange
+        let transitionAfter: Transition?
+    }
+
+    private static func planTransitions(clips: [any Clip]) throws -> Plan {
+        // Validate: cannot start or end with a transition; cannot have two adjacent transitions
+        if clips.first is Transition {
+            throw KadrError.invalidTransition("Composition cannot begin with a transition")
+        }
+        if clips.last is Transition {
+            throw KadrError.invalidTransition("Composition cannot end with a transition")
+        }
+
+        var items: [PlannedItem] = []
+        var i = 0
+        while i < clips.count {
+            let current = clips[i]
+            if current is Transition {
+                throw KadrError.invalidTransition("Two transitions cannot be adjacent")
+            }
+
+            let next = i + 1 < clips.count ? clips[i + 1] : nil
+            if let transition = next as? Transition {
+                // Validate slide/dissolve are still unimplemented at the engine level
+                switch transition {
+                case .fade:
+                    break
+                case .slide, .dissolve:
+                    throw KadrError.notYetImplemented("Only .fade is implemented in v0.2; .slide and .dissolve land later")
+                }
+
+                // Validate transition duration vs adjacent clip durations
+                guard let following = i + 2 < clips.count ? clips[i + 2] : nil, !(following is Transition) else {
+                    throw KadrError.invalidTransition("Transition must sit between two media clips")
+                }
+                let tDur = CMTimeGetSeconds(transition.duration)
+                let curDur = CMTimeGetSeconds(current.duration)
+                let nextDur = CMTimeGetSeconds(following.duration)
+                if tDur <= 0 {
+                    throw KadrError.invalidTransition("Transition duration must be positive")
+                }
+                if tDur > curDur || tDur > nextDur {
+                    throw KadrError.invalidTransition("Transition duration (\(tDur)s) exceeds an adjacent clip's duration")
+                }
+
+                items.append(PlannedItem(clip: current, transitionAfter: transition))
+                i += 2
+            } else {
+                items.append(PlannedItem(clip: current, transitionAfter: nil))
+                i += 1
+            }
+        }
+        return Plan(items: items)
+    }
+
+    // MARK: - VideoComposition builder for the transition path
+
+    private static func buildVideoComposition(
+        placements: [Placement],
+        videoTracks: [AVMutableCompositionTrack],
+        preset: Preset,
+        totalDuration: CMTime
+    ) -> AVMutableVideoComposition {
+        let videoComposition = AVMutableVideoComposition()
+        videoComposition.renderSize = preset.resolution
+        videoComposition.frameDuration = CMTime(value: 1, timescale: CMTimeScale(preset.frameRate))
+
+        var instructions: [AVMutableVideoCompositionInstruction] = []
+
+        for (idx, placement) in placements.enumerated() {
+            let track = videoTracks[placement.trackIndex]
+            let nextPlacement = idx + 1 < placements.count ? placements[idx + 1] : nil
+
+            // The "solo" segment: from this clip's start (or end of incoming transition) to the start of the outgoing transition (or its end)
+            let soloStart: CMTime = {
+                guard idx > 0 else { return placement.timeRange.start }
+                let prev = placements[idx - 1]
+                if let incomingTransition = prev.transitionAfter {
+                    return CMTimeAdd(placement.timeRange.start, incomingTransition.duration)
+                }
+                return placement.timeRange.start
+            }()
+
+            let soloEnd: CMTime = {
+                if let outgoing = placement.transitionAfter {
+                    return CMTimeSubtract(placement.timeRange.end, outgoing.duration)
+                }
+                return placement.timeRange.end
+            }()
+
+            if CMTimeCompare(soloEnd, soloStart) > 0 {
+                let inst = AVMutableVideoCompositionInstruction()
+                inst.timeRange = CMTimeRange(start: soloStart, duration: CMTimeSubtract(soloEnd, soloStart))
+                let layer = makeLayerInstruction(for: track, preset: preset)
+                inst.layerInstructions = [layer]
+                instructions.append(inst)
+            }
+
+            // Cross-fade segment with the next clip
+            if let outgoing = placement.transitionAfter, let next = nextPlacement {
+                let xStart = soloEnd
+                let xRange = CMTimeRange(start: xStart, duration: outgoing.duration)
+                let inst = AVMutableVideoCompositionInstruction()
+                inst.timeRange = xRange
+
+                let outgoingLayer = makeLayerInstruction(for: track, preset: preset)
+                outgoingLayer.setOpacityRamp(fromStartOpacity: 1.0, toEndOpacity: 0.0, timeRange: xRange)
+
+                let incomingTrack = videoTracks[next.trackIndex]
+                let incomingLayer = makeLayerInstruction(for: incomingTrack, preset: preset)
+                incomingLayer.setOpacityRamp(fromStartOpacity: 0.0, toEndOpacity: 1.0, timeRange: xRange)
+
+                // Outgoing is drawn on top so its ramp from 1→0 reveals the incoming underneath
+                inst.layerInstructions = [outgoingLayer, incomingLayer]
+                instructions.append(inst)
+            }
+        }
+
+        videoComposition.instructions = instructions
+        return videoComposition
+    }
+
+    private static func makeLayerInstruction(
+        for track: AVMutableCompositionTrack,
+        preset: Preset
+    ) -> AVMutableVideoCompositionLayerInstruction {
+        let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
+        let trackSize = track.naturalSize
+        if trackSize.width > 0 && trackSize.height > 0 {
+            let scaleX = preset.resolution.width / trackSize.width
+            let scaleY = preset.resolution.height / trackSize.height
+            let scale = max(scaleX, scaleY)
+            let scaledWidth = trackSize.width * scale
+            let scaledHeight = trackSize.height * scale
+            let tx = (preset.resolution.width - scaledWidth) / 2
+            let ty = (preset.resolution.height - scaledHeight) / 2
+            let transform = CGAffineTransform(scaleX: scale, y: scale)
+                .translatedBy(x: tx / scale, y: ty / scale)
+            layer.setTransform(transform, at: .zero)
+        }
+        return layer
+    }
+
+    // MARK: - Audio crossfade for clip audio during transitions
+
+    private static func buildClipAudioCrossfadeParams(
+        placements: [Placement],
+        audioTracks: [AVMutableCompositionTrack?]
+    ) -> [AVMutableAudioMixInputParameters] {
+        var params: [AVMutableAudioMixInputParameters] = []
+        for (idx, placement) in placements.enumerated() {
+            guard let track = audioTracks[placement.trackIndex] else { continue }
+            let p = AVMutableAudioMixInputParameters(track: track)
+
+            // Fade in if there's an incoming transition (this clip overlaps the previous)
+            if idx > 0, let incoming = placements[idx - 1].transitionAfter {
+                let inRange = CMTimeRange(start: placement.timeRange.start, duration: incoming.duration)
+                p.setVolumeRamp(fromStartVolume: 0, toEndVolume: 1, timeRange: inRange)
+            }
+
+            // Fade out if there's an outgoing transition
+            if let outgoing = placement.transitionAfter {
+                let outStart = CMTimeSubtract(placement.timeRange.end, outgoing.duration)
+                let outRange = CMTimeRange(start: outStart, duration: outgoing.duration)
+                p.setVolumeRamp(fromStartVolume: 1, toEndVolume: 0, timeRange: outRange)
+            }
+
+            params.append(p)
+        }
+        return params
+    }
+
+    // MARK: - Background audio (shared between simple and transition paths)
+
+    private static func buildBackgroundAudioMix(
+        composition: AVMutableComposition,
+        audioTracks: [AudioTrack],
+        totalDuration: CMTime
+    ) async throws -> AVMutableAudioMix? {
+        let params = try await buildBackgroundAudioMixParameters(
+            composition: composition,
+            audioTracks: audioTracks,
+            totalDuration: totalDuration
+        )
+        guard !params.isEmpty else { return nil }
+        let mix = AVMutableAudioMix()
+        mix.inputParameters = params
+        return mix
+    }
+
+    private static func buildBackgroundAudioMixParameters(
+        composition: AVMutableComposition,
+        audioTracks: [AudioTrack],
+        totalDuration: CMTime
+    ) async throws -> [AVMutableAudioMixInputParameters] {
         var audioMixParameters: [AVMutableAudioMixInputParameters] = []
 
         for audioTrack in audioTracks {
@@ -69,8 +378,7 @@ internal enum CompositionBuilder {
             ) else { continue }
 
             let audioDuration = try await audioAsset.load(.duration)
-            let compositionDuration = insertionPoint
-            let insertDuration = CMTimeMinimum(audioDuration, compositionDuration)
+            let insertDuration = CMTimeMinimum(audioDuration, totalDuration)
 
             try bgAudioTrack.insertTimeRange(
                 CMTimeRange(start: .zero, duration: insertDuration),
@@ -78,7 +386,6 @@ internal enum CompositionBuilder {
                 at: .zero
             )
 
-            // Apply audio modifiers
             let params = AVMutableAudioMixInputParameters(track: bgAudioTrack)
 
             if audioTrack.volumeLevel != 1.0 {
@@ -111,21 +418,13 @@ internal enum CompositionBuilder {
             audioMixParameters.append(params)
         }
 
-        var audioMix: AVMutableAudioMix?
-        if !audioMixParameters.isEmpty {
-            let mix = AVMutableAudioMix()
-            mix.inputParameters = audioMixParameters
-            audioMix = mix
-        }
-
-        return CompositionResult(composition: composition, audioMix: audioMix)
+        return audioMixParameters
     }
 
     // MARK: - VideoClip insertion
 
     private static func insertVideoClip(
         _ clip: VideoClip,
-        into composition: AVMutableComposition,
         videoTrack: AVMutableCompositionTrack,
         audioTrack: AVMutableCompositionTrack?,
         at insertionPoint: inout CMTime,
@@ -133,7 +432,6 @@ internal enum CompositionBuilder {
     ) async throws {
         var assetURL = clip.url
 
-        // Handle reversal by pre-processing
         if clip.isReversed {
             assetURL = try await ReverseProcessor.reverse(videoAt: assetURL)
         }
@@ -141,7 +439,6 @@ internal enum CompositionBuilder {
         let asset = AVURLAsset(url: assetURL)
         let assetDuration = try await asset.load(.duration)
 
-        // Determine source time range
         let sourceRange: CMTimeRange
         if let trimRange = clip.trimRange {
             let start = CMTime(seconds: trimRange.lowerBound, preferredTimescale: 600)
@@ -151,13 +448,11 @@ internal enum CompositionBuilder {
             sourceRange = CMTimeRange(start: .zero, duration: assetDuration)
         }
 
-        // Insert video track
         let videoTracks = try await asset.loadTracks(withMediaType: .video)
         if let sourceVideoTrack = videoTracks.first {
             try videoTrack.insertTimeRange(sourceRange, of: sourceVideoTrack, at: insertionPoint)
         }
 
-        // Insert audio track (unless muted)
         if !clip.isMuted, let audioTrack {
             let sourceAudioTracks = try await asset.loadTracks(withMediaType: .audio)
             if let sourceAudioTrack = sourceAudioTracks.first {
@@ -165,7 +460,6 @@ internal enum CompositionBuilder {
             }
         }
 
-        // Insert replacement audio if present
         if let replacementAudioURL = clip.replacementAudioURL, let audioTrack {
             let audioAsset = AVURLAsset(url: replacementAudioURL)
             let audioTracks = try await audioAsset.loadTracks(withMediaType: .audio)
@@ -188,13 +482,11 @@ internal enum CompositionBuilder {
 
     private static func insertImageClip(
         _ clip: ImageClip,
-        into composition: AVMutableComposition,
         videoTrack: AVMutableCompositionTrack,
         audioTrack: AVMutableCompositionTrack?,
         at insertionPoint: inout CMTime,
         preset: Preset
     ) async throws {
-        // Encode image to temporary video file
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
             .appendingPathExtension("mp4")
@@ -220,7 +512,6 @@ internal enum CompositionBuilder {
             )
         }
 
-        // Handle per-clip audio
         if let clipAudioURL = clip.audioURL, let audioTrack {
             let audioAsset = AVURLAsset(url: clipAudioURL)
             let audioTracks = try await audioAsset.loadTracks(withMediaType: .audio)

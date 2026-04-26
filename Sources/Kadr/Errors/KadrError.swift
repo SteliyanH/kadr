@@ -7,4 +7,5 @@ public enum KadrError: Error, Sendable {
     case exportFailed(underlying: any Error)
     case cancelled
     case notYetImplemented(String)
+    case invalidTransition(String)
 }
