@@ -591,6 +591,12 @@ internal enum CompositionBuilder {
             assetURL = try await ReverseProcessor.reverse(videoAt: assetURL)
         }
 
+        // Filters pre-render to a temporary file before composition. Order: reverse
+        // first (so filters operate on the reversed frames), then filters.
+        if !clip.filters.isEmpty {
+            assetURL = try await FilterProcessor.apply(filters: clip.filters, to: assetURL)
+        }
+
         let asset = AVURLAsset(url: assetURL)
         let assetDuration = try await asset.load(.duration)
 
