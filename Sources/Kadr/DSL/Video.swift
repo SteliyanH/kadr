@@ -20,7 +20,7 @@ public struct Video: Sendable {
     internal let clips: [any Clip]
     internal let audioTracks: [AudioTrack]
     internal let preset: Preset
-    internal let overlays: [ImageOverlay]
+    internal let overlays: [any Overlay]
 
     /// Build a `Video` from a result-builder block of clips.
     public init(@VideoBuilder _ content: () -> [any Clip]) {
@@ -30,7 +30,7 @@ public struct Video: Sendable {
         self.overlays = []
     }
 
-    internal init(clips: [any Clip], audioTracks: [AudioTrack], preset: Preset, overlays: [ImageOverlay] = []) {
+    internal init(clips: [any Clip], audioTracks: [AudioTrack], preset: Preset, overlays: [any Overlay] = []) {
         self.clips = clips
         self.audioTracks = audioTracks
         self.preset = preset
@@ -55,10 +55,10 @@ public struct Video: Sendable {
         Video(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays)
     }
 
-    /// Add an image overlay drawn on top of the composition for its full duration.
-    /// See ``ImageOverlay`` for the modifier chain (`.position`, `.size`, `.anchor`,
-    /// `.opacity`, `.id`).
-    public func overlay(_ overlay: ImageOverlay) -> Video {
+    /// Add an overlay drawn on top of the composition for its full duration.
+    /// Accepts any ``Overlay`` conformer — currently ``ImageOverlay`` and ``TextOverlay``.
+    /// Each overlay is drawn above the previous one in declaration order.
+    public func overlay<O: Overlay>(_ overlay: O) -> Video {
         Video(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays + [overlay])
     }
 

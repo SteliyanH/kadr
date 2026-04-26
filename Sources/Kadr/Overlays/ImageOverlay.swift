@@ -23,14 +23,14 @@ import CoreGraphics
 ///
 /// > Naming note: this type is `ImageOverlay` rather than `Image` to avoid colliding with
 /// > SwiftUI's `Image` type, which Kadr users almost always import alongside.
-public struct ImageOverlay: Sendable {
+public struct ImageOverlay: Overlay, Sendable {
     /// The source image rendered into the overlay layer.
     public let image: PlatformImage
-    internal let position: Position
-    internal let size: Size?
-    internal let anchor: Anchor
-    internal let opacity: Double
-    internal let layerID: LayerID?
+    public let position: Position
+    public let size: Size?
+    public let anchor: Anchor
+    public let opacity: Double
+    public let layerID: LayerID?
 
     /// Build an overlay with the given image. Defaults: centered, natural size, full
     /// opacity, no layer ID.

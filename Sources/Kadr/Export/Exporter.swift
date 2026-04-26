@@ -16,11 +16,11 @@ public final class Exporter: @unchecked Sendable {
     internal let clips: [any Clip]
     internal let audioTracks: [AudioTrack]
     internal let preset: Preset
-    internal let overlays: [ImageOverlay]
+    internal let overlays: [any Overlay]
     internal let outputURL: URL
     private let cancellationToken = CancellationToken()
 
-    internal init(clips: [any Clip], audioTracks: [AudioTrack], preset: Preset, overlays: [ImageOverlay] = [], outputURL: URL) {
+    internal init(clips: [any Clip], audioTracks: [AudioTrack], preset: Preset, overlays: [any Overlay] = [], outputURL: URL) {
         self.clips = clips
         self.audioTracks = audioTracks
         self.preset = preset
