@@ -31,7 +31,13 @@ Kadr uses a two-branch flow:
 
 Hotfixes branch from `main` directly (e.g. `fix/v0.X.Y-something`), merge into `main` first (rebase-and-merge), tag the patch, then PR the same fix into `develop` to keep the branches synchronized.
 
-> **Historical note:** Releases v0.1.0, v0.2.0, and v0.2.1 used "Squash and merge" into `main`, which collapsed each release to a single commit but caused the histories to diverge — every subsequent release PR hit phantom CHANGELOG conflicts that had to be resolved with a back-merge PR. Starting from **v0.3.0** we use rebase-and-merge to eliminate that ceremony permanently. As a result `git log main` will look slightly mixed-shape (squashed releases up to v0.2.1, granular thereafter); that's intentional.
+> **Historical note:** Releases **v0.1.0 through v0.3.0** used "Squash and merge" into `main`, which collapsed each release to a single commit. The granular per-PR commits remained on `develop`, so every subsequent release PR's rebase-and-merge would try to replay them onto `main` even though their content was already there as squashes — producing phantom conflicts. The fix-up at each release was a one-shot back-merge PR (`chore/sync-develop-with-main-vX.Y.Z`).
+>
+> For **v0.4.0** we tried to escape that cycle by back-merging `main` into `develop` after the v0.3.0 squash, expecting `develop` to then be a clean linear extension of `main`. It wasn't: the back-merge added the squash commit to develop's *graph* but didn't *remove* the original granular commits, so `main..develop` still contained 60+ already-on-main commits that re-conflicted on rebase.
+>
+> What actually worked: **reset `develop` to `main` and replay only the v0.4.0 commits** via `git cherry-pick`, then force-push. After that one-shot rewrite, `develop` is genuinely `main` + a handful of new commits.
+>
+> Going forward (v0.5.0+): each release PR rebase-and-merges cleanly without ceremony, and `develop` stays a clean linear extension of `main`. The history on `main` is mixed-shape: one squash commit per release through v0.3.0, then granular per-PR commits from v0.4.0 onward. That's the intentional cost of cleaning up.
 
 ## Development
 
