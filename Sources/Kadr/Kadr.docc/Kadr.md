@@ -67,6 +67,15 @@ let url = try await Video {
 ### Cropping (v0.3+)
 
 - ``Video/crop(at:size:anchor:)``
+- ``CropRegion``
+
+### Preview & Introspection (v0.4+)
+
+- ``Video/makePlayerItem()``
+- ``Video/thumbnail(at:)-(CMTime)``
+- ``Video/thumbnail(at:)-(TimeInterval)``
+- ``Layout``
+- ``Layout/resolveFrame(position:size:anchor:in:)``
 
 ### Sugar (v0.3+)
 
