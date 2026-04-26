@@ -100,7 +100,7 @@ struct DSLTests {
         // Frame-accurate: 1 frame at 30fps = CMTime(value: 1, timescale: 30)
         let oneFrame = CMTime(value: 1, timescale: 30)
         let range = CMTimeRange(start: oneFrame, duration: CMTime(value: 30, timescale: 30))
-        let clip = VideoClip(url: url).trimmed(range)
+        let clip = VideoClip(url: url).trimmed(to: range)
         #expect(clip.trimRange?.start == oneFrame)
         #expect(clip.trimRange?.duration == CMTime(value: 30, timescale: 30))
     }

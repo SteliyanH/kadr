@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 - **API**: time-related parameters now accept `CMTime` for frame-accurate precision, with `TimeInterval` retained as ergonomic overloads. Internal storage of all durations migrated to `CMTime` / `CMTimeRange`.
   - `Transition.fade`, `.dissolve`, `.slide` cases now bind `CMTime` instead of `TimeInterval`. Direct call sites (`Transition.fade(duration: 0.5)`) continue to work via static factory overloads. **Breaking** for code that pattern-matches the cases (`case .fade(let d)` now binds `CMTime`).
-  - `VideoClip.trimmed(_ range: CMTimeRange)` added. Existing `.trimmed(to: ClosedRange<TimeInterval>)` retained.
+  - `VideoClip.trimmed(to: CMTimeRange)` added. Existing `.trimmed(to: ClosedRange<TimeInterval>)` retained. Both overloads now share the `to:` argument label for consistency.
   - `VideoClip.thumbnail(at: CMTime)` added.
   - `ImageClip(_:duration:)` and `ImageClip.duration(_:)` gain `CMTime` overloads.
   - `AudioTrack.fadeIn(_:)` / `.fadeOut(_:)` gain `CMTime` overloads.
