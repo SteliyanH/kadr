@@ -240,6 +240,69 @@ struct TransitionsTests {
         }
     }
 
+    // MARK: - Slide
+
+    @Test(arguments: [SlideDirection.fromLeft, .fromRight, .fromTop, .fromBottom])
+    func slideAllDirections(direction: SlideDirection) async throws {
+        let videoURL = try loadTestVideoURL()
+        let outputURL = testOutputURL("slide_\(direction)")
+
+        let result = try await Video {
+            VideoClip(url: videoURL).trimmed(to: 0...3)
+            Transition.slide(direction: direction, duration: 0.5)
+            VideoClip(url: videoURL).trimmed(to: 0...3)
+        }
+        .export(to: outputURL)
+
+        #expect(FileManager.default.fileExists(atPath: result.path))
+
+        let asset = AVURLAsset(url: result)
+        let duration = try await asset.load(.duration)
+        let seconds = CMTimeGetSeconds(duration)
+        // Slide overlaps like dissolve. Total = 3 + 3 - 0.5 = 5.5
+        #expect(seconds > 5.0)
+        #expect(seconds < 6.0)
+
+        try? FileManager.default.removeItem(at: result)
+    }
+
+    @Test func slideBetweenImageClips() async throws {
+        let image = try loadTestImage()
+        let outputURL = testOutputURL("slide_images")
+
+        let result = try await Video {
+            ImageClip(image, duration: 2.0)
+            Transition.slide(direction: .fromRight, duration: 0.4)
+            ImageClip(image, duration: 2.0)
+        }
+        .export(to: outputURL)
+
+        #expect(FileManager.default.fileExists(atPath: result.path))
+
+        let asset = AVURLAsset(url: result)
+        let duration = try await asset.load(.duration)
+        let seconds = CMTimeGetSeconds(duration)
+        // 2 + 2 - 0.4 = 3.6
+        #expect(seconds > 3.1)
+        #expect(seconds < 4.1)
+
+        try? FileManager.default.removeItem(at: result)
+    }
+
+    @Test func slideLongerThanClipThrows() async throws {
+        let videoURL = try loadTestVideoURL()
+        let outputURL = testOutputURL("slide_too_long")
+
+        await #expect(throws: KadrError.self) {
+            _ = try await Video {
+                VideoClip(url: videoURL).trimmed(to: 0...1)
+                Transition.slide(direction: .fromLeft, duration: 2.0)
+                VideoClip(url: videoURL).trimmed(to: 0...3)
+            }
+            .export(to: outputURL)
+        }
+    }
+
     @Test func dissolveLongerThanClipThrows() async throws {
         // dissolve(2.0) needs 2s of overlap on each side; first clip is only 1s
         let videoURL = try loadTestVideoURL()

@@ -228,12 +228,7 @@ internal enum CompositionBuilder {
 
             let next = i + 1 < clips.count ? clips[i + 1] : nil
             if let transition = next as? Transition {
-                switch transition {
-                case .fade, .dissolve:
-                    break
-                case .slide:
-                    throw KadrError.notYetImplemented(".slide transition lands in a follow-up PR")
-                }
+                // All three transition kinds are now implemented.
 
                 guard let following = i + 2 < clips.count ? clips[i + 2] : nil, !(following is Transition) else {
                     throw KadrError.invalidTransition("Transition must sit between two media clips")
@@ -337,8 +332,26 @@ internal enum CompositionBuilder {
                     inInst.layerInstructions = [inLayer]
                     instructions.append(inInst)
 
-                case .slide:
-                    break  // unreachable: rejected during planning
+                case .slide(let direction, _):
+                    // Single overlapping segment with translation ramps on both layers
+                    let xRange = CMTimeRange(start: soloEnd, duration: outgoing.duration)
+                    let inst = AVMutableVideoCompositionInstruction()
+                    inst.timeRange = xRange
+
+                    let offset = slideOffset(direction: direction, renderSize: preset.resolution)
+
+                    let outBase = baseTransform(for: track, preset: preset) ?? .identity
+                    let outEnd = outBase.concatenating(CGAffineTransform(translationX: offset.x, y: offset.y))
+                    let outLayer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
+                    outLayer.setTransformRamp(fromStart: outBase, toEnd: outEnd, timeRange: xRange)
+
+                    let inBase = baseTransform(for: incomingTrack, preset: preset) ?? .identity
+                    let inStart = inBase.concatenating(CGAffineTransform(translationX: -offset.x, y: -offset.y))
+                    let inLayer = AVMutableVideoCompositionLayerInstruction(assetTrack: incomingTrack)
+                    inLayer.setTransformRamp(fromStart: inStart, toEnd: inBase, timeRange: xRange)
+
+                    inst.layerInstructions = [outLayer, inLayer]
+                    instructions.append(inst)
                 }
             }
         }
@@ -352,20 +365,42 @@ internal enum CompositionBuilder {
         preset: Preset
     ) -> AVMutableVideoCompositionLayerInstruction {
         let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
-        let trackSize = track.naturalSize
-        if trackSize.width > 0 && trackSize.height > 0 {
-            let scaleX = preset.resolution.width / trackSize.width
-            let scaleY = preset.resolution.height / trackSize.height
-            let scale = max(scaleX, scaleY)
-            let scaledWidth = trackSize.width * scale
-            let scaledHeight = trackSize.height * scale
-            let tx = (preset.resolution.width - scaledWidth) / 2
-            let ty = (preset.resolution.height - scaledHeight) / 2
-            let transform = CGAffineTransform(scaleX: scale, y: scale)
-                .translatedBy(x: tx / scale, y: ty / scale)
-            layer.setTransform(transform, at: .zero)
+        if let base = baseTransform(for: track, preset: preset) {
+            layer.setTransform(base, at: .zero)
         }
         return layer
+    }
+
+    /// The aspect-fill scale + center transform applied to every layer before any slide offset.
+    private static func baseTransform(
+        for track: AVMutableCompositionTrack,
+        preset: Preset
+    ) -> CGAffineTransform? {
+        let trackSize = track.naturalSize
+        guard trackSize.width > 0, trackSize.height > 0 else { return nil }
+        let scaleX = preset.resolution.width / trackSize.width
+        let scaleY = preset.resolution.height / trackSize.height
+        let scale = max(scaleX, scaleY)
+        let scaledWidth = trackSize.width * scale
+        let scaledHeight = trackSize.height * scale
+        let tx = (preset.resolution.width - scaledWidth) / 2
+        let ty = (preset.resolution.height - scaledHeight) / 2
+        return CGAffineTransform(scaleX: scale, y: scale)
+            .translatedBy(x: tx / scale, y: ty / scale)
+    }
+
+    /// Translation offset (in render space) for the outgoing clip during a slide.
+    /// The incoming clip uses the negation of this offset as its starting position.
+    private static func slideOffset(
+        direction: SlideDirection,
+        renderSize: CGSize
+    ) -> CGPoint {
+        switch direction {
+        case .fromLeft:   return CGPoint(x:  renderSize.width, y: 0)   // outgoing exits right
+        case .fromRight:  return CGPoint(x: -renderSize.width, y: 0)   // outgoing exits left
+        case .fromTop:    return CGPoint(x: 0, y:  renderSize.height)  // outgoing exits down
+        case .fromBottom: return CGPoint(x: 0, y: -renderSize.height)  // outgoing exits up
+        }
     }
 
     // MARK: - Audio crossfade for clip audio during transitions
