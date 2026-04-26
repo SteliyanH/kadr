@@ -56,21 +56,28 @@ Visual composition layered on top of video, plus the coordinate primitives that 
 - Alpha-mask cropping (non-rectangular shapes)
 - Time-ranged overlay visibility (overlays appearing during a portion of the composition)
 
-## v0.4.0 — Composition Introspection & Preview Primitives
+## v0.4.0 — Composition Introspection & Preview Primitives ✓ shipped
 
-Public APIs that let any caller — including the new [`kadr-ui`](https://github.com/SteliyanH/kadr-ui) package — render previews, generate thumbnails, draw timelines, and hit-test overlays without re-deriving state from the DSL.
+Public APIs that let any caller — including the new [`kadr-ui`](https://github.com/SteliyanH/kadr-ui) package — render previews, generate thumbnails, draw timelines, and hit-test overlays without re-deriving state from the DSL. See [CHANGELOG.md](CHANGELOG.md#040---2026-04-27).
 
 **Introspection**
-- Public read-only access on `Video`: `clips`, `overlays`, `audioTracks`, `preset`, `crop`
-- `CropRegion` made public; `Preset.resolution` and `Preset.frameRate` exposed
-- Per-clip property exposure (`VideoClip.trimRange`/`isReversed`/`isMuted`/`speedRate`/`filters`, `ImageClip.backgroundColor`/`audioURL`, `AudioTrack.volumeLevel`/`fadeInDuration`/`fadeOutDuration`/`duckingLevel`)
+
+- ✓ Public read-only access on `Video`: `clips`, `overlays`, `audioTracks`, `preset`, `crop`
+- ✓ `CropRegion` made public; `Preset.resolution` and `Preset.frameRate` exposed
+- ✓ Per-clip property exposure (`VideoClip.trimRange`/`isReversed`/`isMuted`/`speedRate`/`filters`, `ImageClip.backgroundColor`/`audioURL`, `AudioTrack.volumeLevel`/`fadeInDuration`/`fadeOutDuration`/`duckingLevel`)
 
 **Preview**
-- `Video.makeAsset()` / `Video.makePlayerItem()` for `AVKit.VideoPlayer` integration
-- `Video.thumbnail(at: CMTime)` for composition-level frame rendering
+
+- ✓ `Video.makePlayerItem() async throws -> AVPlayerItem` (`@MainActor`) for `AVKit.VideoPlayer` integration
+- ✓ `Video.thumbnail(at: CMTime)` and `thumbnail(at: TimeInterval)` for composition-level frame rendering
 
 **Layout**
-- Public `Layout.resolveFrame(position:size:anchor:in:sourceAspect:)` mirroring the engine's internal frame resolver — KadrUI uses this for pixel-exact hit-testing in the same coordinate space the engine renders in
+
+- ✓ Public `Layout.resolveFrame(position:size:anchor:in:)` mirroring the engine's internal frame resolver — KadrUI uses this for pixel-exact hit-testing in the same coordinate space the engine renders in
+
+**Architectural note**
+
+- Overlays are intentionally **not** baked into the preview surface (`makePlayerItem` / `thumbnail`) — `AVVideoCompositionCoreAnimationTool(postProcessingAsVideoLayer:in:)` is export-only and crashes if attached to a playback `videoComposition`. Preview consumers render overlays as views layered over the player using `Layout.resolveFrame(...)`. The exported file still bakes them in.
 
 The `kadr-ui` SwiftUI package consuming these primitives ships on its own version track. See its [roadmap](https://github.com/SteliyanH/kadr-ui#status) for `VideoPreview`, `TimelineView`, `ThumbnailStrip`, and gesture-handler component plans.
 
