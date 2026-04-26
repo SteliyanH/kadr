@@ -12,10 +12,11 @@ internal enum CompositionBuilder {
     static func build(
         from clips: [any Clip],
         audioTracks: [AudioTrack],
-        preset: Preset
+        preset: Preset,
+        cropRect: CGRect? = nil
     ) async throws -> CompositionResult {
         if clips.contains(where: { $0 is Transition }) {
-            return try await buildWithTransitions(clips: clips, audioTracks: audioTracks, preset: preset)
+            return try await buildWithTransitions(clips: clips, audioTracks: audioTracks, preset: preset, cropRect: cropRect)
         }
         return try await buildSimple(clips: clips, audioTracks: audioTracks, preset: preset)
     }
@@ -86,7 +87,8 @@ internal enum CompositionBuilder {
     private static func buildWithTransitions(
         clips: [any Clip],
         audioTracks: [AudioTrack],
-        preset: Preset
+        preset: Preset,
+        cropRect: CGRect? = nil
     ) async throws -> CompositionResult {
         // 1. Plan: walk clips, validate, produce media items + transition-after links
         let plan = try planTransitions(clips: clips)
@@ -150,7 +152,8 @@ internal enum CompositionBuilder {
             placements: placements,
             videoTracks: videoTracks,
             preset: preset,
-            totalDuration: totalDuration
+            totalDuration: totalDuration,
+            cropRect: cropRect
         )
 
         // 5. Audio crossfade ramps for clip audio on alternating tracks
@@ -283,11 +286,14 @@ internal enum CompositionBuilder {
         placements: [Placement],
         videoTracks: [AVMutableCompositionTrack],
         preset: Preset,
-        totalDuration: CMTime
+        totalDuration: CMTime,
+        cropRect: CGRect? = nil
     ) -> AVMutableVideoComposition {
         let videoComposition = AVMutableVideoComposition()
-        videoComposition.renderSize = preset.resolution
+        videoComposition.renderSize = cropRect?.size ?? preset.resolution
         videoComposition.frameDuration = CMTime(value: 1, timescale: CMTimeScale(preset.frameRate))
+        let cropOffset = cropRect?.origin ?? .zero
+        let cropTransform = CGAffineTransform(translationX: -cropOffset.x, y: -cropOffset.y)
 
         var instructions: [AVMutableVideoCompositionInstruction] = []
 
@@ -311,7 +317,7 @@ internal enum CompositionBuilder {
             if CMTimeCompare(soloEnd, soloStart) > 0 {
                 let inst = AVMutableVideoCompositionInstruction()
                 inst.timeRange = CMTimeRange(start: soloStart, duration: CMTimeSubtract(soloEnd, soloStart))
-                inst.layerInstructions = [makeLayerInstruction(for: track, preset: preset)]
+                inst.layerInstructions = [makeLayerInstruction(for: track, preset: preset, cropTransform: cropTransform)]
                 instructions.append(inst)
             }
 
@@ -325,9 +331,9 @@ internal enum CompositionBuilder {
                     let xRange = CMTimeRange(start: soloEnd, duration: outgoing.duration)
                     let inst = AVMutableVideoCompositionInstruction()
                     inst.timeRange = xRange
-                    let outLayer = makeLayerInstruction(for: track, preset: preset)
+                    let outLayer = makeLayerInstruction(for: track, preset: preset, cropTransform: cropTransform)
                     outLayer.setOpacityRamp(fromStartOpacity: 1.0, toEndOpacity: 0.0, timeRange: xRange)
-                    let inLayer = makeLayerInstruction(for: incomingTrack, preset: preset)
+                    let inLayer = makeLayerInstruction(for: incomingTrack, preset: preset, cropTransform: cropTransform)
                     inLayer.setOpacityRamp(fromStartOpacity: 0.0, toEndOpacity: 1.0, timeRange: xRange)
                     inst.layerInstructions = [outLayer, inLayer]
                     instructions.append(inst)
@@ -338,7 +344,7 @@ internal enum CompositionBuilder {
                     let outRange = CMTimeRange(start: soloEnd, duration: halfDur)
                     let outInst = AVMutableVideoCompositionInstruction()
                     outInst.timeRange = outRange
-                    let outLayer = makeLayerInstruction(for: track, preset: preset)
+                    let outLayer = makeLayerInstruction(for: track, preset: preset, cropTransform: cropTransform)
                     outLayer.setOpacityRamp(fromStartOpacity: 1.0, toEndOpacity: 0.0, timeRange: outRange)
                     outInst.layerInstructions = [outLayer]
                     instructions.append(outInst)
@@ -347,7 +353,7 @@ internal enum CompositionBuilder {
                     let inRange = CMTimeRange(start: inStart, duration: halfDur)
                     let inInst = AVMutableVideoCompositionInstruction()
                     inInst.timeRange = inRange
-                    let inLayer = makeLayerInstruction(for: incomingTrack, preset: preset)
+                    let inLayer = makeLayerInstruction(for: incomingTrack, preset: preset, cropTransform: cropTransform)
                     inLayer.setOpacityRamp(fromStartOpacity: 0.0, toEndOpacity: 1.0, timeRange: inRange)
                     inInst.layerInstructions = [inLayer]
                     instructions.append(inInst)
@@ -363,12 +369,20 @@ internal enum CompositionBuilder {
                     let outBase = baseTransform(for: track, preset: preset) ?? .identity
                     let outEnd = outBase.concatenating(CGAffineTransform(translationX: offset.x, y: offset.y))
                     let outLayer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
-                    outLayer.setTransformRamp(fromStart: outBase, toEnd: outEnd, timeRange: xRange)
+                    outLayer.setTransformRamp(
+                        fromStart: outBase.concatenating(cropTransform),
+                        toEnd:     outEnd.concatenating(cropTransform),
+                        timeRange: xRange
+                    )
 
                     let inBase = baseTransform(for: incomingTrack, preset: preset) ?? .identity
                     let inStart = inBase.concatenating(CGAffineTransform(translationX: -offset.x, y: -offset.y))
                     let inLayer = AVMutableVideoCompositionLayerInstruction(assetTrack: incomingTrack)
-                    inLayer.setTransformRamp(fromStart: inStart, toEnd: inBase, timeRange: xRange)
+                    inLayer.setTransformRamp(
+                        fromStart: inStart.concatenating(cropTransform),
+                        toEnd:     inBase.concatenating(cropTransform),
+                        timeRange: xRange
+                    )
 
                     inst.layerInstructions = [outLayer, inLayer]
                     instructions.append(inst)
@@ -382,11 +396,15 @@ internal enum CompositionBuilder {
 
     private static func makeLayerInstruction(
         for track: AVMutableCompositionTrack,
-        preset: Preset
+        preset: Preset,
+        cropTransform: CGAffineTransform = .identity
     ) -> AVMutableVideoCompositionLayerInstruction {
         let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
         if let base = baseTransform(for: track, preset: preset) {
-            layer.setTransform(base, at: .zero)
+            layer.setTransform(base.concatenating(cropTransform), at: .zero)
+        } else if cropTransform != .identity {
+            // No base transform but we still need to apply the crop offset
+            layer.setTransform(cropTransform, at: .zero)
         }
         return layer
     }

@@ -42,10 +42,10 @@ Visual composition — layers on top of video — and the foundational coordinat
 - **Watermarking:** `Video.watermark(image:position:opacity:)` — sugar over the overlay primitives.
 - **`BackgroundMusic` / `TitleSequence`:** thin wrappers over the existing `AudioTrack` / `Video` APIs for ergonomic call sites.
 
-**Filters & masks**
+**Filters & cropping**
 
 - **Filters:** `VideoClip.filter(_:)` with built-in presets — brightness, contrast, saturation, exposure, sepia, mono.
-- **Mask / crop:** `.mask(_ rect: Position)` shares the coordinate-system code with overlays.
+- **Crop:** `Video.crop(at:size:anchor:)` — composition-wide rectangular crop sharing coordinate-system code with overlays.
 
 **Polish**
 
@@ -69,6 +69,8 @@ Multi-track and precision composition features.
 - **Chroma key:** `.chromaKey(color:threshold:)`
 - **Color grading / LUTs:** `.lut(url:)` for loading `.cube` LUT files
 - **Custom compositors:** Public protocol for user-defined per-frame processing
+- **Per-clip cropping:** `VideoClip.crop(...)` — different crops per clip, enabled by the custom-compositor work
+- **Alpha-mask cropping:** non-rectangular shapes from an image or path, also unlocked by custom compositors
 
 ## v1.0.0 — Production Ready
 
