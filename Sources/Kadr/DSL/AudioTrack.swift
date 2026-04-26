@@ -1,13 +1,31 @@
 import Foundation
 import CoreMedia
 
+/// A composition-level audio track (typically background music or narration).
+///
+/// Apply modifiers to set volume, fade in/out, and auto-duck when clip audio plays:
+///
+/// ```swift
+/// Video { ... }
+///     .audio {
+///         AudioTrack(url: musicURL)
+///             .volume(0.8)
+///             .fadeIn(1.0)
+///             .fadeOut(2.0)
+///             .ducking(0.3)
+///     }
+/// ```
+///
+/// Fade durations accept both `CMTime` (frame-accurate) and `TimeInterval` (ergonomic) forms.
 public struct AudioTrack: Sendable {
+    /// File URL of the audio source.
     public let url: URL
     internal let volumeLevel: Double
     internal let fadeInDuration: CMTime
     internal let fadeOutDuration: CMTime
     internal let duckingLevel: Double?
 
+    /// Build a track at full volume with no fades or ducking.
     public init(url: URL) {
         self.url = url
         self.volumeLevel = 1.0
@@ -30,6 +48,8 @@ public struct AudioTrack: Sendable {
         self.duckingLevel = duckingLevel
     }
 
+    /// Set the track's overall volume. `1.0` is full source volume; `0.5` is half;
+    /// `0.0` is silence. Values outside `0.0...` are clamped by AVFoundation.
     public func volume(_ level: Double) -> AudioTrack {
         AudioTrack(url: url, volumeLevel: level, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel)
     }

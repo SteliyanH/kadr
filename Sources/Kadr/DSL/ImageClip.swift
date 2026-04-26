@@ -1,7 +1,18 @@
 import Foundation
 import CoreMedia
 
+/// A still image displayed for a fixed duration.
+///
+/// ```swift
+/// ImageClip(heroImage, duration: 5.0)
+///     .background(.black)
+///     .withAudio(narrationURL)
+/// ```
+///
+/// The duration parameter accepts both `CMTime` (frame-accurate) and `TimeInterval`
+/// (ergonomic) forms.
 public struct ImageClip: Clip, Sendable {
+    /// The image rendered for the clip's duration.
     public let image: PlatformImage
     internal let _duration: CMTime
     internal let backgroundColor: PlatformColor?
@@ -29,10 +40,14 @@ public struct ImageClip: Clip, Sendable {
         self.audioURL = audioURL
     }
 
+    /// Fill the area outside the image (when aspect-ratio doesn't match the export preset)
+    /// with `color`. Defaults to transparent if not set.
     public func background(_ color: PlatformColor) -> ImageClip {
         ImageClip(image: image, duration: _duration, backgroundColor: color, audioURL: audioURL)
     }
 
+    /// Attach an audio track that plays for this clip's duration. If the audio is longer
+    /// than the clip, it is truncated.
     public func withAudio(_ audioURL: URL) -> ImageClip {
         ImageClip(image: image, duration: _duration, backgroundColor: backgroundColor, audioURL: audioURL)
     }
