@@ -290,6 +290,128 @@ struct OverlayTests {
         try? FileManager.default.removeItem(at: result)
     }
 
+    // MARK: - StickerOverlay DSL
+
+    @Test func defaultStickerValues() throws {
+        let img = try loadTestImage()
+        let s = StickerOverlay(img)
+        #expect(s.position == .center)
+        #expect(s.size == nil)
+        #expect(s.anchor == .center)
+        #expect(s.opacity == 1.0)
+        #expect(s.rotation == 0)
+        #expect(s.shadow == nil)
+        #expect(s.layerID == nil)
+    }
+
+    @Test func stickerModifierChain() throws {
+        let img = try loadTestImage()
+        let s = StickerOverlay(img)
+            .position(.bottomLeft)
+            .size(.normalized(width: 0.2, height: 0.2))
+            .anchor(.bottomLeft)
+            .opacity(0.9)
+            .rotation(degrees: -10)
+            .shadow(color: .black, radius: 12, offset: CGSize(width: 0, height: 6), opacity: 0.5)
+            .id("burst")
+        #expect(s.position == .bottomLeft)
+        #expect(s.opacity == 0.9)
+        #expect(abs(s.rotation - (-10 * .pi / 180)) < 0.0001)
+        #expect(s.shadow?.radius == 12)
+        #expect(s.layerID == "burst")
+    }
+
+    @Test func stickerRotationRadiansAndDegreesAgree() throws {
+        let img = try loadTestImage()
+        let radians = StickerOverlay(img).rotation(.pi / 2)
+        let degrees = StickerOverlay(img).rotation(degrees: 90)
+        #expect(abs(radians.rotation - degrees.rotation) < 0.0001)
+    }
+
+    @Test func stickerShadowDefaults() throws {
+        let img = try loadTestImage()
+        let s = StickerOverlay(img).shadow()  // all-defaults shadow
+        #expect(s.shadow != nil)
+        #expect(s.shadow?.radius == 8)
+        #expect(s.shadow?.opacity == 0.4)
+    }
+
+    // MARK: - Engine — sticker layer dispatch
+
+    @Test func stickerProducesLayerWithRotationAndShadow() throws {
+        let img = try loadTestImage()
+        let sticker = StickerOverlay(img)
+            .size(.pixels(width: 100, height: 100))
+            .rotation(degrees: 45)
+            .shadow(color: .black, radius: 10, offset: CGSize(width: 2, height: 4), opacity: 0.6)
+        let tree = OverlayRenderer.buildLayerTree(
+            overlays: [sticker],
+            renderSize: CGSize(width: 1080, height: 1080)
+        )
+        let layer = tree.parent.sublayers?[1]
+        #expect(layer != nil)
+        // Shadow propagated
+        #expect(layer?.shadowRadius == 10)
+        #expect(layer?.shadowOffset == CGSize(width: 2, height: 4))
+        #expect(layer?.shadowOpacity == 0.6)
+        // Rotation applied as a 3D transform; for a Z-axis rotation of 45° at the
+        // identity, m11 should equal cos(π/4) ≈ 0.7071
+        let m11 = layer?.transform.m11 ?? 0
+        #expect(abs(m11 - cos(.pi / 4)) < 0.001)
+    }
+
+    @Test func stickerWithoutShadowOrRotationRendersLikeImage() throws {
+        let img = try loadTestImage()
+        let tree = OverlayRenderer.buildLayerTree(
+            overlays: [StickerOverlay(img).size(.pixels(width: 50, height: 50))],
+            renderSize: CGSize(width: 1080, height: 1080)
+        )
+        let layer = tree.parent.sublayers?[1]
+        #expect(layer?.shadowOpacity == 0)
+        // Identity transform
+        #expect(CATransform3DIsIdentity(layer?.transform ?? CATransform3DIdentity))
+    }
+
+    // MARK: - Export with sticker
+
+    @Test func exportWithSticker() async throws {
+        let videoURL = try loadTestVideoURL()
+        let img = try loadTestImage()
+        let outputURL = testOutputURL("sticker_export")
+
+        let result = try await Video {
+            VideoClip(url: videoURL).trimmed(to: 0...3)
+        }
+        .overlay(
+            StickerOverlay(img)
+                .position(.center)
+                .size(.normalized(width: 0.3, height: 0.3))
+                .rotation(degrees: -15)
+                .shadow(radius: 10, offset: CGSize(width: 0, height: 6))
+        )
+        .export(to: outputURL)
+
+        #expect(FileManager.default.fileExists(atPath: result.path))
+        try? FileManager.default.removeItem(at: result)
+    }
+
+    @Test func exportWithMixedOverlayTypes() async throws {
+        let videoURL = try loadTestVideoURL()
+        let img = try loadTestImage()
+        let outputURL = testOutputURL("mixed_overlays")
+
+        let result = try await Video {
+            VideoClip(url: videoURL).trimmed(to: 0...3)
+        }
+        .overlay(ImageOverlay(img).position(.topRight).anchor(.topRight).size(.normalized(width: 0.15, height: 0.15)))
+        .overlay(StickerOverlay(img).position(.center).size(.normalized(width: 0.2, height: 0.2)).rotation(degrees: 20))
+        .overlay(TextOverlay("FINAL").position(.bottom).anchor(.bottom).size(.normalized(width: 1.0, height: 0.2)))
+        .export(to: outputURL)
+
+        #expect(FileManager.default.fileExists(atPath: result.path))
+        try? FileManager.default.removeItem(at: result)
+    }
+
     @Test func exportWithOverlayAndTransition() async throws {
         let videoURL = try loadTestVideoURL()
         let img = try loadTestImage()
