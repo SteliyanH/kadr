@@ -4,12 +4,12 @@
 // 1. Create a new Xcode project (iOS App or macOS App)
 // 2. Add Kadr as a local package dependency
 // 3. Copy this file and the Resources/ folder into your project
-// 4. Add the 4 sample PNGs to your asset catalog or bundle
-// 5. (Optional) Add a .mp3 to Resources/ for audio demos
+// 4. Add resources to your target's "Copy Bundle Resources" build phase
 //
-// Sample images included: sunset, ocean, forest, purple gradients
-// For audio: https://pixabay.com/music/ (free, no attribution required)
-// For video clips: https://www.pexels.com/videos/ (free)
+// Bundled resources:
+//   - sample_sunset.png, sample_ocean.png, sample_forest.png, sample_purple.png
+//   - sample_audio.mp3
+//   - sample_video.mp4
 
 #if canImport(SwiftUI) && canImport(AVKit)
 import SwiftUI
@@ -25,82 +25,105 @@ struct SimpleEditorView: View {
     @State private var selectedDemo: DemoType = .singleImage
 
     enum DemoType: String, CaseIterable {
-        case singleImage = "Single Image"
+        case singleImage = "Image + Audio"
         case slideshow = "Slideshow"
-        case reelsPreset = "Reels"
+        case trimVideo = "Trim Video"
+        case mergeClips = "Merge Clips"
+        case replaceAudio = "Replace Audio"
     }
 
     private let sampleNames = ["sample_sunset", "sample_ocean", "sample_forest", "sample_purple"]
 
     var body: some View {
-        VStack(spacing: 16) {
-            Text("Kadr SimpleEditor")
-                .font(.title.bold())
+        ScrollView {
+            VStack(spacing: 16) {
+                Text("Kadr SimpleEditor")
+                    .font(.title.bold())
 
-            // Preview grid
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                ForEach(sampleNames, id: \.self) { name in
-                    let image = loadSampleImage(named: name)
-                    #if canImport(UIKit)
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(height: 100)
-                        .cornerRadius(8)
-                    #elseif canImport(AppKit)
-                    Image(nsImage: image)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(height: 100)
-                        .cornerRadius(8)
-                    #endif
+                // Preview grid
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    ForEach(sampleNames, id: \.self) { name in
+                        let image = loadSampleImage(named: name)
+                        #if canImport(UIKit)
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(height: 100)
+                            .cornerRadius(8)
+                        #elseif canImport(AppKit)
+                        Image(nsImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(height: 100)
+                            .cornerRadius(8)
+                        #endif
+                    }
                 }
-            }
-            .padding(.horizontal)
+                .padding(.horizontal)
 
-            // Demo picker
-            Picker("Demo", selection: $selectedDemo) {
-                ForEach(DemoType.allCases, id: \.self) { Text($0.rawValue) }
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal)
-
-            // Export button
-            Button(action: { Task { await exportVideo() } }) {
-                HStack {
-                    if isExporting { ProgressView().controlSize(.small) }
-                    Text(isExporting ? "Exporting \(Int(progress * 100))%..." : "Export Video")
+                // Demo picker
+                Picker("Demo", selection: $selectedDemo) {
+                    ForEach(DemoType.allCases, id: \.self) { Text($0.rawValue) }
                 }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(isExporting ? Color.gray : Color.accentColor)
-                .foregroundColor(.white)
-                .cornerRadius(10)
-            }
-            .disabled(isExporting)
-            .padding(.horizontal)
+                .pickerStyle(.segmented)
+                .padding(.horizontal)
 
-            if isExporting {
-                ProgressView(value: progress).padding(.horizontal)
-            }
-
-            if let outputURL {
-                VideoPlayer(player: AVPlayer(url: outputURL))
-                    .frame(height: 250)
-                    .cornerRadius(10)
-                    .padding(.horizontal)
-            }
-
-            if let errorMessage {
-                Text(errorMessage)
-                    .foregroundStyle(.red)
+                // Description
+                Text(demoDescription)
                     .font(.caption)
+                    .foregroundStyle(.secondary)
                     .padding(.horizontal)
-            }
 
-            Spacer()
+                // Export button
+                Button(action: { Task { await exportVideo() } }) {
+                    HStack {
+                        if isExporting { ProgressView().controlSize(.small) }
+                        Text(isExporting ? "Exporting \(Int(progress * 100))%..." : "Export Video")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(isExporting ? Color.gray : Color.accentColor)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+                }
+                .disabled(isExporting)
+                .padding(.horizontal)
+
+                if isExporting {
+                    ProgressView(value: progress).padding(.horizontal)
+                }
+
+                if let outputURL {
+                    VideoPlayer(player: AVPlayer(url: outputURL))
+                        .frame(height: 300)
+                        .cornerRadius(10)
+                        .padding(.horizontal)
+                }
+
+                if let errorMessage {
+                    Text(errorMessage)
+                        .foregroundStyle(.red)
+                        .font(.caption)
+                        .padding(.horizontal)
+                }
+            }
+            .padding(.vertical)
         }
-        .padding(.top)
+    }
+
+    private var demoDescription: String {
+        switch selectedDemo {
+        case .singleImage:
+            return "Single image with background music exported as square video"
+        case .slideshow:
+            return "4 images at 2s each with background music"
+        case .trimVideo:
+            return "Trim sample video to 5-10 second range"
+        case .mergeClips:
+            return "Merge a trimmed video clip with an image slide"
+        case .replaceAudio:
+            return "Mute the video and add new background music"
+        }
     }
 
     // MARK: - Export
@@ -112,7 +135,7 @@ struct SimpleEditorView: View {
         outputURL = nil
 
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("kadr_\(selectedDemo.rawValue)")
+            .appendingPathComponent("kadr_\(UUID().uuidString)")
             .appendingPathExtension("mp4")
         try? FileManager.default.removeItem(at: url)
 
@@ -121,8 +144,9 @@ struct SimpleEditorView: View {
             switch selectedDemo {
             case .singleImage:
                 exporter = Video {
-                    ImageClip(loadSampleImage(named: "sample_sunset"), duration: 3.0)
+                    ImageClip(loadSampleImage(named: "sample_sunset"), duration: 5.0)
                 }
+                .audio(url: sampleAudioURL)
                 .preset(.square)
                 .exporter(to: url)
 
@@ -133,14 +157,30 @@ struct SimpleEditorView: View {
                     ImageClip(loadSampleImage(named: "sample_forest"), duration: 2.0)
                     ImageClip(loadSampleImage(named: "sample_purple"), duration: 2.0)
                 }
+                .audio(url: sampleAudioURL)
                 .preset(.square)
                 .exporter(to: url)
 
-            case .reelsPreset:
+            case .trimVideo:
                 exporter = Video {
-                    ImageClip(loadSampleImage(named: "sample_ocean"), duration: 5.0)
+                    VideoClip(url: sampleVideoURL).trimmed(to: 5...10)
                 }
-                .preset(.reelsAndShorts)
+                .preset(.cinema)
+                .exporter(to: url)
+
+            case .mergeClips:
+                exporter = Video {
+                    VideoClip(url: sampleVideoURL).trimmed(to: 0...5)
+                    ImageClip(loadSampleImage(named: "sample_ocean"), duration: 3.0)
+                    VideoClip(url: sampleVideoURL).trimmed(to: 10...15)
+                }
+                .exporter(to: url)
+
+            case .replaceAudio:
+                exporter = Video {
+                    VideoClip(url: sampleVideoURL).trimmed(to: 0...10).muted()
+                }
+                .audio(url: sampleAudioURL)
                 .exporter(to: url)
             }
 
@@ -155,17 +195,26 @@ struct SimpleEditorView: View {
         isExporting = false
     }
 
+    // MARK: - Resource URLs
+
+    private var sampleVideoURL: URL {
+        Bundle.main.url(forResource: "sample_video", withExtension: "mp4")
+            ?? URL(fileURLWithPath: "sample_video.mp4")
+    }
+
+    private var sampleAudioURL: URL {
+        Bundle.main.url(forResource: "sample_audio", withExtension: "mp3")
+            ?? URL(fileURLWithPath: "sample_audio.mp3")
+    }
+
     // MARK: - Image Loading
 
     private func loadSampleImage(named name: String) -> PlatformImage {
-        // Try loading from bundle (works when images are added to an Xcode project)
         #if canImport(UIKit)
         if let image = UIImage(named: name) { return image }
         #elseif canImport(AppKit)
         if let image = NSImage(named: name) { return image }
         #endif
-
-        // Fallback: generate a colored placeholder
         return generatePlaceholder(for: name)
     }
 

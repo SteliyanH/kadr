@@ -32,8 +32,20 @@ struct ExportTests {
 
     private func loadTestAudioURL() throws -> URL {
         let bundle = Bundle.module
+        // Prefer real mp3, fall back to wav
+        if let url = bundle.url(forResource: "sample", withExtension: "mp3") {
+            return url
+        }
         guard let url = bundle.url(forResource: "sample", withExtension: "wav") else {
             throw KadrError.invalidURL(URL(fileURLWithPath: "sample.wav"))
+        }
+        return url
+    }
+
+    private func loadTestVideoURL() throws -> URL {
+        let bundle = Bundle.module
+        guard let url = bundle.url(forResource: "sample", withExtension: "mov") else {
+            throw KadrError.invalidURL(URL(fileURLWithPath: "sample.mov"))
         }
         return url
     }
@@ -131,18 +143,13 @@ struct ExportTests {
     }
 
     @Test func mergeVideoClips() async throws {
-        let video1URL = try await createTestVideo(duration: 1.0)
-        let video2URL = try await createTestVideo(duration: 1.0)
-        defer {
-            try? FileManager.default.removeItem(at: video1URL)
-            try? FileManager.default.removeItem(at: video2URL)
-        }
+        let videoURL = try loadTestVideoURL()
 
         let outputURL = testOutputURL("merge")
 
         let result = try await Video {
-            VideoClip(url: video1URL)
-            VideoClip(url: video2URL)
+            VideoClip(url: videoURL).trimmed(to: 0...2)
+            VideoClip(url: videoURL).trimmed(to: 5...7)
         }
         .export(to: outputURL)
 
@@ -156,13 +163,12 @@ struct ExportTests {
     }
 
     @Test func trimVideoClip() async throws {
-        let videoURL = try await createTestVideo(duration: 3.0)
-        defer { try? FileManager.default.removeItem(at: videoURL) }
+        let videoURL = try loadTestVideoURL()
 
         let outputURL = testOutputURL("trim")
 
         let result = try await Video {
-            VideoClip(url: videoURL).trimmed(to: 0.5...2.0)
+            VideoClip(url: videoURL).trimmed(to: 2...7)
         }
         .export(to: outputURL)
 
@@ -170,20 +176,19 @@ struct ExportTests {
 
         let asset = AVURLAsset(url: result)
         let duration = try await asset.load(.duration)
-        #expect(CMTimeGetSeconds(duration) > 1.0)
-        #expect(CMTimeGetSeconds(duration) < 2.0)
+        #expect(CMTimeGetSeconds(duration) > 4.0)
+        #expect(CMTimeGetSeconds(duration) < 6.0)
 
         try? FileManager.default.removeItem(at: result)
     }
 
     @Test func mutedVideoClip() async throws {
-        let videoURL = try await createTestVideo(duration: 1.0)
-        defer { try? FileManager.default.removeItem(at: videoURL) }
+        let videoURL = try loadTestVideoURL()
 
         let outputURL = testOutputURL("muted")
 
         let result = try await Video {
-            VideoClip(url: videoURL).muted()
+            VideoClip(url: videoURL).trimmed(to: 0...3).muted()
         }
         .export(to: outputURL)
 
@@ -192,14 +197,13 @@ struct ExportTests {
     }
 
     @Test func replaceAudio() async throws {
-        let videoURL = try await createTestVideo(duration: 1.0)
+        let videoURL = try loadTestVideoURL()
         let audioURL = try loadTestAudioURL()
-        defer { try? FileManager.default.removeItem(at: videoURL) }
 
         let outputURL = testOutputURL("replace_audio")
 
         let result = try await Video {
-            VideoClip(url: videoURL).muted()
+            VideoClip(url: videoURL).trimmed(to: 0...3).muted()
         }
         .audio(url: audioURL)
         .export(to: outputURL)
@@ -226,13 +230,12 @@ struct ExportTests {
     }
 
     @Test func reverseVideoClip() async throws {
-        let videoURL = try await createTestVideo(duration: 2.0)
-        defer { try? FileManager.default.removeItem(at: videoURL) }
+        let videoURL = try loadTestVideoURL()
 
         let outputURL = testOutputURL("reverse")
 
         let result = try await Video {
-            VideoClip(url: videoURL).reversed()
+            VideoClip(url: videoURL).trimmed(to: 0...3).reversed()
         }
         .export(to: outputURL)
 
@@ -240,14 +243,13 @@ struct ExportTests {
 
         let asset = AVURLAsset(url: result)
         let duration = try await asset.load(.duration)
-        #expect(CMTimeGetSeconds(duration) > 1.5)
+        #expect(CMTimeGetSeconds(duration) > 2.0)
 
         try? FileManager.default.removeItem(at: result)
     }
 
     @Test func transitionThrowsNotYetImplemented() async throws {
-        let videoURL = try await createTestVideo(duration: 1.0)
-        defer { try? FileManager.default.removeItem(at: videoURL) }
+        let videoURL = try loadTestVideoURL()
 
         let outputURL = testOutputURL("transition")
 
