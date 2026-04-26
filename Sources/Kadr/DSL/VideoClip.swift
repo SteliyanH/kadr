@@ -35,12 +35,25 @@ public struct VideoClipMetadata: Sendable {
 public struct VideoClip: Clip, Sendable {
     /// File URL of the source video.
     public let url: URL
-    internal let trimRange: CMTimeRange?
-    internal let isReversed: Bool
-    internal let isMuted: Bool
-    internal let replacementAudioURL: URL?
-    internal let speedRate: Double
-    internal let filters: [Filter]
+
+    /// The active trim range in source-asset time, or `nil` if the full asset is used.
+    /// Set via ``trimmed(to:)`` (CMTimeRange or ClosedRange<TimeInterval>).
+    public let trimRange: CMTimeRange?
+
+    /// `true` if the clip is played in reverse. Set via ``reversed()``.
+    public let isReversed: Bool
+
+    /// `true` if the source asset's audio is dropped from the timeline. Set via ``muted()``.
+    public let isMuted: Bool
+
+    /// External audio file replacing the source asset's audio, or `nil`. Set via ``withAudio(_:)``.
+    public let replacementAudioURL: URL?
+
+    /// Playback speed multiplier in `0.25...4.0`; `1.0` is real-time. Set via ``speed(_:)``.
+    public let speedRate: Double
+
+    /// Filters applied to this clip in declaration order. Set via ``filter(_:)``.
+    public let filters: [Filter]
 
     /// Timeline contribution after trim and speed are applied. Returns `CMTime.zero` when
     /// the clip hasn't been trimmed (the source asset's duration isn't known synchronously
