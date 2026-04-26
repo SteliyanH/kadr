@@ -17,9 +17,15 @@ The v0.4.0 release exposes the public introspection and preview primitives neede
 - `ImageClip` exposes `backgroundColor` and `audioURL` as public read-only properties.
 - `AudioTrack` exposes `volumeLevel`, `fadeInDuration`, `fadeOutDuration`, `duckingLevel` as public read-only properties.
 
+### Added — Layout helpers
+
+- `Layout` — public namespace for layout helpers that mirror the engine's coordinate math.
+- `Layout.resolveFrame(position:size:anchor:in:)` — resolve a `Position` + `Size` + `Anchor` triplet into the same render-space `CGRect` the export engine produces. Use from custom UI to draw hit-test regions that line up exactly with what the engine renders.
+
 ### Tests
 
 - New `IntrospectionTests` suite (14 tests) verifies the public read-only contract via a non-`@testable` import — a regression that demotes any introspection property back to `internal` will fail the build.
+- New `LayoutHelpersTests` suite (7 tests) covers the public `Layout` API across normalized / pixel / percent / aspectFit cases and across multiple render sizes.
 
 ## [0.3.0] - 2026-04-26
 
