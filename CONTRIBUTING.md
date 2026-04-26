@@ -6,11 +6,28 @@ Thanks for your interest in contributing to Kadr!
 
 1. Fork the repository
 2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/kadr.git`
-3. Create a feature branch: `git checkout -b feat/your-feature`
-4. Make your changes
-5. Run tests: `swift test`
-6. Commit with a [conventional commit](https://www.conventionalcommits.org/) message
-7. Push and open a pull request
+3. Check out `develop`: `git checkout develop`
+4. Create a feature branch off `develop`: `git checkout -b feat/your-feature`
+5. Make your changes
+6. Run tests: `swift test`
+7. Commit with a [conventional commit](https://www.conventionalcommits.org/) message
+8. Push and open a pull request **into `develop`** (not `main`)
+
+## Branching Model
+
+Kadr uses a two-branch flow:
+
+- **`main`** — release-only. Every commit on `main` corresponds to a tagged release (e.g. `v0.1.0`, `v0.2.0`). Protected: no direct pushes, no force-pushes, linear history, CI must pass.
+- **`develop`** — integration branch. All feature work is merged here. Protected: no direct pushes, no force-pushes, CI must pass.
+- **`feat/*`, `fix/*`, `docs/*`, `chore/*`, `refactor/*`, `test/*`, `ci/*`** — short-lived topic branches cut from `develop` and PR'd back into `develop`.
+
+### Release flow
+
+1. When `develop` is ready for a release, open a PR from `develop` into `main`.
+2. Once merged, tag the release on `main`: `git tag v0.X.0 && git push origin v0.X.0`.
+3. Update `CHANGELOG.md` and `ROADMAP.md`.
+
+Hotfixes for a shipped release branch from `main`, merge into `main` (with a tagged patch release), then are back-merged into `develop`.
 
 ## Development
 
