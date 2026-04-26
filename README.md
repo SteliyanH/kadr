@@ -49,11 +49,12 @@ FFmpegKit retired in January 2025. Pixel SDK sunset in February 2025. AVFoundati
 
 ## Features
 
-### v0.2 (current)
+### v0.2 (current — `0.2.1`)
 
 - **Transitions**: `.fade` (through black), `.dissolve` (cross-blend), `.slide` (4 directions) — wired through the engine with audio crossfades
 - **Speed control**: `VideoClip.speed(_:)` — `0.25...4.0`, pitch-preserving
 - **Audio ducking**: `AudioTrack.ducking(_:)` — auto-lowers music while clip audio plays
+- **Frame-accurate timing**: every time-related API accepts `CMTime` for frame-precise edits, with `TimeInterval` overloads for ergonomic call sites
 
 ### v0.1
 

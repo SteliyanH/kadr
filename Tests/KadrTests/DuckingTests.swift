@@ -48,8 +48,8 @@ struct DuckingTests {
             .fadeOut(1.0)
             .ducking(0.4)
         #expect(track.volumeLevel == 0.8)
-        #expect(track.fadeInDuration == 1.0)
-        #expect(track.fadeOutDuration == 1.0)
+        #expect(abs(CMTimeGetSeconds(track.fadeInDuration) - 1.0) < 0.001)
+        #expect(abs(CMTimeGetSeconds(track.fadeOutDuration) - 1.0) < 0.001)
         #expect(track.duckingLevel == 0.4)
     }
 

@@ -90,7 +90,19 @@ struct DSLTests {
     @Test func videoClipTrimmed() {
         let url = URL(fileURLWithPath: "/tmp/test.mov")
         let clip = VideoClip(url: url).trimmed(to: 5...20)
-        #expect(clip.trimRange == 5...20)
+        #expect(clip.trimRange != nil)
+        #expect(abs(CMTimeGetSeconds(clip.trimRange!.start) - 5.0) < 0.001)
+        #expect(abs(CMTimeGetSeconds(clip.trimRange!.duration) - 15.0) < 0.001)
+    }
+
+    @Test func videoClipTrimmedWithCMTimeRange() {
+        let url = URL(fileURLWithPath: "/tmp/test.mov")
+        // Frame-accurate: 1 frame at 30fps = CMTime(value: 1, timescale: 30)
+        let oneFrame = CMTime(value: 1, timescale: 30)
+        let range = CMTimeRange(start: oneFrame, duration: CMTime(value: 30, timescale: 30))
+        let clip = VideoClip(url: url).trimmed(to: range)
+        #expect(clip.trimRange?.start == oneFrame)
+        #expect(clip.trimRange?.duration == CMTime(value: 30, timescale: 30))
     }
 
     @Test func videoClipReversed() {
@@ -118,7 +130,8 @@ struct DSLTests {
         let clip = VideoClip(url: url)
             .trimmed(to: 5...15)
             .muted()
-        #expect(clip.trimRange == 5...15)
+        #expect(clip.trimRange != nil)
+        #expect(abs(CMTimeGetSeconds(clip.trimRange!.duration) - 10.0) < 0.001)
         #expect(clip.isMuted)
     }
 
@@ -129,8 +142,8 @@ struct DSLTests {
         let track = AudioTrack(url: url)
         #expect(track.url == url)
         #expect(track.volumeLevel == 1.0)
-        #expect(track.fadeInDuration == 0)
-        #expect(track.fadeOutDuration == 0)
+        #expect(track.fadeInDuration == .zero)
+        #expect(track.fadeOutDuration == .zero)
     }
 
     @Test func audioTrackVolume() {
@@ -142,8 +155,17 @@ struct DSLTests {
     @Test func audioTrackFades() {
         let url = URL(fileURLWithPath: "/tmp/test.mp3")
         let track = AudioTrack(url: url).fadeIn(1.0).fadeOut(2.0)
-        #expect(track.fadeInDuration == 1.0)
-        #expect(track.fadeOutDuration == 2.0)
+        #expect(abs(CMTimeGetSeconds(track.fadeInDuration) - 1.0) < 0.001)
+        #expect(abs(CMTimeGetSeconds(track.fadeOutDuration) - 2.0) < 0.001)
+    }
+
+    @Test func audioTrackFadesWithCMTime() {
+        let url = URL(fileURLWithPath: "/tmp/test.mp3")
+        // Frame-accurate: 30 frames at 30fps = exactly 1 second
+        let oneSecond = CMTime(value: 30, timescale: 30)
+        let track = AudioTrack(url: url).fadeIn(oneSecond).fadeOut(oneSecond)
+        #expect(track.fadeInDuration == oneSecond)
+        #expect(track.fadeOutDuration == oneSecond)
     }
 
     // MARK: - Video modifiers
