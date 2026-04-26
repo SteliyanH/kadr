@@ -58,6 +58,8 @@ internal enum ExportEngine {
                     exportSession.outputURL = config.outputURL
                     exportSession.outputFileType = .mp4
                     exportSession.audioMix = config.audioMix
+                    // Preserve audio pitch when clips are time-scaled by .speed(_:)
+                    exportSession.audioTimePitchAlgorithm = .spectral
 
                     // Apply video composition to enforce preset resolution/frame rate
                     // (only when using a non-passthrough preset that supports re-encoding)

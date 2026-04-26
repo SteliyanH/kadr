@@ -540,6 +540,10 @@ internal enum CompositionBuilder {
             sourceRange = CMTimeRange(start: .zero, duration: assetDuration)
         }
 
+        if clip.speedRate != 1.0 && (clip.speedRate < 0.25 || clip.speedRate > 4.0) {
+            throw KadrError.invalidSpeed(clip.speedRate)
+        }
+
         let videoTracks = try await asset.loadTracks(withMediaType: .video)
         if let sourceVideoTrack = videoTracks.first {
             try videoTrack.insertTimeRange(sourceRange, of: sourceVideoTrack, at: insertionPoint)
@@ -567,7 +571,23 @@ internal enum CompositionBuilder {
             }
         }
 
-        insertionPoint = CMTimeAdd(insertionPoint, sourceRange.duration)
+        // Apply speed: scale the just-inserted segment to its target duration.
+        // scaleTimeRange on a track preserves the inserted media but changes its playback rate.
+        let advance: CMTime
+        if clip.speedRate != 1.0 {
+            let targetDuration = CMTime(
+                seconds: CMTimeGetSeconds(sourceRange.duration) / clip.speedRate,
+                preferredTimescale: 600
+            )
+            let insertedRange = CMTimeRange(start: insertionPoint, duration: sourceRange.duration)
+            videoTrack.scaleTimeRange(insertedRange, toDuration: targetDuration)
+            audioTrack?.scaleTimeRange(insertedRange, toDuration: targetDuration)
+            advance = targetDuration
+        } else {
+            advance = sourceRange.duration
+        }
+
+        insertionPoint = CMTimeAdd(insertionPoint, advance)
     }
 
     // MARK: - ImageClip insertion (multi-clip context)
