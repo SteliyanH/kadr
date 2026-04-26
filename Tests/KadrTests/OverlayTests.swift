@@ -412,6 +412,89 @@ struct OverlayTests {
         try? FileManager.default.removeItem(at: result)
     }
 
+    // MARK: - Watermark sugar
+
+    @Test func watermarkUsesDefaultsAndAddsOverlay() throws {
+        let img = try loadTestImage()
+        let video = Video {
+            VideoClip(url: URL(fileURLWithPath: "/tmp/x.mov")).trimmed(to: 0...3)
+        }
+        .watermark(img)
+
+        #expect(video.overlays.count == 1)
+        let added = video.overlays[0] as? ImageOverlay
+        #expect(added != nil)
+        #expect(added?.position == .bottomRight)
+        #expect(added?.anchor == .bottomRight)
+        #expect(added?.opacity == 0.6)
+        #expect(added?.layerID == "watermark")
+        #expect(added?.size == nil)
+    }
+
+    @Test func watermarkAcceptsCustomPositionAndOpacity() throws {
+        let img = try loadTestImage()
+        let video = Video {
+            VideoClip(url: URL(fileURLWithPath: "/tmp/x.mov")).trimmed(to: 0...3)
+        }
+        .watermark(img, position: .topRight, opacity: 0.4)
+
+        let added = video.overlays.first as? ImageOverlay
+        #expect(added?.position == .topRight)
+        #expect(added?.anchor == .topRight)
+        #expect(added?.opacity == 0.4)
+    }
+
+    @Test func watermarkAcceptsCustomSize() throws {
+        let img = try loadTestImage()
+        let size = Size.normalized(width: 0.1, height: 0.05)
+        let video = Video {
+            VideoClip(url: URL(fileURLWithPath: "/tmp/x.mov")).trimmed(to: 0...3)
+        }
+        .watermark(img, size: size)
+
+        let added = video.overlays.first as? ImageOverlay
+        #expect(added?.size == size)
+    }
+
+    @Test func watermarkUsesCenterAnchorForCustomPosition() throws {
+        let img = try loadTestImage()
+        let video = Video {
+            VideoClip(url: URL(fileURLWithPath: "/tmp/x.mov")).trimmed(to: 0...3)
+        }
+        .watermark(img, position: .normalized(x: 0.95, y: 0.95))
+
+        let added = video.overlays.first as? ImageOverlay
+        // Custom position falls back to center anchor (no named match)
+        #expect(added?.anchor == .center)
+    }
+
+    @Test func multipleWatermarksStack() throws {
+        let img = try loadTestImage()
+        let video = Video {
+            VideoClip(url: URL(fileURLWithPath: "/tmp/x.mov")).trimmed(to: 0...3)
+        }
+        .watermark(img, position: .topLeft)
+        .watermark(img, position: .bottomRight)
+        // Both have id "watermark" — that's user error to dedupe; the engine just
+        // stacks them in declaration order.
+        #expect(video.overlays.count == 2)
+    }
+
+    @Test func exportWithWatermark() async throws {
+        let videoURL = try loadTestVideoURL()
+        let img = try loadTestImage()
+        let outputURL = testOutputURL("watermark_export")
+
+        let result = try await Video {
+            VideoClip(url: videoURL).trimmed(to: 0...3)
+        }
+        .watermark(img, size: .normalized(width: 0.15, height: 0.05))
+        .export(to: outputURL)
+
+        #expect(FileManager.default.fileExists(atPath: result.path))
+        try? FileManager.default.removeItem(at: result)
+    }
+
     @Test func exportWithOverlayAndTransition() async throws {
         let videoURL = try loadTestVideoURL()
         let img = try loadTestImage()
