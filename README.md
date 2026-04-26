@@ -49,7 +49,14 @@ FFmpegKit retired in January 2025. Pixel SDK sunset in February 2025. AVFoundati
 
 ## Features
 
-### v0.3 (current — `0.3.0`)
+### v0.4 (current — `0.4.0`)
+
+- **Composition introspection**: `Video.clips`, `overlays`, `audioTracks`, `preset`, and `crop` are publicly readable so callers can build their own timeline / preview / hit-testing UI without re-deriving state. Per-clip storage on `VideoClip`, `ImageClip`, and `AudioTrack` is also publicly readable.
+- **Preview**: `Video.makePlayerItem()` returns an `AVPlayerItem` with the composition's videoComposition (preset, crop, transitions) and audioMix (background music, fades, ducking) pre-attached, ready for `AVKit.VideoPlayer`. `Video.thumbnail(at:)` renders a single composition frame.
+- **Layout helpers**: `Layout.resolveFrame(position:size:anchor:in:)` mirrors the engine's coordinate math so custom UI can hit-test overlays in pixel-exact alignment with what the engine renders.
+- **Companion package**: [`kadr-ui`](https://github.com/SteliyanH/kadr-ui) is a separate SwiftUI components package (`VideoPreview`, `TimelineView`, `ThumbnailStrip`, gesture handlers) consuming these primitives.
+
+### v0.3 (`0.3.0`)
 
 - **Layout primitives**: `Position` (`.normalized` / `.pixels` / `.percent` plus 9 named anchors), `Size` (with `.aspectFit` / `.aspectFill`), `Anchor`, and `LayerID`
 - **Overlays**: `ImageOverlay`, `TextOverlay` + `TextStyle`, `StickerOverlay` (with `.shadow` and `.rotation` modifiers), and `Video.watermark(...)` sugar
