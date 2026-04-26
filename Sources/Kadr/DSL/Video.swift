@@ -17,11 +17,24 @@ import CoreMedia
 /// .export(to: outputURL)
 /// ```
 public struct Video: Sendable {
-    internal let clips: [any Clip]
-    internal let audioTracks: [AudioTrack]
-    internal let preset: Preset
-    internal let overlays: [any Overlay]
-    internal let crop: CropRegion?
+    /// The ordered clips that make up this composition, including any ``Transition`` markers
+    /// between media clips. Iterate to inspect the timeline (e.g. for a custom timeline UI).
+    public let clips: [any Clip]
+
+    /// Background audio tracks added via ``audio(_:)`` or ``audio(url:)``. Drawn over the
+    /// composition's full duration, mixed with each clip's own audio.
+    public let audioTracks: [AudioTrack]
+
+    /// The export preset (resolution / frame rate / codec). Defaults to ``Preset/auto``.
+    public let preset: Preset
+
+    /// Overlays drawn on top of the composition for its full duration, in declaration order
+    /// (later entries render above earlier ones). Each overlay carries an optional
+    /// ``LayerID`` that callers can use for hit-testing in custom UI.
+    public let overlays: [any Overlay]
+
+    /// The active crop region, or `nil` if no crop is applied. Set via ``crop(at:size:anchor:)``.
+    public let crop: CropRegion?
 
     /// Build a `Video` from a result-builder block of clips.
     public init(@VideoBuilder _ content: () -> [any Clip]) {

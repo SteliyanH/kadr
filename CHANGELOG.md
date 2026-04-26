@@ -4,6 +4,23 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] — v0.4.0 in progress
+
+The v0.4.0 release exposes the public introspection and preview primitives needed to build a UI layer on top of `Video`. Tracked separately from the [`kadr-ui`](https://github.com/SteliyanH/kadr-ui) SwiftUI package, which consumes these APIs.
+
+### Added — Public introspection
+
+- `Video.clips`, `Video.overlays`, `Video.audioTracks`, `Video.preset`, `Video.crop` are now publicly readable. Iterate the composition's structure for custom timeline / preview / hit-testing UI without re-deriving state from the DSL.
+- `CropRegion` is now public; its `position`, `size`, and `anchor` are publicly readable.
+- `Preset.resolution: CGSize` and `Preset.frameRate: Int` are now public so callers can read pixel dimensions and fps from any preset (including `.custom`).
+- `VideoClip` exposes `trimRange`, `isReversed`, `isMuted`, `replacementAudioURL`, `speedRate`, `filters` as public read-only properties.
+- `ImageClip` exposes `backgroundColor` and `audioURL` as public read-only properties.
+- `AudioTrack` exposes `volumeLevel`, `fadeInDuration`, `fadeOutDuration`, `duckingLevel` as public read-only properties.
+
+### Tests
+
+- New `IntrospectionTests` suite (14 tests) verifies the public read-only contract via a non-`@testable` import — a regression that demotes any introspection property back to `internal` will fail the build.
+
 ## [0.3.0] - 2026-04-26
 
 Overlay DSL & filters release. Adds a coherent layer-on-top-of-video story (text, image, sticker, watermark) on a foundation that's ready for KadrUI's gesture handling in v0.4.
