@@ -77,8 +77,9 @@ internal enum ExportEngine {
                             // builder received cropRect and applied it to its instructions.
                             baseComposition = provided
                         } else {
-                            // Simple path — build with crop applied here.
-                            baseComposition = buildVideoComposition(
+                            // Simple path — build with crop applied here. Shared with the
+                            // preview/thumbnail pipeline so both consumers use identical math.
+                            baseComposition = PlaybackComposer.buildSimpleVideoComposition(
                                 for: config.composition,
                                 preset: config.preset,
                                 cropRect: cropRect
@@ -135,57 +136,6 @@ internal enum ExportEngine {
                 }
             }
         }
-    }
-
-    /// Builds an AVMutableVideoComposition that enforces the preset's resolution and frame rate.
-    /// When `cropRect` is non-nil, the renderSize becomes the crop's size and the layer
-    /// instruction's transform is shifted by `-cropRect.origin` so the cropped region
-    /// maps to the new render origin.
-    private static func buildVideoComposition(
-        for composition: AVMutableComposition,
-        preset: Preset,
-        cropRect: CGRect? = nil
-    ) -> AVMutableVideoComposition? {
-        let videoTracks = composition.tracks(withMediaType: .video)
-        guard !videoTracks.isEmpty else { return nil }
-
-        let videoComposition = AVMutableVideoComposition()
-        videoComposition.renderSize = cropRect?.size ?? preset.resolution
-        videoComposition.frameDuration = CMTime(value: 1, timescale: CMTimeScale(preset.frameRate))
-
-        let cropOffset = cropRect?.origin ?? .zero
-        let cropTransform = CGAffineTransform(translationX: -cropOffset.x, y: -cropOffset.y)
-
-        // Create a single instruction spanning the full duration
-        let instruction = AVMutableVideoCompositionInstruction()
-        instruction.timeRange = CMTimeRange(start: .zero, duration: composition.duration)
-
-        // Layer the first video track
-        let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTracks[0])
-
-        // Scale video to fill the preset resolution (the crop offset is applied AFTER
-        // — we still scale the source content to the full preset area; the crop just
-        // shifts which region of that area becomes the final output).
-        let trackSize = videoTracks[0].naturalSize
-        if trackSize.width > 0 && trackSize.height > 0 {
-            let scaleX = preset.resolution.width / trackSize.width
-            let scaleY = preset.resolution.height / trackSize.height
-            let scale = max(scaleX, scaleY) // scale to fill
-            let scaledWidth = trackSize.width * scale
-            let scaledHeight = trackSize.height * scale
-            let tx = (preset.resolution.width - scaledWidth) / 2
-            let ty = (preset.resolution.height - scaledHeight) / 2
-            let transform = CGAffineTransform(scaleX: scale, y: scale)
-                .translatedBy(x: tx / scale, y: ty / scale)
-            layerInstruction.setTransform(transform.concatenating(cropTransform), at: .zero)
-        } else if cropRect != nil {
-            layerInstruction.setTransform(cropTransform, at: .zero)
-        }
-
-        instruction.layerInstructions = [layerInstruction]
-        videoComposition.instructions = [instruction]
-
-        return videoComposition
     }
 
     private static func estimateTimeRemaining(progress: Double, startTime: Date) -> TimeInterval? {
