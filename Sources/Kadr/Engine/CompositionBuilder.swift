@@ -42,7 +42,10 @@ internal enum CompositionBuilder {
             preferredTrackID: kCMPersistentTrackID_Invalid
         )
 
+        var clipAudioRanges: [CMTimeRange] = []
+
         for clip in clips {
+            let beforeIP = insertionPoint
             if let videoClip = clip as? VideoClip {
                 try await insertVideoClip(
                     videoClip,
@@ -51,6 +54,9 @@ internal enum CompositionBuilder {
                     at: &insertionPoint,
                     preset: preset
                 )
+                if !videoClip.isMuted || videoClip.replacementAudioURL != nil {
+                    clipAudioRanges.append(CMTimeRange(start: beforeIP, duration: CMTimeSubtract(insertionPoint, beforeIP)))
+                }
             } else if let imageClip = clip as? ImageClip {
                 try await insertImageClip(
                     imageClip,
@@ -59,13 +65,17 @@ internal enum CompositionBuilder {
                     at: &insertionPoint,
                     preset: preset
                 )
+                if imageClip.audioURL != nil {
+                    clipAudioRanges.append(CMTimeRange(start: beforeIP, duration: CMTimeSubtract(insertionPoint, beforeIP)))
+                }
             }
         }
 
         let audioMix = try await buildBackgroundAudioMix(
             composition: composition,
             audioTracks: audioTracks,
-            totalDuration: insertionPoint
+            totalDuration: insertionPoint,
+            clipAudioRanges: clipAudioRanges
         )
 
         return CompositionResult(composition: composition, audioMix: audioMix, videoComposition: nil)
@@ -100,6 +110,8 @@ internal enum CompositionBuilder {
         var placements: [Placement] = []
         var cursor: CMTime = .zero
 
+        var clipAudioRanges: [CMTimeRange] = []
+
         for (index, item) in plan.items.enumerated() {
             let trackIndex = index % 2
             let videoTrack = videoTracks[trackIndex]
@@ -109,14 +121,20 @@ internal enum CompositionBuilder {
             var insertionPoint = startTime
 
             let durationBefore = insertionPoint
+            var contributesAudio = false
             if let videoClip = item.clip as? VideoClip {
                 try await insertVideoClip(videoClip, videoTrack: videoTrack, audioTrack: audioTrack, at: &insertionPoint, preset: preset)
+                contributesAudio = !videoClip.isMuted || videoClip.replacementAudioURL != nil
             } else if let imageClip = item.clip as? ImageClip {
                 try await insertImageClip(imageClip, videoTrack: videoTrack, audioTrack: audioTrack, at: &insertionPoint, preset: preset)
+                contributesAudio = imageClip.audioURL != nil
             }
             let placedDuration = CMTimeSubtract(insertionPoint, durationBefore)
             let timeRange = CMTimeRange(start: startTime, duration: placedDuration)
             placements.append(Placement(trackIndex: trackIndex, timeRange: timeRange, transitionAfter: item.transitionAfter))
+            if contributesAudio {
+                clipAudioRanges.append(timeRange)
+            }
 
             // Advance cursor: dissolve overlaps with the next clip; fade does not
             cursor = CMTimeAdd(startTime, placedDuration)
@@ -142,7 +160,8 @@ internal enum CompositionBuilder {
         let bgParams = try await buildBackgroundAudioMixParameters(
             composition: composition,
             audioTracks: audioTracks,
-            totalDuration: totalDuration
+            totalDuration: totalDuration,
+            clipAudioRanges: clipAudioRanges
         )
         audioMixParameters.append(contentsOf: bgParams)
 
@@ -439,12 +458,14 @@ internal enum CompositionBuilder {
     private static func buildBackgroundAudioMix(
         composition: AVMutableComposition,
         audioTracks: [AudioTrack],
-        totalDuration: CMTime
+        totalDuration: CMTime,
+        clipAudioRanges: [CMTimeRange] = []
     ) async throws -> AVMutableAudioMix? {
         let params = try await buildBackgroundAudioMixParameters(
             composition: composition,
             audioTracks: audioTracks,
-            totalDuration: totalDuration
+            totalDuration: totalDuration,
+            clipAudioRanges: clipAudioRanges
         )
         guard !params.isEmpty else { return nil }
         let mix = AVMutableAudioMix()
@@ -455,7 +476,8 @@ internal enum CompositionBuilder {
     private static func buildBackgroundAudioMixParameters(
         composition: AVMutableComposition,
         audioTracks: [AudioTrack],
-        totalDuration: CMTime
+        totalDuration: CMTime,
+        clipAudioRanges: [CMTimeRange] = []
     ) async throws -> [AVMutableAudioMixInputParameters] {
         var audioMixParameters: [AVMutableAudioMixInputParameters] = []
 
@@ -507,10 +529,56 @@ internal enum CompositionBuilder {
                 )
             }
 
+            if let duckLevel = audioTrack.duckingLevel {
+                guard duckLevel >= 0 && duckLevel <= 1 else {
+                    throw KadrError.invalidDuckingLevel(duckLevel)
+                }
+                applyDucking(
+                    on: params,
+                    baseVolume: audioTrack.volumeLevel,
+                    duckLevel: duckLevel,
+                    over: clipAudioRanges
+                )
+            }
+
             audioMixParameters.append(params)
         }
 
         return audioMixParameters
+    }
+
+    /// Apply per-range ducking ramps on a music track's audio mix parameters.
+    /// At each clip-audio range, fades the music down from `baseVolume` to `baseVolume * duckLevel`
+    /// over a short window at the start, then back up at the end.
+    private static func applyDucking(
+        on params: AVMutableAudioMixInputParameters,
+        baseVolume: Double,
+        duckLevel: Double,
+        over ranges: [CMTimeRange]
+    ) {
+        let rampDuration = CMTime(seconds: 0.1, preferredTimescale: 600)
+        let baseFloat = Float(baseVolume)
+        let duckedFloat = Float(baseVolume * duckLevel)
+
+        for range in ranges {
+            // Skip ranges shorter than 2× ramp (no useful duck window)
+            if CMTimeCompare(range.duration, CMTimeMultiplyByFloat64(rampDuration, multiplier: 2.0)) <= 0 {
+                continue
+            }
+            // Ramp down at the start
+            params.setVolumeRamp(
+                fromStartVolume: baseFloat,
+                toEndVolume: duckedFloat,
+                timeRange: CMTimeRange(start: range.start, duration: rampDuration)
+            )
+            // Ramp up at the end
+            let upStart = CMTimeSubtract(range.end, rampDuration)
+            params.setVolumeRamp(
+                fromStartVolume: duckedFloat,
+                toEndVolume: baseFloat,
+                timeRange: CMTimeRange(start: upStart, duration: rampDuration)
+            )
+        }
     }
 
     // MARK: - VideoClip insertion
