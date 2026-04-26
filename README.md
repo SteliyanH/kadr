@@ -49,7 +49,15 @@ FFmpegKit retired in January 2025. Pixel SDK sunset in February 2025. AVFoundati
 
 ## Features
 
-### v0.2 (current — `0.2.1`)
+### v0.3 (current — `0.3.0`)
+
+- **Layout primitives**: `Position` (`.normalized` / `.pixels` / `.percent` plus 9 named anchors), `Size` (with `.aspectFit` / `.aspectFill`), `Anchor`, and `LayerID`
+- **Overlays**: `ImageOverlay`, `TextOverlay` + `TextStyle`, `StickerOverlay` (with `.shadow` and `.rotation` modifiers), and `Video.watermark(...)` sugar
+- **Filters**: `VideoClip.filter(_:)` with built-in `CIFilter` presets — `.brightness`, `.contrast`, `.saturation`, `.exposure`, `.sepia`, `.mono`. Variadic and chainable.
+- **Crop**: `Video.crop(at:size:anchor:)` — composition-wide rectangular crop sharing the layout coordinate system
+- **Sugar**: `BackgroundMusic` (defaults: volume 0.6, fades, ducking), `TitleSequence` (text title clip with cross-platform rendering), `Timecode` (SMPTE `HH:MM:SS:FF` format/parse)
+
+### v0.2
 
 - **Transitions**: `.fade` (through black), `.dissolve` (cross-blend), `.slide` (4 directions) — wired through the engine with audio crossfades
 - **Speed control**: `VideoClip.speed(_:)` — `0.25...4.0`, pitch-preserving
@@ -110,6 +118,25 @@ let url = try await Video {
     VideoClip(url: outroURL).trimmed(to: 0...3)
 }
 .audio { AudioTrack(url: musicURL).volume(0.8).ducking(0.2) }  // music dips when clips speak
+.export(to: outputURL)
+
+// Title card, color-graded clip, watermark, and music (v0.3)
+let url = try await Video {
+    TitleSequence("MY MOVIE",
+                  duration: 2.0,
+                  style: TextStyle(fontSize: 96, alignment: .center, weight: .bold))
+    Transition.fade(duration: 0.5)
+    VideoClip(url: clipURL).trimmed(to: 0...10)
+        .filter(.brightness(0.05), .contrast(1.1), .saturation(1.2))
+}
+.overlay(
+    TextOverlay("LOCATION: HQ", style: TextStyle(fontSize: 40, weight: .medium))
+        .position(.bottom)
+        .anchor(.bottom)
+)
+.watermark(logo, position: .topRight, opacity: 0.5)
+.crop(at: .center, size: .normalized(width: 0.9, height: 0.9))
+.backgroundMusic(url: musicURL)  // defaults: 60% volume, fades, ducking
 .export(to: outputURL)
 
 // Export with progress tracking
