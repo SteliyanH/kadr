@@ -16,19 +16,22 @@ public struct VideoClipMetadata: Sendable {
 
 public struct VideoClip: Clip, Sendable {
     public let url: URL
-    internal let trimRange: ClosedRange<TimeInterval>?
+    internal let trimRange: CMTimeRange?
     internal let isReversed: Bool
     internal let isMuted: Bool
     internal let replacementAudioURL: URL?
     internal let speedRate: Double
 
     public var duration: CMTime {
-        if let trimRange {
-            let raw = trimRange.upperBound - trimRange.lowerBound
-            return CMTime(seconds: raw / speedRate, preferredTimescale: 600)
+        guard let trimRange else {
+            // Synchronous fallback — actual duration requires async asset loading
+            return .zero
         }
-        // Synchronous fallback — actual duration requires async asset loading
-        return .zero
+        // Apply speed: scaled duration = raw / speedRate
+        if speedRate == 1.0 {
+            return trimRange.duration
+        }
+        return CMTimeMultiplyByFloat64(trimRange.duration, multiplier: 1.0 / speedRate)
     }
 
     public var metadata: VideoClipMetadata {
@@ -60,7 +63,7 @@ public struct VideoClip: Clip, Sendable {
         self.speedRate = 1.0
     }
 
-    internal init(url: URL, trimRange: ClosedRange<TimeInterval>?, isReversed: Bool, isMuted: Bool, replacementAudioURL: URL?, speedRate: Double = 1.0) {
+    internal init(url: URL, trimRange: CMTimeRange?, isReversed: Bool, isMuted: Bool, replacementAudioURL: URL?, speedRate: Double = 1.0) {
         self.url = url
         self.trimRange = trimRange
         self.isReversed = isReversed
@@ -69,8 +72,18 @@ public struct VideoClip: Clip, Sendable {
         self.speedRate = speedRate
     }
 
-    public func trimmed(to range: ClosedRange<TimeInterval>) -> VideoClip {
+    /// Trim with a `CMTimeRange` for frame-accurate precision.
+    public func trimmed(_ range: CMTimeRange) -> VideoClip {
         VideoClip(url: url, trimRange: range, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate)
+    }
+
+    /// Trim with a `ClosedRange<TimeInterval>`. Convenience overload — converts to `CMTimeRange`
+    /// at timescale 600. For frame-accurate trims at a specific frame rate, prefer
+    /// `trimmed(_ range: CMTimeRange)`.
+    public func trimmed(to range: ClosedRange<TimeInterval>) -> VideoClip {
+        let start = CMTime(seconds: range.lowerBound, preferredTimescale: 600)
+        let end = CMTime(seconds: range.upperBound, preferredTimescale: 600)
+        return trimmed(CMTimeRange(start: start, duration: CMTimeSubtract(end, start)))
     }
 
     public func reversed() -> VideoClip {
@@ -85,18 +98,23 @@ public struct VideoClip: Clip, Sendable {
         VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: true, replacementAudioURL: audioURL, speedRate: speedRate)
     }
 
-    public func thumbnail(at time: TimeInterval = 0) async throws -> PlatformImage {
+    /// Extract a thumbnail at a `CMTime` offset for frame-accurate selection.
+    public func thumbnail(at time: CMTime) async throws -> PlatformImage {
         let asset = AVURLAsset(url: url)
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.requestedTimeToleranceBefore = .zero
         generator.requestedTimeToleranceAfter = .zero
-        let cmTime = CMTime(seconds: time, preferredTimescale: 600)
-        let cgImage = try await generator.image(at: cmTime).image
+        let cgImage = try await generator.image(at: time).image
         #if canImport(UIKit)
         return UIImage(cgImage: cgImage)
         #elseif canImport(AppKit)
         return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
         #endif
+    }
+
+    /// Extract a thumbnail at a `TimeInterval` offset. Convenience overload.
+    public func thumbnail(at time: TimeInterval = 0) async throws -> PlatformImage {
+        try await thumbnail(at: CMTime(seconds: time, preferredTimescale: 600))
     }
 }
