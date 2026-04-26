@@ -15,8 +15,14 @@ public struct ImageClip: Clip, Sendable {
     /// The image rendered for the clip's duration.
     public let image: PlatformImage
     internal let _duration: CMTime
-    internal let backgroundColor: PlatformColor?
-    internal let audioURL: URL?
+
+    /// Solid color drawn behind the image to fill the render canvas. `nil` means
+    /// transparent / black. Set via ``background(_:)``.
+    public let backgroundColor: PlatformColor?
+
+    /// Audio file played alongside the image for the clip's duration, or `nil`. Set via
+    /// ``withAudio(_:)``.
+    public let audioURL: URL?
 
     public var duration: CMTime { _duration }
 
