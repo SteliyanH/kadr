@@ -105,7 +105,6 @@ internal enum CompositionBuilder {
             let videoTrack = videoTracks[trackIndex]
             let audioTrack = audioTracksAB[trackIndex]
 
-            // Pull cursor back by the incoming transition's duration so this clip overlaps the previous
             let startTime = cursor
             var insertionPoint = startTime
 
@@ -119,10 +118,10 @@ internal enum CompositionBuilder {
             let timeRange = CMTimeRange(start: startTime, duration: placedDuration)
             placements.append(Placement(trackIndex: trackIndex, timeRange: timeRange, transitionAfter: item.transitionAfter))
 
-            // Advance cursor: full clip duration minus the outgoing transition (so next clip overlaps)
+            // Advance cursor: dissolve overlaps with the next clip; fade does not
             cursor = CMTimeAdd(startTime, placedDuration)
             if let outgoing = item.transitionAfter {
-                cursor = CMTimeSubtract(cursor, outgoing.duration)
+                cursor = CMTimeSubtract(cursor, overlap(during: outgoing))
             }
         }
 
@@ -155,6 +154,42 @@ internal enum CompositionBuilder {
         }
 
         return CompositionResult(composition: composition, audioMix: audioMix, videoComposition: videoComposition)
+    }
+
+    // MARK: - Per-transition geometry
+    //
+    // Each transition contributes three quantities:
+    //   - overlap:       how much the next clip is pulled back to overlap with this one
+    //   - outgoingTail:  how long the outgoing-side effect lasts (within this clip)
+    //   - incomingHead:  how long the incoming-side effect lasts (within the next clip)
+    //
+    // dissolve: clips overlap by `duration`; outgoingTail == incomingHead == overlap == duration
+    // fade:     no overlap; each side gets duration/2 within its own clip; tail/head don't share time
+
+    private static func overlap(during transition: Transition) -> CMTime {
+        switch transition {
+        case .dissolve(let d):
+            return CMTime(seconds: d, preferredTimescale: 600)
+        case .fade:
+            return .zero
+        case .slide(_, let d):
+            return CMTime(seconds: d, preferredTimescale: 600)
+        }
+    }
+
+    private static func outgoingTail(of transition: Transition) -> CMTime {
+        switch transition {
+        case .dissolve(let d):
+            return CMTime(seconds: d, preferredTimescale: 600)
+        case .fade(let d):
+            return CMTime(seconds: d / 2, preferredTimescale: 600)
+        case .slide(_, let d):
+            return CMTime(seconds: d, preferredTimescale: 600)
+        }
+    }
+
+    private static func incomingHead(of transition: Transition) -> CMTime {
+        outgoingTail(of: transition)
     }
 
     // MARK: - Transition planning
@@ -193,15 +228,13 @@ internal enum CompositionBuilder {
 
             let next = i + 1 < clips.count ? clips[i + 1] : nil
             if let transition = next as? Transition {
-                // Validate slide/dissolve are still unimplemented at the engine level
                 switch transition {
-                case .fade:
+                case .fade, .dissolve:
                     break
-                case .slide, .dissolve:
-                    throw KadrError.notYetImplemented("Only .fade is implemented in v0.2; .slide and .dissolve land later")
+                case .slide:
+                    throw KadrError.notYetImplemented(".slide transition lands in a follow-up PR")
                 }
 
-                // Validate transition duration vs adjacent clip durations
                 guard let following = i + 2 < clips.count ? clips[i + 2] : nil, !(following is Transition) else {
                     throw KadrError.invalidTransition("Transition must sit between two media clips")
                 }
@@ -211,8 +244,12 @@ internal enum CompositionBuilder {
                 if tDur <= 0 {
                     throw KadrError.invalidTransition("Transition duration must be positive")
                 }
-                if tDur > curDur || tDur > nextDur {
-                    throw KadrError.invalidTransition("Transition duration (\(tDur)s) exceeds an adjacent clip's duration")
+                // Each side of the transition must fit within its adjacent clip:
+                // - dissolve: full duration overlaps both clips (constraint = duration)
+                // - fade: each half (duration/2) sits within its clip's tail/head (constraint = duration/2)
+                let perSide = CMTimeGetSeconds(outgoingTail(of: transition))
+                if perSide > curDur || perSide > nextDur {
+                    throw KadrError.invalidTransition("Transition (\(tDur)s) does not fit within adjacent clip durations")
                 }
 
                 items.append(PlannedItem(clip: current, transitionAfter: transition))
@@ -243,48 +280,66 @@ internal enum CompositionBuilder {
             let track = videoTracks[placement.trackIndex]
             let nextPlacement = idx + 1 < placements.count ? placements[idx + 1] : nil
 
-            // The "solo" segment: from this clip's start (or end of incoming transition) to the start of the outgoing transition (or its end)
-            let soloStart: CMTime = {
-                guard idx > 0 else { return placement.timeRange.start }
-                let prev = placements[idx - 1]
-                if let incomingTransition = prev.transitionAfter {
-                    return CMTimeAdd(placement.timeRange.start, incomingTransition.duration)
-                }
-                return placement.timeRange.start
+            // Solo segment: from clip start (+incoming head) to clip end (-outgoing tail)
+            let incomingHeadDur: CMTime = {
+                guard idx > 0, let incoming = placements[idx - 1].transitionAfter else { return .zero }
+                return incomingHead(of: incoming)
+            }()
+            let outgoingTailDur: CMTime = {
+                guard let outgoing = placement.transitionAfter else { return .zero }
+                return outgoingTail(of: outgoing)
             }()
 
-            let soloEnd: CMTime = {
-                if let outgoing = placement.transitionAfter {
-                    return CMTimeSubtract(placement.timeRange.end, outgoing.duration)
-                }
-                return placement.timeRange.end
-            }()
+            let soloStart = CMTimeAdd(placement.timeRange.start, incomingHeadDur)
+            let soloEnd = CMTimeSubtract(placement.timeRange.end, outgoingTailDur)
 
             if CMTimeCompare(soloEnd, soloStart) > 0 {
                 let inst = AVMutableVideoCompositionInstruction()
                 inst.timeRange = CMTimeRange(start: soloStart, duration: CMTimeSubtract(soloEnd, soloStart))
-                let layer = makeLayerInstruction(for: track, preset: preset)
-                inst.layerInstructions = [layer]
+                inst.layerInstructions = [makeLayerInstruction(for: track, preset: preset)]
                 instructions.append(inst)
             }
 
-            // Cross-fade segment with the next clip
+            // Outgoing transition segment(s)
             if let outgoing = placement.transitionAfter, let next = nextPlacement {
-                let xStart = soloEnd
-                let xRange = CMTimeRange(start: xStart, duration: outgoing.duration)
-                let inst = AVMutableVideoCompositionInstruction()
-                inst.timeRange = xRange
-
-                let outgoingLayer = makeLayerInstruction(for: track, preset: preset)
-                outgoingLayer.setOpacityRamp(fromStartOpacity: 1.0, toEndOpacity: 0.0, timeRange: xRange)
-
                 let incomingTrack = videoTracks[next.trackIndex]
-                let incomingLayer = makeLayerInstruction(for: incomingTrack, preset: preset)
-                incomingLayer.setOpacityRamp(fromStartOpacity: 0.0, toEndOpacity: 1.0, timeRange: xRange)
 
-                // Outgoing is drawn on top so its ramp from 1→0 reveals the incoming underneath
-                inst.layerInstructions = [outgoingLayer, incomingLayer]
-                instructions.append(inst)
+                switch outgoing {
+                case .dissolve:
+                    // Single overlapping cross-fade segment
+                    let xRange = CMTimeRange(start: soloEnd, duration: outgoing.duration)
+                    let inst = AVMutableVideoCompositionInstruction()
+                    inst.timeRange = xRange
+                    let outLayer = makeLayerInstruction(for: track, preset: preset)
+                    outLayer.setOpacityRamp(fromStartOpacity: 1.0, toEndOpacity: 0.0, timeRange: xRange)
+                    let inLayer = makeLayerInstruction(for: incomingTrack, preset: preset)
+                    inLayer.setOpacityRamp(fromStartOpacity: 0.0, toEndOpacity: 1.0, timeRange: xRange)
+                    inst.layerInstructions = [outLayer, inLayer]
+                    instructions.append(inst)
+
+                case .fade:
+                    // Two non-overlapping segments through black: tail-out, then head-in
+                    let halfDur = outgoingTailDur
+                    let outRange = CMTimeRange(start: soloEnd, duration: halfDur)
+                    let outInst = AVMutableVideoCompositionInstruction()
+                    outInst.timeRange = outRange
+                    let outLayer = makeLayerInstruction(for: track, preset: preset)
+                    outLayer.setOpacityRamp(fromStartOpacity: 1.0, toEndOpacity: 0.0, timeRange: outRange)
+                    outInst.layerInstructions = [outLayer]
+                    instructions.append(outInst)
+
+                    let inStart = outRange.end  // = next clip's start (no overlap for fade)
+                    let inRange = CMTimeRange(start: inStart, duration: halfDur)
+                    let inInst = AVMutableVideoCompositionInstruction()
+                    inInst.timeRange = inRange
+                    let inLayer = makeLayerInstruction(for: incomingTrack, preset: preset)
+                    inLayer.setOpacityRamp(fromStartOpacity: 0.0, toEndOpacity: 1.0, timeRange: inRange)
+                    inInst.layerInstructions = [inLayer]
+                    instructions.append(inInst)
+
+                case .slide:
+                    break  // unreachable: rejected during planning
+                }
             }
         }
 
@@ -324,16 +379,18 @@ internal enum CompositionBuilder {
             guard let track = audioTracks[placement.trackIndex] else { continue }
             let p = AVMutableAudioMixInputParameters(track: track)
 
-            // Fade in if there's an incoming transition (this clip overlaps the previous)
+            // Fade in over this clip's head if the previous clip had an outgoing transition
             if idx > 0, let incoming = placements[idx - 1].transitionAfter {
-                let inRange = CMTimeRange(start: placement.timeRange.start, duration: incoming.duration)
+                let inDur = incomingHead(of: incoming)
+                let inRange = CMTimeRange(start: placement.timeRange.start, duration: inDur)
                 p.setVolumeRamp(fromStartVolume: 0, toEndVolume: 1, timeRange: inRange)
             }
 
-            // Fade out if there's an outgoing transition
+            // Fade out over this clip's tail if it has an outgoing transition
             if let outgoing = placement.transitionAfter {
-                let outStart = CMTimeSubtract(placement.timeRange.end, outgoing.duration)
-                let outRange = CMTimeRange(start: outStart, duration: outgoing.duration)
+                let outDur = outgoingTail(of: outgoing)
+                let outStart = CMTimeSubtract(placement.timeRange.end, outDur)
+                let outRange = CMTimeRange(start: outStart, duration: outDur)
                 p.setVolumeRamp(fromStartVolume: 1, toEndVolume: 0, timeRange: outRange)
             }
 

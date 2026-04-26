@@ -262,17 +262,4 @@ struct ExportTests {
         }
     }
 
-    @Test func dissolveTransitionThrowsNotYetImplemented() async throws {
-        let videoURL = try loadTestVideoURL()
-        let outputURL = testOutputURL("dissolve")
-
-        await #expect(throws: KadrError.self) {
-            _ = try await Video {
-                VideoClip(url: videoURL).trimmed(to: 0...3)
-                Transition.dissolve(duration: 0.5)
-                VideoClip(url: videoURL).trimmed(to: 0...3)
-            }
-            .export(to: outputURL)
-        }
-    }
 }
