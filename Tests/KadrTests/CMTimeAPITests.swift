@@ -44,7 +44,7 @@ struct CMTimeAPITests {
         let start = CMTime(value: 5, timescale: 30)
         let dur = CMTime(value: 30, timescale: 30)
         let range = CMTimeRange(start: start, duration: dur)
-        let clip = VideoClip(url: url).trimmed(range)
+        let clip = VideoClip(url: url).trimmed(to: range)
         #expect(clip.trimRange?.start == start)
         #expect(clip.trimRange?.duration == dur)
         // Verify the synchronous duration getter also preserves precision

@@ -73,17 +73,17 @@ public struct VideoClip: Clip, Sendable {
     }
 
     /// Trim with a `CMTimeRange` for frame-accurate precision.
-    public func trimmed(_ range: CMTimeRange) -> VideoClip {
+    public func trimmed(to range: CMTimeRange) -> VideoClip {
         VideoClip(url: url, trimRange: range, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate)
     }
 
     /// Trim with a `ClosedRange<TimeInterval>`. Convenience overload — converts to `CMTimeRange`
     /// at timescale 600. For frame-accurate trims at a specific frame rate, prefer
-    /// `trimmed(_ range: CMTimeRange)`.
+    /// `trimmed(to:)` with a `CMTimeRange`.
     public func trimmed(to range: ClosedRange<TimeInterval>) -> VideoClip {
         let start = CMTime(seconds: range.lowerBound, preferredTimescale: 600)
         let end = CMTime(seconds: range.upperBound, preferredTimescale: 600)
-        return trimmed(CMTimeRange(start: start, duration: CMTimeSubtract(end, start)))
+        return trimmed(to: CMTimeRange(start: start, duration: CMTimeSubtract(end, start)))
     }
 
     public func reversed() -> VideoClip {
