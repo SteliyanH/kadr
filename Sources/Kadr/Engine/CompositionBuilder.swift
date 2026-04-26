@@ -249,6 +249,15 @@ internal enum CompositionBuilder {
                 if CMTimeCompare(transition.duration, .zero) <= 0 {
                     throw KadrError.invalidTransition("Transition duration must be positive")
                 }
+                // VideoClip without a trim has duration .zero synchronously (the asset isn't
+                // loaded yet) — give a specific error explaining the fix.
+                if CMTimeCompare(current.duration, .zero) <= 0 || CMTimeCompare(following.duration, .zero) <= 0 {
+                    throw KadrError.invalidTransition(
+                        "Transition placement requires both adjacent clips to have a known duration. " +
+                        "VideoClip without a trim reports duration .zero synchronously — call .trimmed(to:) to set one."
+                    )
+                }
+
                 // Each side of the transition must fit within its adjacent clip:
                 // - dissolve: full duration overlaps both clips (constraint = duration)
                 // - fade: each half (duration/2) sits within its clip's tail/head (constraint = duration/2)
