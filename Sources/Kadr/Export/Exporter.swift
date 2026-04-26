@@ -17,14 +17,16 @@ public final class Exporter: @unchecked Sendable {
     internal let audioTracks: [AudioTrack]
     internal let preset: Preset
     internal let overlays: [any Overlay]
+    internal let crop: CropRegion?
     internal let outputURL: URL
     private let cancellationToken = CancellationToken()
 
-    internal init(clips: [any Clip], audioTracks: [AudioTrack], preset: Preset, overlays: [any Overlay] = [], outputURL: URL) {
+    internal init(clips: [any Clip], audioTracks: [AudioTrack], preset: Preset, overlays: [any Overlay] = [], crop: CropRegion? = nil, outputURL: URL) {
         self.clips = clips
         self.audioTracks = audioTracks
         self.preset = preset
         self.overlays = overlays
+        self.crop = crop
         self.outputURL = outputURL
     }
 
@@ -35,7 +37,7 @@ public final class Exporter: @unchecked Sendable {
         let token = cancellationToken
 
         return AsyncThrowingStream { continuation in
-            Task { [clips, audioTracks, preset, overlays, outputURL] in
+            Task { [clips, audioTracks, preset, overlays, crop, outputURL] in
                 do {
                     guard !clips.isEmpty else {
                         throw KadrError.noClipsProvided
@@ -45,9 +47,10 @@ public final class Exporter: @unchecked Sendable {
                         throw KadrError.cancelled
                     }
 
-                    // Single ImageClip fast path — skip when overlays exist (they need
-                    // the AVVideoCompositionCoreAnimationTool wired into a videoComposition).
-                    if clips.count == 1, let imageClip = clips.first as? ImageClip, overlays.isEmpty {
+                    // Single ImageClip fast path — skip when overlays or crop are set
+                    // (both need the videoComposition path: animation tool for overlays,
+                    // adjusted renderSize+offset for crop).
+                    if clips.count == 1, let imageClip = clips.first as? ImageClip, overlays.isEmpty, crop == nil {
                         continuation.yield(ExportProgress(fractionCompleted: 0))
                         let audioURL = imageClip.audioURL ?? audioTracks.first?.url
                         _ = try await ImageEncoder.encode(
@@ -66,7 +69,8 @@ public final class Exporter: @unchecked Sendable {
                     let result = try await CompositionBuilder.build(
                         from: clips,
                         audioTracks: audioTracks,
-                        preset: preset
+                        preset: preset,
+                        cropRect: crop?.resolved(in: preset.resolution)
                     )
 
                     let stream = ExportEngine.export(
@@ -74,6 +78,7 @@ public final class Exporter: @unchecked Sendable {
                         audioMix: result.audioMix,
                         videoComposition: result.videoComposition,
                         overlays: overlays,
+                        crop: crop,
                         preset: preset,
                         to: outputURL,
                         cancellationToken: token

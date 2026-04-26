@@ -64,6 +64,10 @@ let url = try await Video {
 
 - ``Filter``
 
+### Cropping (v0.3+)
+
+- ``Video/crop(at:size:anchor:)``
+
 ### Export
 
 - ``Exporter``

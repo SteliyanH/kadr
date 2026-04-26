@@ -8,6 +8,7 @@ private struct ExportConfig: @unchecked Sendable {
     let audioMix: AVMutableAudioMix?
     let videoComposition: AVMutableVideoComposition?
     let overlays: [any Overlay]
+    let crop: CropRegion?
     let preset: Preset
     let outputURL: URL
     let cancellationToken: CancellationToken
@@ -20,6 +21,7 @@ internal enum ExportEngine {
         audioMix: AVMutableAudioMix?,
         videoComposition: AVMutableVideoComposition? = nil,
         overlays: [any Overlay] = [],
+        crop: CropRegion? = nil,
         preset: Preset,
         to outputURL: URL,
         cancellationToken: CancellationToken = CancellationToken()
@@ -29,6 +31,7 @@ internal enum ExportEngine {
             audioMix: audioMix,
             videoComposition: videoComposition,
             overlays: overlays,
+            crop: crop,
             preset: preset,
             outputURL: outputURL,
             cancellationToken: cancellationToken
@@ -67,13 +70,18 @@ internal enum ExportEngine {
                     // Apply video composition to enforce preset resolution/frame rate
                     // (only when using a non-passthrough preset that supports re-encoding)
                     if compatible, presetName != AVAssetExportPresetPassthrough {
+                        let cropRect = config.crop?.resolved(in: config.preset.resolution)
                         let baseComposition: AVMutableVideoComposition?
                         if let provided = config.videoComposition {
+                            // Already built by CompositionBuilder (transitions path) — that
+                            // builder received cropRect and applied it to its instructions.
                             baseComposition = provided
                         } else {
+                            // Simple path — build with crop applied here.
                             baseComposition = buildVideoComposition(
                                 for: config.composition,
-                                preset: config.preset
+                                preset: config.preset,
+                                cropRect: cropRect
                             )
                         }
 
@@ -81,10 +89,13 @@ internal enum ExportEngine {
                             // If overlays were provided, attach a CALayer animation tool.
                             // The CALayer tree must be built fresh per export — AVFoundation
                             // takes ownership and an instance can't be shared.
+                            // When crop is set, overlays render in the cropped (post-crop)
+                            // render space, so the parent layer matches the cropped renderSize.
                             if !config.overlays.isEmpty {
+                                let renderSize = cropRect?.size ?? config.preset.resolution
                                 let tree = OverlayRenderer.buildLayerTree(
                                     overlays: config.overlays,
-                                    renderSize: config.preset.resolution
+                                    renderSize: renderSize
                                 )
                                 videoComposition.animationTool = AVVideoCompositionCoreAnimationTool(
                                     postProcessingAsVideoLayer: tree.videoLayer,
@@ -127,16 +138,23 @@ internal enum ExportEngine {
     }
 
     /// Builds an AVMutableVideoComposition that enforces the preset's resolution and frame rate.
+    /// When `cropRect` is non-nil, the renderSize becomes the crop's size and the layer
+    /// instruction's transform is shifted by `-cropRect.origin` so the cropped region
+    /// maps to the new render origin.
     private static func buildVideoComposition(
         for composition: AVMutableComposition,
-        preset: Preset
+        preset: Preset,
+        cropRect: CGRect? = nil
     ) -> AVMutableVideoComposition? {
         let videoTracks = composition.tracks(withMediaType: .video)
         guard !videoTracks.isEmpty else { return nil }
 
         let videoComposition = AVMutableVideoComposition()
-        videoComposition.renderSize = preset.resolution
+        videoComposition.renderSize = cropRect?.size ?? preset.resolution
         videoComposition.frameDuration = CMTime(value: 1, timescale: CMTimeScale(preset.frameRate))
+
+        let cropOffset = cropRect?.origin ?? .zero
+        let cropTransform = CGAffineTransform(translationX: -cropOffset.x, y: -cropOffset.y)
 
         // Create a single instruction spanning the full duration
         let instruction = AVMutableVideoCompositionInstruction()
@@ -145,7 +163,9 @@ internal enum ExportEngine {
         // Layer the first video track
         let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTracks[0])
 
-        // Scale video to fill the preset resolution
+        // Scale video to fill the preset resolution (the crop offset is applied AFTER
+        // — we still scale the source content to the full preset area; the crop just
+        // shifts which region of that area becomes the final output).
         let trackSize = videoTracks[0].naturalSize
         if trackSize.width > 0 && trackSize.height > 0 {
             let scaleX = preset.resolution.width / trackSize.width
@@ -157,7 +177,9 @@ internal enum ExportEngine {
             let ty = (preset.resolution.height - scaledHeight) / 2
             let transform = CGAffineTransform(scaleX: scale, y: scale)
                 .translatedBy(x: tx / scale, y: ty / scale)
-            layerInstruction.setTransform(transform, at: .zero)
+            layerInstruction.setTransform(transform.concatenating(cropTransform), at: .zero)
+        } else if cropRect != nil {
+            layerInstruction.setTransform(cropTransform, at: .zero)
         }
 
         instruction.layerInstructions = [layerInstruction]
