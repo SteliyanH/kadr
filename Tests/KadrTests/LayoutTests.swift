@@ -161,6 +161,36 @@ struct LayoutTests {
         #expect(frame.origin.y == 1820)
     }
 
+    // MARK: - LayerID
+
+    @Test func layerIDFromString() {
+        let id = LayerID("watermark")
+        #expect(id.rawValue == "watermark")
+        #expect(id.description == "watermark")
+    }
+
+    @Test func layerIDStringLiteral() {
+        let id: LayerID = "logo"
+        #expect(id.rawValue == "logo")
+    }
+
+    @Test func layerIDEquality() {
+        let a: LayerID = "x"
+        let b: LayerID = "x"
+        let c: LayerID = "y"
+        #expect(a == b)
+        #expect(a != c)
+    }
+
+    @Test func layerIDHashable() {
+        let a: LayerID = "x"
+        let b: LayerID = "x"
+        var set: Set<LayerID> = []
+        set.insert(a)
+        set.insert(b)
+        #expect(set.count == 1)
+    }
+
     @Test func defaultAnchorIsCenter() {
         // FrameResolver.resolve uses .center as the default anchor
         let withDefault = FrameResolver.resolve(
