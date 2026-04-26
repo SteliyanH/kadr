@@ -11,14 +11,13 @@ Post-alpha stabilization based on community feedback.
 - Performance profiling of ImageEncoder and CompositionBuilder
 - Edge case handling (very long videos, large images, corrupted input files)
 
-## v0.2.0 — Transitions & Speed
+## v0.2.0 — Transitions & Speed ✓ shipped
 
-Implement the transition engine and speed control. The `Transition` type already exists in the API — this release brings the engine to life.
+Implemented the transition engine and speed control. See [CHANGELOG.md](CHANGELOG.md#020---2026-04-26).
 
-- **Transition engine:** `.fade`, `.slide`, `.dissolve` with custom compositor
-- **Speed control:** `.speed(_:)` modifier on `VideoClip` (0.25x to 4x)
-- **Audio ducking:** `.ducking(_:)` on `AudioTrack` — auto-lower music when clip audio plays
-- Remove `.notYetImplemented` throws for transitions
+- ✓ Transition engine: `.fade` (fade-through-black), `.dissolve` (cross-blend), `.slide` (4 directions)
+- ✓ Speed control: `.speed(_:)` modifier on `VideoClip` (0.25x to 4x), pitch-preserving
+- ✓ Audio ducking: `.ducking(_:)` on `AudioTrack` — auto-lowers music when clip audio plays
 
 ## v0.3.0 — Overlays & Filters
 

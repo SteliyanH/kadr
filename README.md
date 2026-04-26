@@ -49,7 +49,13 @@ FFmpegKit retired in January 2025. Pixel SDK sunset in February 2025. AVFoundati
 
 ## Features
 
-### v0.1 (current)
+### v0.2 (current)
+
+- **Transitions**: `.fade` (through black), `.dissolve` (cross-blend), `.slide` (4 directions) — wired through the engine with audio crossfades
+- **Speed control**: `VideoClip.speed(_:)` — `0.25...4.0`, pitch-preserving
+- **Audio ducking**: `AudioTrack.ducking(_:)` — auto-lowers music while clip audio plays
+
+### v0.1
 
 - Result-builder DSL (`Video { ... }`)
 - `ImageClip` and `VideoClip` primitives
@@ -92,6 +98,17 @@ let url = try await Video {
     VideoClip(url: originalURL).muted()
 }
 .audio(url: newSoundtrackURL)
+.export(to: outputURL)
+
+// Transitions, slow-mo, and ducking music (v0.2)
+let url = try await Video {
+    VideoClip(url: introURL).trimmed(to: 0...3)
+    Transition.dissolve(duration: 0.5)
+    VideoClip(url: actionURL).trimmed(to: 0...4).speed(0.5)  // half-speed slow-mo
+    Transition.slide(direction: .fromRight, duration: 0.4)
+    VideoClip(url: outroURL).trimmed(to: 0...3)
+}
+.audio { AudioTrack(url: musicURL).volume(0.8).ducking(0.2) }  // music dips when clips speak
 .export(to: outputURL)
 
 // Export with progress tracking
