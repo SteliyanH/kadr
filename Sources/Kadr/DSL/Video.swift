@@ -20,36 +20,46 @@ public struct Video: Sendable {
     internal let clips: [any Clip]
     internal let audioTracks: [AudioTrack]
     internal let preset: Preset
+    internal let overlays: [ImageOverlay]
 
     /// Build a `Video` from a result-builder block of clips.
     public init(@VideoBuilder _ content: () -> [any Clip]) {
         self.clips = content()
         self.audioTracks = []
         self.preset = .auto
+        self.overlays = []
     }
 
-    internal init(clips: [any Clip], audioTracks: [AudioTrack], preset: Preset) {
+    internal init(clips: [any Clip], audioTracks: [AudioTrack], preset: Preset, overlays: [ImageOverlay] = []) {
         self.clips = clips
         self.audioTracks = audioTracks
         self.preset = preset
+        self.overlays = overlays
     }
 
     /// Add one or more background audio tracks via the ``AudioBuilder`` DSL.
     /// Useful for chained modifiers like `.volume(_:)`, `.fadeIn(_:)`, `.ducking(_:)`.
     public func audio(@AudioBuilder _ tracks: () -> [AudioTrack]) -> Video {
-        Video(clips: clips, audioTracks: audioTracks + tracks(), preset: preset)
+        Video(clips: clips, audioTracks: audioTracks + tracks(), preset: preset, overlays: overlays)
     }
 
     /// Convenience: add a single background audio track from `url`. Equivalent to
     /// `.audio { AudioTrack(url: url) }` with default volume and no fades.
     public func audio(url: URL) -> Video {
-        Video(clips: clips, audioTracks: audioTracks + [AudioTrack(url: url)], preset: preset)
+        Video(clips: clips, audioTracks: audioTracks + [AudioTrack(url: url)], preset: preset, overlays: overlays)
     }
 
     /// Apply an export preset (resolution, frame rate, codec). Defaults to ``Preset/auto`` if
     /// unset. See ``Preset`` for the built-in choices and ``Preset/custom(width:height:frameRate:codec:)``.
     public func preset(_ preset: Preset) -> Video {
-        Video(clips: clips, audioTracks: audioTracks, preset: preset)
+        Video(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays)
+    }
+
+    /// Add an image overlay drawn on top of the composition for its full duration.
+    /// See ``ImageOverlay`` for the modifier chain (`.position`, `.size`, `.anchor`,
+    /// `.opacity`, `.id`).
+    public func overlay(_ overlay: ImageOverlay) -> Video {
+        Video(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays + [overlay])
     }
 
     /// The total media-timeline duration of the composition.
@@ -71,8 +81,10 @@ public struct Video: Sendable {
             throw KadrError.noClipsProvided
         }
 
-        // Fast path: single ImageClip
-        if clips.count == 1, let imageClip = clips.first as? ImageClip {
+        // Fast path: single ImageClip with no overlays. Overlays require the full
+        // CompositionBuilder + ExportEngine path because they need an
+        // AVVideoCompositionCoreAnimationTool wired into a videoComposition.
+        if clips.count == 1, let imageClip = clips.first as? ImageClip, overlays.isEmpty {
             let audioURL = imageClip.audioURL ?? audioTracks.first?.url
             return try await ImageEncoder.encode(
                 image: imageClip.image,
@@ -94,6 +106,7 @@ public struct Video: Sendable {
             composition: result.composition,
             audioMix: result.audioMix,
             videoComposition: result.videoComposition,
+            overlays: overlays,
             preset: preset,
             to: url
         )
@@ -108,6 +121,6 @@ public struct Video: Sendable {
     /// progress reporting via `AsyncThrowingStream<ExportProgress, Error>`,
     /// estimated time remaining, or cancellation. Otherwise prefer ``export(to:)``.
     public func exporter(to url: URL) -> Exporter {
-        Exporter(clips: clips, audioTracks: audioTracks, preset: preset, outputURL: url)
+        Exporter(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays, outputURL: url)
     }
 }

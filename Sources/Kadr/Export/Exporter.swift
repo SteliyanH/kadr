@@ -16,13 +16,15 @@ public final class Exporter: @unchecked Sendable {
     internal let clips: [any Clip]
     internal let audioTracks: [AudioTrack]
     internal let preset: Preset
+    internal let overlays: [ImageOverlay]
     internal let outputURL: URL
     private let cancellationToken = CancellationToken()
 
-    internal init(clips: [any Clip], audioTracks: [AudioTrack], preset: Preset, outputURL: URL) {
+    internal init(clips: [any Clip], audioTracks: [AudioTrack], preset: Preset, overlays: [ImageOverlay] = [], outputURL: URL) {
         self.clips = clips
         self.audioTracks = audioTracks
         self.preset = preset
+        self.overlays = overlays
         self.outputURL = outputURL
     }
 
@@ -33,7 +35,7 @@ public final class Exporter: @unchecked Sendable {
         let token = cancellationToken
 
         return AsyncThrowingStream { continuation in
-            Task { [clips, audioTracks, preset, outputURL] in
+            Task { [clips, audioTracks, preset, overlays, outputURL] in
                 do {
                     guard !clips.isEmpty else {
                         throw KadrError.noClipsProvided
@@ -43,8 +45,9 @@ public final class Exporter: @unchecked Sendable {
                         throw KadrError.cancelled
                     }
 
-                    // Single ImageClip fast path
-                    if clips.count == 1, let imageClip = clips.first as? ImageClip {
+                    // Single ImageClip fast path — skip when overlays exist (they need
+                    // the AVVideoCompositionCoreAnimationTool wired into a videoComposition).
+                    if clips.count == 1, let imageClip = clips.first as? ImageClip, overlays.isEmpty {
                         continuation.yield(ExportProgress(fractionCompleted: 0))
                         let audioURL = imageClip.audioURL ?? audioTracks.first?.url
                         _ = try await ImageEncoder.encode(
@@ -70,6 +73,7 @@ public final class Exporter: @unchecked Sendable {
                         composition: result.composition,
                         audioMix: result.audioMix,
                         videoComposition: result.videoComposition,
+                        overlays: overlays,
                         preset: preset,
                         to: outputURL,
                         cancellationToken: token
