@@ -27,29 +27,34 @@ Polish patch in response to community feedback. See [CHANGELOG.md](CHANGELOG.md#
 - ✓ Engine arithmetic operates in `CMTime` end-to-end (exact halving, no float drift)
 - ✓ DocC across every public symbol + `FrameAccuracy` catalog article
 
-## v0.3.0 — Overlay DSL & Filters
+## v0.3.0 — Overlay DSL & Filters ✓ shipped
 
-Visual composition — layers on top of video — and the foundational coordinate primitive that unblocks KadrUI.
+Visual composition layered on top of video, plus the coordinate primitives that unblock KadrUI in v0.4. See [CHANGELOG.md](CHANGELOG.md#030---2026-04-26).
 
 **Foundational**
 
-- **`Position` type:** `.normalized(0...1)` (default — resolution-independent), `.pixels(_, in: .renderSpace)`, `.percent`. Picked before overlays so KadrUI hit-testing in v0.4 doesn't force a breaking change.
-- **Stable layer IDs:** every overlay node gets an ID (user-supplied or auto-derived) so `VideoPreview` / `TimelineView` can route gestures back to layers.
+- ✓ `Position` (`.normalized` default, `.pixels`, `.percent` plus 9 named anchors), `Size` (with `.aspectFit` / `.aspectFill`), `Anchor`, `LayerID`
 
 **Overlay DSL**
 
-- **`Text { ... }` / `Image { ... }` / `Sticker { ... }`:** result-builder primitives with `.position(_:)`, `.anchor(_:)`, `.size(_:)`, `.opacity(_:)` modifiers. The DSL *is* the description language.
-- **Watermarking:** `Video.watermark(image:position:opacity:)` — sugar over the overlay primitives.
-- **`BackgroundMusic` / `TitleSequence`:** thin wrappers over the existing `AudioTrack` / `Video` APIs for ergonomic call sites.
+- ✓ `ImageOverlay`, `TextOverlay` + `TextStyle`, `StickerOverlay` (with `.shadow` and `.rotation`) — all conforming to a public `Overlay` protocol so `Video.overlay(_:)` is heterogeneous
+- ✓ Watermarking: `Video.watermark(_:position:size:opacity:)` sugar over the overlay primitives
+- ✓ Sugar: `BackgroundMusic` (defaults: volume / fades / ducking), `TitleSequence` (in-engine text rendering)
 
 **Filters & cropping**
 
-- **Filters:** `VideoClip.filter(_:)` with built-in presets — brightness, contrast, saturation, exposure, sepia, mono.
-- **Crop:** `Video.crop(at:size:anchor:)` — composition-wide rectangular crop sharing coordinate-system code with overlays.
+- ✓ Filters: `VideoClip.filter(_:)` with built-in `CIFilter` presets — `.brightness`, `.contrast`, `.saturation`, `.exposure`, `.sepia`, `.mono`. Variadic and chainable.
+- ✓ Crop: `Video.crop(at:size:anchor:)` — composition-wide rectangular crop sharing the layout coordinate system
 
 **Polish**
 
-- **SMPTE timecode formatter:** `Timecode(fps: .fps24)` — small utility for time-display use cases.
+- ✓ SMPTE timecode formatter: `Timecode(fps:)` — `HH:MM:SS:FF` format/parse at `.fps24` / `.fps25` / `.fps30` / `.fps50` / `.fps60` / `.custom(Int)`. Drop-frame intentionally not supported.
+
+**Deferred to v0.5** (alongside custom compositors)
+
+- Per-clip cropping (`VideoClip.crop(...)`)
+- Alpha-mask cropping (non-rectangular shapes)
+- Time-ranged overlay visibility (overlays appearing during a portion of the composition)
 
 ## v0.4.0 — KadrUI
 
