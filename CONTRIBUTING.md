@@ -23,11 +23,15 @@ Kadr uses a two-branch flow:
 
 ### Release flow
 
-1. When `develop` is ready for a release, open a PR from `develop` into `main`.
-2. Once merged, tag the release on `main`: `git tag v0.X.0 && git push origin v0.X.0`.
-3. Update `CHANGELOG.md` and `ROADMAP.md`.
+1. When `develop` is ready for a release, finalize `CHANGELOG.md` and any release-prep doc updates on a `chore/vX.Y.Z-release` branch and merge it into `develop`.
+2. Open a PR from `develop` into `main`.
+3. **Merge with "Rebase and merge".** This replays each topic-PR commit onto `main`'s tip so `main` and `develop` share commit hashes — no divergence, no back-merge ceremony required.
+4. Tag the release on `main`: `git tag -a v0.X.Y -m "v0.X.Y — <title>" && git push origin v0.X.Y`.
+5. Create a GitHub Release from the tag using the `CHANGELOG.md` entry as the body.
 
-Hotfixes for a shipped release branch from `main`, merge into `main` (with a tagged patch release), then are back-merged into `develop`.
+Hotfixes branch from `main` directly (e.g. `fix/v0.X.Y-something`), merge into `main` first (rebase-and-merge), tag the patch, then PR the same fix into `develop` to keep the branches synchronized.
+
+> **Historical note:** Releases v0.1.0, v0.2.0, and v0.2.1 used "Squash and merge" into `main`, which collapsed each release to a single commit but caused the histories to diverge — every subsequent release PR hit phantom CHANGELOG conflicts that had to be resolved with a back-merge PR. Starting from **v0.3.0** we use rebase-and-merge to eliminate that ceremony permanently. As a result `git log main` will look slightly mixed-shape (squashed releases up to v0.2.1, granular thereafter); that's intentional.
 
 ## Development
 
