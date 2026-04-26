@@ -31,7 +31,11 @@ Kadr uses a two-branch flow:
 
 Hotfixes branch from `main` directly (e.g. `fix/v0.X.Y-something`), merge into `main` first (rebase-and-merge), tag the patch, then PR the same fix into `develop` to keep the branches synchronized.
 
-> **Historical note:** Releases v0.1.0, v0.2.0, and v0.2.1 used "Squash and merge" into `main`, which collapsed each release to a single commit but caused the histories to diverge — every subsequent release PR hit phantom CHANGELOG conflicts that had to be resolved with a back-merge PR. Starting from **v0.3.0** we use rebase-and-merge to eliminate that ceremony permanently. As a result `git log main` will look slightly mixed-shape (squashed releases up to v0.2.1, granular thereafter); that's intentional.
+> **Historical note:** Releases v0.1.0, v0.2.0, v0.2.1, and v0.3.0 used "Squash and merge" into `main` because `develop`'s history still contained granular commits from earlier squashed releases — git's rebase tries to replay those commits even though their content is already on `main` as squashes, producing phantom conflicts. Each squash-merged release is followed by a one-time back-merge PR (`chore/sync-develop-with-main-vX.Y.Z`) that brings the squash commit into `develop`'s history.
+>
+> Starting from **v0.4.0** the cycle finally produces a `develop` branch that is a clean linear extension of `main` (because every commit on develop after the v0.3.0 back-merge is genuinely new), so the v0.4.0 release PR will be the first one that "Rebase and merge" handles cleanly. From then on, no back-merge ceremony required.
+>
+> The `git log main` history will look mixed-shape: one squash commit per release through v0.3.0, then granular per-PR commits from v0.4.0 onward. That's the intentional cost of cleaning up.
 
 ## Development
 
