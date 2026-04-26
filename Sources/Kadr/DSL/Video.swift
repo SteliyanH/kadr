@@ -41,11 +41,6 @@ public struct Video: Sendable {
             throw KadrError.noClipsProvided
         }
 
-        // Check for transitions — not yet implemented
-        if clips.contains(where: { $0 is Transition }) {
-            throw KadrError.notYetImplemented("Transitions arrive in v0.2")
-        }
-
         // Fast path: single ImageClip
         if clips.count == 1, let imageClip = clips.first as? ImageClip {
             let audioURL = imageClip.audioURL ?? audioTracks.first?.url
@@ -68,6 +63,7 @@ public struct Video: Sendable {
         let stream = ExportEngine.export(
             composition: result.composition,
             audioMix: result.audioMix,
+            videoComposition: result.videoComposition,
             preset: preset,
             to: url
         )

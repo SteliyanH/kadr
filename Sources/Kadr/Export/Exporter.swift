@@ -29,10 +29,6 @@ public final class Exporter: @unchecked Sendable {
                         throw KadrError.cancelled
                     }
 
-                    if clips.contains(where: { $0 is Transition }) {
-                        throw KadrError.notYetImplemented("Transitions arrive in v0.2")
-                    }
-
                     // Single ImageClip fast path
                     if clips.count == 1, let imageClip = clips.first as? ImageClip {
                         continuation.yield(ExportProgress(fractionCompleted: 0))
@@ -59,6 +55,7 @@ public final class Exporter: @unchecked Sendable {
                     let stream = ExportEngine.export(
                         composition: result.composition,
                         audioMix: result.audioMix,
+                        videoComposition: result.videoComposition,
                         preset: preset,
                         to: outputURL,
                         cancellationToken: token

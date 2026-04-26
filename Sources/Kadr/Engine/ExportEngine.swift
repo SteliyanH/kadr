@@ -6,6 +6,7 @@ import CoreMedia
 private struct ExportConfig: @unchecked Sendable {
     let composition: AVMutableComposition
     let audioMix: AVMutableAudioMix?
+    let videoComposition: AVMutableVideoComposition?
     let preset: Preset
     let outputURL: URL
     let cancellationToken: CancellationToken
@@ -16,6 +17,7 @@ internal enum ExportEngine {
     static func export(
         composition: AVMutableComposition,
         audioMix: AVMutableAudioMix?,
+        videoComposition: AVMutableVideoComposition? = nil,
         preset: Preset,
         to outputURL: URL,
         cancellationToken: CancellationToken = CancellationToken()
@@ -23,6 +25,7 @@ internal enum ExportEngine {
         let config = ExportConfig(
             composition: composition,
             audioMix: audioMix,
+            videoComposition: videoComposition,
             preset: preset,
             outputURL: outputURL,
             cancellationToken: cancellationToken
@@ -55,15 +58,18 @@ internal enum ExportEngine {
                     exportSession.outputURL = config.outputURL
                     exportSession.outputFileType = .mp4
                     exportSession.audioMix = config.audioMix
+                    // Preserve audio pitch when clips are time-scaled by .speed(_:)
+                    exportSession.audioTimePitchAlgorithm = .spectral
 
                     // Apply video composition to enforce preset resolution/frame rate
                     // (only when using a non-passthrough preset that supports re-encoding)
                     if compatible, presetName != AVAssetExportPresetPassthrough {
-                        let videoComposition = buildVideoComposition(
+                        if let provided = config.videoComposition {
+                            exportSession.videoComposition = provided
+                        } else if let videoComposition = buildVideoComposition(
                             for: config.composition,
                             preset: config.preset
-                        )
-                        if let videoComposition {
+                        ) {
                             exportSession.videoComposition = videoComposition
                         }
                     }
