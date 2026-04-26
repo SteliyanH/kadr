@@ -33,14 +33,17 @@ public struct TextStyle: Sendable, Equatable {
     /// Font weight. Only consulted when ``fontName`` is `nil` (system font).
     public var weight: Weight
 
+    /// Horizontal alignment of the rendered text within the overlay's frame.
     public enum Alignment: String, Sendable, Equatable {
         case leading, center, trailing
     }
 
+    /// Font weight, applied only when ``fontName`` is `nil` (system font).
     public enum Weight: Sendable, Equatable {
         case regular, medium, bold
     }
 
+    /// Build a text style. Defaults: system font, 36pt, white, leading-aligned, regular weight.
     public init(
         fontName: String? = nil,
         fontSize: Double = 36,

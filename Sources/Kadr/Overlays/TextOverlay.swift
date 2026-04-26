@@ -23,10 +23,15 @@ public struct TextOverlay: Overlay, Sendable {
     public let text: String
     /// Visual style. Defaults to ``TextStyle/default``.
     public let style: TextStyle
+    /// Where the overlay's anchor lands on the render canvas.
     public let position: Position
+    /// Explicit size, or `nil` to fill the full render area for edge-to-edge wrapping.
     public let size: Size?
+    /// Which point on the overlay aligns to its ``position``.
     public let anchor: Anchor
+    /// `0.0` invisible to `1.0` fully opaque.
     public let opacity: Double
+    /// Optional stable identifier for KadrUI hit-testing in v0.4.
     public let layerID: LayerID?
 
     /// Build a text overlay. Defaults: full-render-area frame, centered position,
@@ -59,6 +64,7 @@ public struct TextOverlay: Overlay, Sendable {
         self.layerID = layerID
     }
 
+    /// Place the overlay's anchor point at the given render-space position.
     public func position(_ position: Position) -> TextOverlay {
         TextOverlay(text: text, style: style, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID)
     }
@@ -69,14 +75,17 @@ public struct TextOverlay: Overlay, Sendable {
         TextOverlay(text: text, style: style, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID)
     }
 
+    /// Choose which point on the overlay aligns to its ``position(_:)``. Default `.center`.
     public func anchor(_ anchor: Anchor) -> TextOverlay {
         TextOverlay(text: text, style: style, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID)
     }
 
+    /// Set the overlay's opacity. `1.0` is fully opaque, `0.0` is invisible.
     public func opacity(_ opacity: Double) -> TextOverlay {
         TextOverlay(text: text, style: style, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID)
     }
 
+    /// Tag the overlay with a stable ``LayerID`` so KadrUI (v0.4) can route gestures to it.
     public func id(_ layerID: LayerID) -> TextOverlay {
         TextOverlay(text: text, style: style, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID)
     }

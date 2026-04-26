@@ -27,8 +27,11 @@ import AppKit
 /// Image-based titles (your own pre-rendered title card) — use ``ImageClip`` directly:
 /// `ImageClip(titleImage, duration: 3.0)`.
 public struct TitleSequence: Clip, Sendable {
+    /// The string rendered into the title image.
     public let text: String
+    /// Visual style applied to the rendered text.
     public let style: TextStyle
+    /// Solid color filling the area behind the text.
     public let backgroundColor: PlatformColor
     private let _duration: CMTime
 

@@ -18,9 +18,13 @@ import CoreMedia
 /// For full control over fade timing or to omit ducking entirely, use ``Video/audio(_:)-(_)``
 /// with a hand-built ``AudioTrack``.
 public struct BackgroundMusic: Sendable {
+    /// File URL of the audio source.
     public let url: URL
+    /// Overall volume (`0.0`...`1.0`). Default `0.6` for typical background levels.
     public let volume: Double
+    /// Fade-in duration in seconds at the start of the composition.
     public let fadeIn: TimeInterval
+    /// Fade-out duration in seconds at the end of the composition.
     public let fadeOut: TimeInterval
     /// Target volume (`0.0`...`1.0`) when clip audio plays. `nil` disables ducking.
     public let duckingLevel: Double?

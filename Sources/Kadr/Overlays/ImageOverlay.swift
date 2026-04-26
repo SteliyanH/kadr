@@ -26,10 +26,15 @@ import CoreGraphics
 public struct ImageOverlay: Overlay, Sendable {
     /// The source image rendered into the overlay layer.
     public let image: PlatformImage
+    /// Where the overlay's anchor lands on the render canvas.
     public let position: Position
+    /// Explicit size, or `nil` to use the image's natural pixel dimensions.
     public let size: Size?
+    /// Which point on the overlay aligns to its ``position``.
     public let anchor: Anchor
+    /// `0.0` invisible to `1.0` fully opaque.
     public let opacity: Double
+    /// Optional stable identifier for KadrUI hit-testing in v0.4.
     public let layerID: LayerID?
 
     /// Build an overlay with the given image. Defaults: centered, natural size, full
