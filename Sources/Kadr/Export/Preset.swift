@@ -1,16 +1,31 @@
 import Foundation
 
+/// Video codec used during export. H.264 has the broadest compatibility; HEVC produces
+/// smaller files at the same quality on Apple Silicon and most modern devices.
 public enum Codec: Sendable, Equatable {
+    /// H.264 / AVC. Most compatible.
     case h264
+    /// H.265 / HEVC. Smaller files, requires modern decoders.
     case hevc
 }
 
+/// Resolution / frame rate / codec preset for export.
+///
+/// The built-in cases target common social-media formats. For other dimensions or
+/// frame rates, use ``custom(width:height:frameRate:codec:)``.
 public enum Preset: Sendable {
+    /// 1080×1920, 30fps, H.264 (vertical). Default when no preset is set.
     case auto
+    /// 1080×1920, 30fps, HEVC (vertical). Tuned for Instagram Reels and YouTube Shorts.
     case reelsAndShorts
+    /// 1080×1920, 30fps, H.264 (vertical). Tuned for TikTok.
     case tiktok
+    /// 1080×1080, 30fps, H.264 (square).
     case square
+    /// 1920×1080, 24fps, H.264 (cinematic widescreen).
     case cinema
+    /// Fully custom dimensions, frame rate, and codec. `frameRate` is an integer fps;
+    /// for fractional frame rates (e.g. 23.976) use ``Preset/cinema`` or post-process.
     case custom(width: Int, height: Int, frameRate: Int, codec: Codec)
 
     internal var resolution: CGSize {

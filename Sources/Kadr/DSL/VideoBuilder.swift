@@ -1,3 +1,6 @@
+/// Result builder that lets ``Video``'s init accept a list of ``Clip``s with control flow
+/// (`if`, `for`, `switch`). You generally don't reference this type directly — write
+/// `Video { ... }` and the compiler invokes it for you.
 @resultBuilder
 public enum VideoBuilder {
     public static func buildBlock(_ components: any Clip...) -> [any Clip] {

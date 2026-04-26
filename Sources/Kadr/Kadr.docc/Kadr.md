@@ -19,6 +19,10 @@ let url = try await Video {
 
 ## Topics
 
+### Essentials
+
+- <doc:FrameAccuracy>
+
 ### Composing Videos
 
 - ``Video``
