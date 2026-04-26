@@ -20,10 +20,12 @@ public struct VideoClip: Clip, Sendable {
     internal let isReversed: Bool
     internal let isMuted: Bool
     internal let replacementAudioURL: URL?
+    internal let speedRate: Double
 
     public var duration: CMTime {
         if let trimRange {
-            return CMTime(seconds: trimRange.upperBound - trimRange.lowerBound, preferredTimescale: 600)
+            let raw = trimRange.upperBound - trimRange.lowerBound
+            return CMTime(seconds: raw / speedRate, preferredTimescale: 600)
         }
         // Synchronous fallback — actual duration requires async asset loading
         return .zero
@@ -55,30 +57,32 @@ public struct VideoClip: Clip, Sendable {
         self.isReversed = false
         self.isMuted = false
         self.replacementAudioURL = nil
+        self.speedRate = 1.0
     }
 
-    internal init(url: URL, trimRange: ClosedRange<TimeInterval>?, isReversed: Bool, isMuted: Bool, replacementAudioURL: URL?) {
+    internal init(url: URL, trimRange: ClosedRange<TimeInterval>?, isReversed: Bool, isMuted: Bool, replacementAudioURL: URL?, speedRate: Double = 1.0) {
         self.url = url
         self.trimRange = trimRange
         self.isReversed = isReversed
         self.isMuted = isMuted
         self.replacementAudioURL = replacementAudioURL
+        self.speedRate = speedRate
     }
 
     public func trimmed(to range: ClosedRange<TimeInterval>) -> VideoClip {
-        VideoClip(url: url, trimRange: range, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL)
+        VideoClip(url: url, trimRange: range, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate)
     }
 
     public func reversed() -> VideoClip {
-        VideoClip(url: url, trimRange: trimRange, isReversed: true, isMuted: isMuted, replacementAudioURL: replacementAudioURL)
+        VideoClip(url: url, trimRange: trimRange, isReversed: true, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate)
     }
 
     public func muted() -> VideoClip {
-        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: true, replacementAudioURL: replacementAudioURL)
+        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: true, replacementAudioURL: replacementAudioURL, speedRate: speedRate)
     }
 
     public func withAudio(_ audioURL: URL) -> VideoClip {
-        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: true, replacementAudioURL: audioURL)
+        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: true, replacementAudioURL: audioURL, speedRate: speedRate)
     }
 
     public func thumbnail(at time: TimeInterval = 0) async throws -> PlatformImage {
