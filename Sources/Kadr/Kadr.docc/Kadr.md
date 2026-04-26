@@ -68,6 +68,12 @@ let url = try await Video {
 
 - ``Video/crop(at:size:anchor:)``
 
+### Sugar (v0.3+)
+
+- ``BackgroundMusic``
+- ``TitleSequence``
+- ``Timecode``
+
 ### Export
 
 - ``Exporter``

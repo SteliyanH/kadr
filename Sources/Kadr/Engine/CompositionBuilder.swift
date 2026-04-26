@@ -69,6 +69,18 @@ internal enum CompositionBuilder {
                 if imageClip.audioURL != nil {
                     clipAudioRanges.append(CMTimeRange(start: beforeIP, duration: CMTimeSubtract(insertionPoint, beforeIP)))
                 }
+            } else if let title = clip as? TitleSequence {
+                // Render the title to a PlatformImage at the export's render size, then
+                // dispatch via the existing ImageClip insertion path.
+                let titleImage = title.render(at: preset.resolution)
+                let imageClip = ImageClip(titleImage, duration: title.duration)
+                try await insertImageClip(
+                    imageClip,
+                    videoTrack: compositionVideoTrack,
+                    audioTrack: compositionAudioTrack,
+                    at: &insertionPoint,
+                    preset: preset
+                )
             }
         }
 
@@ -130,6 +142,10 @@ internal enum CompositionBuilder {
             } else if let imageClip = item.clip as? ImageClip {
                 try await insertImageClip(imageClip, videoTrack: videoTrack, audioTrack: audioTrack, at: &insertionPoint, preset: preset)
                 contributesAudio = imageClip.audioURL != nil
+            } else if let title = item.clip as? TitleSequence {
+                let titleImage = title.render(at: preset.resolution)
+                let imageClip = ImageClip(titleImage, duration: title.duration)
+                try await insertImageClip(imageClip, videoTrack: videoTrack, audioTrack: audioTrack, at: &insertionPoint, preset: preset)
             }
             let placedDuration = CMTimeSubtract(insertionPoint, durationBefore)
             let timeRange = CMTimeRange(start: startTime, duration: placedDuration)
@@ -546,11 +562,23 @@ internal enum CompositionBuilder {
                 guard duckLevel >= 0 && duckLevel <= 1 else {
                     throw KadrError.invalidDuckingLevel(duckLevel)
                 }
+                // Compute the time ranges already occupied by fade ramps so we can skip
+                // overlapping ducking ramps. AVMutableScheduledAudioParameters throws
+                // an exception if two ramps overlap, so explicit avoidance is required.
+                var fadeRanges: [CMTimeRange] = []
+                if CMTimeCompare(audioTrack.fadeInDuration, .zero) > 0 {
+                    fadeRanges.append(CMTimeRange(start: .zero, duration: audioTrack.fadeInDuration))
+                }
+                if CMTimeCompare(audioTrack.fadeOutDuration, .zero) > 0 {
+                    let fadeStart = CMTimeSubtract(insertDuration, audioTrack.fadeOutDuration)
+                    fadeRanges.append(CMTimeRange(start: fadeStart, duration: audioTrack.fadeOutDuration))
+                }
                 applyDucking(
                     on: params,
                     baseVolume: audioTrack.volumeLevel,
                     duckLevel: duckLevel,
-                    over: clipAudioRanges
+                    over: clipAudioRanges,
+                    excluding: fadeRanges
                 )
             }
 
@@ -563,15 +591,28 @@ internal enum CompositionBuilder {
     /// Apply per-range ducking ramps on a music track's audio mix parameters.
     /// At each clip-audio range, fades the music down from `baseVolume` to `baseVolume * duckLevel`
     /// over a short window at the start, then back up at the end.
+    ///
+    /// Ducking ramps that overlap any range in `excluding` (typically the fade-in/fade-out
+    /// ranges) are skipped — AVFoundation's audio mix parameters reject overlapping ramps.
     private static func applyDucking(
         on params: AVMutableAudioMixInputParameters,
         baseVolume: Double,
         duckLevel: Double,
-        over ranges: [CMTimeRange]
+        over ranges: [CMTimeRange],
+        excluding excludedRanges: [CMTimeRange] = []
     ) {
         let rampDuration = CMTime(seconds: 0.1, preferredTimescale: 600)
         let baseFloat = Float(baseVolume)
         let duckedFloat = Float(baseVolume * duckLevel)
+
+        func overlapsAnyExcluded(_ range: CMTimeRange) -> Bool {
+            for excluded in excludedRanges {
+                if CMTimeRangeGetIntersection(range, otherRange: excluded).duration > .zero {
+                    return true
+                }
+            }
+            return false
+        }
 
         for range in ranges {
             // Skip ranges shorter than 2× ramp (no useful duck window)
@@ -579,18 +620,24 @@ internal enum CompositionBuilder {
                 continue
             }
             // Ramp down at the start
-            params.setVolumeRamp(
-                fromStartVolume: baseFloat,
-                toEndVolume: duckedFloat,
-                timeRange: CMTimeRange(start: range.start, duration: rampDuration)
-            )
+            let downRange = CMTimeRange(start: range.start, duration: rampDuration)
+            if !overlapsAnyExcluded(downRange) {
+                params.setVolumeRamp(
+                    fromStartVolume: baseFloat,
+                    toEndVolume: duckedFloat,
+                    timeRange: downRange
+                )
+            }
             // Ramp up at the end
             let upStart = CMTimeSubtract(range.end, rampDuration)
-            params.setVolumeRamp(
-                fromStartVolume: duckedFloat,
-                toEndVolume: baseFloat,
-                timeRange: CMTimeRange(start: upStart, duration: rampDuration)
-            )
+            let upRange = CMTimeRange(start: upStart, duration: rampDuration)
+            if !overlapsAnyExcluded(upRange) {
+                params.setVolumeRamp(
+                    fromStartVolume: duckedFloat,
+                    toEndVolume: baseFloat,
+                    timeRange: upRange
+                )
+            }
         }
     }
 
