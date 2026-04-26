@@ -1,5 +1,11 @@
 import Foundation
 import CoreMedia
+import AVFoundation
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 /// A composition of clips, optional background audio, and an export preset.
 ///
@@ -178,5 +184,90 @@ public struct Video: Sendable {
     /// estimated time remaining, or cancellation. Otherwise prefer ``export(to:)``.
     public func exporter(to url: URL) -> Exporter {
         Exporter(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays, crop: crop, outputURL: url)
+    }
+
+    // MARK: - Preview
+
+    /// Build an `AVPlayerItem` ready for playback in `AVPlayer` / `AVKit.VideoPlayer`.
+    ///
+    /// The returned item has the composition's video composition (preset resolution +
+    /// frame rate, crop, transitions) and audio mix (background music, fades, ducking)
+    /// pre-attached, so video frames and audio match what ``export(to:)`` writes to disk.
+    ///
+    /// > **Overlays are not baked in.** AVFoundation's
+    /// > `AVVideoCompositionCoreAnimationTool` is export-only and crashes when attached
+    /// > to a playback `videoComposition`. Render overlays separately as views layered
+    /// > over the player, using ``Layout/resolveFrame(position:size:anchor:in:)`` to
+    /// > place each one in the same coordinates the engine renders to. The exported
+    /// > file still contains the overlays — only the *preview* surface excludes them.
+    ///
+    /// ```swift
+    /// import SwiftUI
+    /// import AVKit
+    /// import Kadr
+    ///
+    /// struct PreviewScreen: View {
+    ///     let video: Video
+    ///     @State private var player: AVPlayer?
+    ///
+    ///     var body: some View {
+    ///         VideoPlayer(player: player)
+    ///             .task {
+    ///                 let item = try? await video.makePlayerItem()
+    ///                 player = item.map(AVPlayer.init(playerItem:))
+    ///             }
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// Each call returns a fresh `AVPlayerItem` because `AVPlayerItem` carries playback
+    /// state and the embedded `AVVideoCompositionCoreAnimationTool` cannot be shared.
+    ///
+    /// - Throws: ``KadrError/noClipsProvided`` if the composition has no clips, or any
+    ///   error surfaced by the underlying composition build.
+    ///
+    /// > MainActor: this method is `@MainActor` because `AVPlayerItem` requires main-thread
+    /// > construction under Swift 6 strict concurrency. The expensive composition build
+    /// > (`PlaybackComposer.compose`) is awaited normally and hops off-main while running.
+    @MainActor
+    public func makePlayerItem() async throws -> AVPlayerItem {
+        let playback = try await PlaybackComposer.compose(video: self)
+        let item = AVPlayerItem(asset: playback.composition)
+        item.videoComposition = playback.videoComposition
+        item.audioMix = playback.audioMix
+        return item
+    }
+
+    /// Render a single frame of the composition at `time` for use as a thumbnail.
+    ///
+    /// Honors clip layout, transitions, crop, and preset resolution — same as
+    /// ``makePlayerItem()``. **Overlays are not baked in** for the same reason: the
+    /// underlying `AVAssetImageGenerator` shares the playback path's videoComposition
+    /// constraints. Compose overlays on top of the returned image manually if needed.
+    ///
+    /// - Parameter time: Composition time of the frame to render.
+    /// - Returns: A `UIImage` on iOS / tvOS / visionOS, `NSImage` on macOS.
+    /// - Throws: ``KadrError/noClipsProvided`` or the underlying image-generation error.
+    public func thumbnail(at time: CMTime) async throws -> PlatformImage {
+        let playback = try await PlaybackComposer.compose(video: self)
+        let generator = AVAssetImageGenerator(asset: playback.composition)
+        generator.appliesPreferredTrackTransform = true
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        if let videoComposition = playback.videoComposition {
+            generator.videoComposition = videoComposition
+        }
+        let cgImage = try await generator.image(at: time).image
+        #if canImport(UIKit)
+        return UIImage(cgImage: cgImage)
+        #elseif canImport(AppKit)
+        return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+        #endif
+    }
+
+    /// Render a single frame of the composition at `time` (seconds) for use as a thumbnail.
+    /// Convenience overload of ``thumbnail(at:)-(CMTime)``.
+    public func thumbnail(at time: TimeInterval) async throws -> PlatformImage {
+        try await thumbnail(at: CMTime(seconds: time, preferredTimescale: 600))
     }
 }
