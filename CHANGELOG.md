@@ -22,10 +22,21 @@ The v0.4.0 release exposes the public introspection and preview primitives neede
 - `Layout` — public namespace for layout helpers that mirror the engine's coordinate math.
 - `Layout.resolveFrame(position:size:anchor:in:)` — resolve a `Position` + `Size` + `Anchor` triplet into the same render-space `CGRect` the export engine produces. Use from custom UI to draw hit-test regions that line up exactly with what the engine renders.
 
+### Added — Preview API
+
+- `Video.makePlayerItem() async throws -> AVPlayerItem` (`@MainActor`) — produces an `AVPlayerItem` with the composition's videoComposition (preset resolution + frame rate, crop, transitions) and audioMix (background music, fades, ducking) pre-attached, ready for `AVKit.VideoPlayer`.
+- `Video.thumbnail(at: CMTime) async throws -> PlatformImage` and `thumbnail(at: TimeInterval)` — render a single composition frame at `time` via `AVAssetImageGenerator`, honoring crop and preset resolution.
+- **Overlays are intentionally not baked into the preview surface.** AVFoundation's `AVVideoCompositionCoreAnimationTool` is export-only and crashes if attached to a playback `videoComposition`. Preview consumers (e.g. kadr-ui) render overlays as views layered over the player using `Layout.resolveFrame(...)`. The exported file still bakes them in.
+
+### Changed
+
+- Extracted `buildSimpleVideoComposition` from `ExportEngine` to a shared internal `PlaybackComposer`. Both export and preview pipelines now use the same videoComposition builder, so what plays back in `makePlayerItem()` matches what `export(to:)` writes (apart from the overlay limitation noted above). No behavior change for export.
+
 ### Tests
 
 - New `IntrospectionTests` suite (14 tests) verifies the public read-only contract via a non-`@testable` import — a regression that demotes any introspection property back to `internal` will fail the build.
 - New `LayoutHelpersTests` suite (7 tests) covers the public `Layout` API across normalized / pixel / percent / aspectFit cases and across multiple render sizes.
+- New `PreviewAPITests` suite (8 tests) covers `makePlayerItem()` (image clip duration, video clip videoComposition shape, crop renderSize, overlay non-baking, identity-per-call) and `thumbnail(at:)` (returns a real frame, honors crop, accepts both `CMTime` and `TimeInterval`). Full suite: 202 → 231 across the v0.4.0 prep PRs.
 
 ## [0.3.0] - 2026-04-26
 
