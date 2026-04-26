@@ -45,6 +45,12 @@ let url = try await Video {
 - ``Transition``
 - ``SlideDirection``
 
+### Layout (v0.3+)
+
+- ``Position``
+- ``Size``
+- ``Anchor``
+
 ### Export
 
 - ``Exporter``
