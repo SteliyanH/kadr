@@ -24,12 +24,54 @@ struct SimpleEditorView: View {
     @State private var errorMessage: String?
     @State private var selectedDemo: DemoType = .singleImage
 
-    enum DemoType: String, CaseIterable {
+    // Parametric controls for v0.2 demos
+    @State private var slideDirection: SlideDirectionChoice = .fromRight
+    @State private var speedRate: Double = 0.5
+    @State private var duckingLevel: Double = 0.2
+
+    enum DemoType: String, CaseIterable, Identifiable {
+        // v0.1
         case singleImage = "Image + Audio"
         case slideshow = "Slideshow"
         case trimVideo = "Trim Video"
         case mergeClips = "Merge Clips"
         case replaceAudio = "Replace Audio"
+        // v0.2 — transitions
+        case transitionFade = "Transition: Fade"
+        case transitionDissolve = "Transition: Dissolve"
+        case transitionSlide = "Transition: Slide"
+        // v0.2 — speed
+        case speed = "Speed Control"
+        // v0.2 — audio ducking
+        case ducking = "Audio Ducking"
+
+        var id: Self { self }
+
+        var category: String {
+            switch self {
+            case .singleImage, .slideshow, .trimVideo, .mergeClips, .replaceAudio:
+                return "v0.1 Basics"
+            case .transitionFade, .transitionDissolve, .transitionSlide:
+                return "v0.2 Transitions"
+            case .speed:
+                return "v0.2 Speed"
+            case .ducking:
+                return "v0.2 Audio"
+            }
+        }
+    }
+
+    enum SlideDirectionChoice: String, CaseIterable, Identifiable {
+        case fromLeft, fromRight, fromTop, fromBottom
+        var id: Self { self }
+        var direction: SlideDirection {
+            switch self {
+            case .fromLeft: return .fromLeft
+            case .fromRight: return .fromRight
+            case .fromTop: return .fromTop
+            case .fromBottom: return .fromBottom
+            }
+        }
     }
 
     private let sampleNames = ["sample_sunset", "sample_ocean", "sample_forest", "sample_purple"]
@@ -61,18 +103,69 @@ struct SimpleEditorView: View {
                 }
                 .padding(.horizontal)
 
-                // Demo picker
+                // Demo picker — menu style scales well past ~5 items
                 Picker("Demo", selection: $selectedDemo) {
-                    ForEach(DemoType.allCases, id: \.self) { Text($0.rawValue) }
+                    Section("v0.1 Basics") {
+                        ForEach([DemoType.singleImage, .slideshow, .trimVideo, .mergeClips, .replaceAudio]) {
+                            Text($0.rawValue).tag($0)
+                        }
+                    }
+                    Section("v0.2 Transitions") {
+                        ForEach([DemoType.transitionFade, .transitionDissolve, .transitionSlide]) {
+                            Text($0.rawValue).tag($0)
+                        }
+                    }
+                    Section("v0.2 Effects") {
+                        Text(DemoType.speed.rawValue).tag(DemoType.speed)
+                        Text(DemoType.ducking.rawValue).tag(DemoType.ducking)
+                    }
                 }
-                .pickerStyle(.segmented)
+                .pickerStyle(.menu)
                 .padding(.horizontal)
 
                 // Description
                 Text(demoDescription)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
                     .padding(.horizontal)
+
+                // Parametric controls — only shown for the demos that use them
+                if selectedDemo == .transitionSlide {
+                    Picker("Slide direction", selection: $slideDirection) {
+                        ForEach(SlideDirectionChoice.allCases) {
+                            Text($0.rawValue).tag($0)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
+                }
+
+                if selectedDemo == .speed {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Speed: \(speedRate, specifier: "%.2f")×")
+                                .font(.caption.monospacedDigit())
+                            Spacer()
+                            Text("0.25 – 4.0").font(.caption2).foregroundStyle(.secondary)
+                        }
+                        Slider(value: $speedRate, in: 0.25...4.0)
+                    }
+                    .padding(.horizontal)
+                }
+
+                if selectedDemo == .ducking {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Duck level: \(Int(duckingLevel * 100))%")
+                                .font(.caption.monospacedDigit())
+                            Spacer()
+                            Text("0% (silent) – 100% (off)").font(.caption2).foregroundStyle(.secondary)
+                        }
+                        Slider(value: $duckingLevel, in: 0...1)
+                    }
+                    .padding(.horizontal)
+                }
 
                 // Export button
                 Button(action: { Task { await exportVideo() } }) {
@@ -118,11 +211,21 @@ struct SimpleEditorView: View {
         case .slideshow:
             return "4 images at 2s each with background music"
         case .trimVideo:
-            return "Trim sample video to 5-10 second range"
+            return "Trim sample video to 5–10 second range"
         case .mergeClips:
             return "Merge a trimmed video clip with an image slide"
         case .replaceAudio:
             return "Mute the video and add new background music"
+        case .transitionFade:
+            return "Two image slides joined by a 0.5s fade-through-black"
+        case .transitionDissolve:
+            return "Two image slides cross-blended over 0.5s"
+        case .transitionSlide:
+            return "Two video clips with a sliding transition (pick a direction above)"
+        case .speed:
+            return "A 4-second video clip played back at the chosen speed multiplier (audio pitch preserved)"
+        case .ducking:
+            return "Video with its own audio plus background music. Music ducks to the chosen level whenever the clip plays."
         }
     }
 
@@ -181,6 +284,50 @@ struct SimpleEditorView: View {
                     VideoClip(url: sampleVideoURL).trimmed(to: 0...10).muted()
                 }
                 .audio(url: sampleAudioURL)
+                .exporter(to: url)
+
+            case .transitionFade:
+                exporter = Video {
+                    ImageClip(loadSampleImage(named: "sample_sunset"), duration: 2.0)
+                    Transition.fade(duration: 0.5)
+                    ImageClip(loadSampleImage(named: "sample_ocean"), duration: 2.0)
+                }
+                .audio(url: sampleAudioURL)
+                .preset(.square)
+                .exporter(to: url)
+
+            case .transitionDissolve:
+                exporter = Video {
+                    ImageClip(loadSampleImage(named: "sample_forest"), duration: 2.0)
+                    Transition.dissolve(duration: 0.5)
+                    ImageClip(loadSampleImage(named: "sample_purple"), duration: 2.0)
+                }
+                .audio(url: sampleAudioURL)
+                .preset(.square)
+                .exporter(to: url)
+
+            case .transitionSlide:
+                exporter = Video {
+                    VideoClip(url: sampleVideoURL).trimmed(to: 0...3)
+                    Transition.slide(direction: slideDirection.direction, duration: 0.4)
+                    VideoClip(url: sampleVideoURL).trimmed(to: 5...8)
+                }
+                .preset(.cinema)
+                .exporter(to: url)
+
+            case .speed:
+                exporter = Video {
+                    VideoClip(url: sampleVideoURL).trimmed(to: 0...4).speed(speedRate)
+                }
+                .preset(.cinema)
+                .exporter(to: url)
+
+            case .ducking:
+                exporter = Video {
+                    VideoClip(url: sampleVideoURL).trimmed(to: 0...8)
+                }
+                .audio { AudioTrack(url: sampleAudioURL).volume(0.9).ducking(duckingLevel) }
+                .preset(.cinema)
                 .exporter(to: url)
             }
 
