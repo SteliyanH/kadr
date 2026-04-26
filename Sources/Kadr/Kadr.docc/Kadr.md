@@ -52,6 +52,10 @@ let url = try await Video {
 - ``Anchor``
 - ``LayerID``
 
+### Overlays (v0.3+)
+
+- ``ImageOverlay``
+
 ### Export
 
 - ``Exporter``

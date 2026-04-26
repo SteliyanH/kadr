@@ -7,6 +7,7 @@ private struct ExportConfig: @unchecked Sendable {
     let composition: AVMutableComposition
     let audioMix: AVMutableAudioMix?
     let videoComposition: AVMutableVideoComposition?
+    let overlays: [ImageOverlay]
     let preset: Preset
     let outputURL: URL
     let cancellationToken: CancellationToken
@@ -18,6 +19,7 @@ internal enum ExportEngine {
         composition: AVMutableComposition,
         audioMix: AVMutableAudioMix?,
         videoComposition: AVMutableVideoComposition? = nil,
+        overlays: [ImageOverlay] = [],
         preset: Preset,
         to outputURL: URL,
         cancellationToken: CancellationToken = CancellationToken()
@@ -26,6 +28,7 @@ internal enum ExportEngine {
             composition: composition,
             audioMix: audioMix,
             videoComposition: videoComposition,
+            overlays: overlays,
             preset: preset,
             outputURL: outputURL,
             cancellationToken: cancellationToken
@@ -64,12 +67,30 @@ internal enum ExportEngine {
                     // Apply video composition to enforce preset resolution/frame rate
                     // (only when using a non-passthrough preset that supports re-encoding)
                     if compatible, presetName != AVAssetExportPresetPassthrough {
+                        let baseComposition: AVMutableVideoComposition?
                         if let provided = config.videoComposition {
-                            exportSession.videoComposition = provided
-                        } else if let videoComposition = buildVideoComposition(
-                            for: config.composition,
-                            preset: config.preset
-                        ) {
+                            baseComposition = provided
+                        } else {
+                            baseComposition = buildVideoComposition(
+                                for: config.composition,
+                                preset: config.preset
+                            )
+                        }
+
+                        if let videoComposition = baseComposition {
+                            // If overlays were provided, attach a CALayer animation tool.
+                            // The CALayer tree must be built fresh per export — AVFoundation
+                            // takes ownership and an instance can't be shared.
+                            if !config.overlays.isEmpty {
+                                let tree = OverlayRenderer.buildLayerTree(
+                                    overlays: config.overlays,
+                                    renderSize: config.preset.resolution
+                                )
+                                videoComposition.animationTool = AVVideoCompositionCoreAnimationTool(
+                                    postProcessingAsVideoLayer: tree.videoLayer,
+                                    in: tree.parent
+                                )
+                            }
                             exportSession.videoComposition = videoComposition
                         }
                     }
