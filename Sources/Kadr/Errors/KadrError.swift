@@ -9,4 +9,5 @@ public enum KadrError: Error, Sendable {
     case notYetImplemented(String)
     case invalidTransition(String)
     case invalidSpeed(Double)
+    case invalidDuckingLevel(Double)
 }
