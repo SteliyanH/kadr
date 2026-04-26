@@ -248,16 +248,29 @@ struct ExportTests {
         try? FileManager.default.removeItem(at: result)
     }
 
-    @Test func transitionThrowsNotYetImplemented() async throws {
+    @Test func slideTransitionThrowsNotYetImplemented() async throws {
         let videoURL = try loadTestVideoURL()
-
-        let outputURL = testOutputURL("transition")
+        let outputURL = testOutputURL("slide")
 
         await #expect(throws: KadrError.self) {
             _ = try await Video {
-                VideoClip(url: videoURL)
-                Transition.fade(duration: 0.5)
-                VideoClip(url: videoURL)
+                VideoClip(url: videoURL).trimmed(to: 0...3)
+                Transition.slide(direction: .fromLeft, duration: 0.5)
+                VideoClip(url: videoURL).trimmed(to: 0...3)
+            }
+            .export(to: outputURL)
+        }
+    }
+
+    @Test func dissolveTransitionThrowsNotYetImplemented() async throws {
+        let videoURL = try loadTestVideoURL()
+        let outputURL = testOutputURL("dissolve")
+
+        await #expect(throws: KadrError.self) {
+            _ = try await Video {
+                VideoClip(url: videoURL).trimmed(to: 0...3)
+                Transition.dissolve(duration: 0.5)
+                VideoClip(url: videoURL).trimmed(to: 0...3)
             }
             .export(to: outputURL)
         }
