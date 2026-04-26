@@ -60,6 +60,10 @@ let url = try await Video {
 - ``TextStyle``
 - ``StickerOverlay``
 
+### Filters (v0.3+)
+
+- ``Filter``
+
 ### Export
 
 - ``Exporter``
