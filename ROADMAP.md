@@ -56,15 +56,23 @@ Visual composition layered on top of video, plus the coordinate primitives that 
 - Alpha-mask cropping (non-rectangular shapes)
 - Time-ranged overlay visibility (overlays appearing during a portion of the composition)
 
-## v0.4.0 — KadrUI
+## v0.4.0 — Composition Introspection & Preview Primitives
 
-Separate SwiftUI package for video editing components. Built on the v0.3.0 `Position` + layer-ID foundations.
+Public APIs that let any caller — including the new [`kadr-ui`](https://github.com/SteliyanH/kadr-ui) package — render previews, generate thumbnails, draw timelines, and hit-test overlays without re-deriving state from the DSL.
 
-- `VideoPreview` — preview a `Video` composition before export
-- `TimelineView` — visual timeline showing clips, transitions, audio
-- `ThumbnailStrip` — scrubbing strip generated from video thumbnails
-- **Gesture handlers:** `.onTap`, `.onDrag` on overlay layers — hit-tests through the layer ID contract from v0.3.0
-- Ships as a separate `kadr-ui` package depending on `Kadr`
+**Introspection**
+- Public read-only access on `Video`: `clips`, `overlays`, `audioTracks`, `preset`, `crop`
+- `CropRegion` made public; `Preset.resolution` and `Preset.frameRate` exposed
+- Per-clip property exposure (`VideoClip.trimRange`/`isReversed`/`isMuted`/`speedRate`/`filters`, `ImageClip.backgroundColor`/`audioURL`, `AudioTrack.volumeLevel`/`fadeInDuration`/`fadeOutDuration`/`duckingLevel`)
+
+**Preview**
+- `Video.makeAsset()` / `Video.makePlayerItem()` for `AVKit.VideoPlayer` integration
+- `Video.thumbnail(at: CMTime)` for composition-level frame rendering
+
+**Layout**
+- Public `Layout.resolveFrame(position:size:anchor:in:sourceAspect:)` mirroring the engine's internal frame resolver — KadrUI uses this for pixel-exact hit-testing in the same coordinate space the engine renders in
+
+The `kadr-ui` SwiftUI package consuming these primitives ships on its own version track. See its [roadmap](https://github.com/SteliyanH/kadr-ui#status) for `VideoPreview`, `TimelineView`, `ThumbnailStrip`, and gesture-handler component plans.
 
 ## v0.5.0 — Advanced Composition
 

@@ -20,10 +20,23 @@ import CoreMedia
 public struct AudioTrack: Sendable {
     /// File URL of the audio source.
     public let url: URL
-    internal let volumeLevel: Double
-    internal let fadeInDuration: CMTime
-    internal let fadeOutDuration: CMTime
-    internal let duckingLevel: Double?
+
+    /// Linear volume multiplier in `0.0...1.0`. `1.0` is the asset's natural level.
+    /// Set via ``volume(_:)``.
+    public let volumeLevel: Double
+
+    /// Fade-in duration applied at the start of the track. `.zero` if no fade-in.
+    /// Set via ``fadeIn(_:)`` (CMTime or TimeInterval).
+    public let fadeInDuration: CMTime
+
+    /// Fade-out duration applied at the end of the track. `.zero` if no fade-out.
+    /// Set via ``fadeOut(_:)`` (CMTime or TimeInterval).
+    public let fadeOutDuration: CMTime
+
+    /// Auto-ducking target level in `0.0...1.0`, or `nil` if ducking is disabled. When set,
+    /// the engine attenuates this track to `volumeLevel * duckingLevel` whenever clip audio
+    /// plays. Set via ``ducking(_:)``.
+    public let duckingLevel: Double?
 
     /// Build a track at full volume with no fades or ducking.
     public init(url: URL) {

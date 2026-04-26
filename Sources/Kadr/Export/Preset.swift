@@ -28,7 +28,9 @@ public enum Preset: Sendable {
     /// for fractional frame rates (e.g. 23.976) use ``Preset/cinema`` or post-process.
     case custom(width: Int, height: Int, frameRate: Int, codec: Codec)
 
-    internal var resolution: CGSize {
+    /// Pixel dimensions this preset renders at. Width × height in render-canvas coordinates;
+    /// used by overlays and crops to resolve `Position` and `Size` to concrete rectangles.
+    public var resolution: CGSize {
         switch self {
         case .auto:
             return CGSize(width: 1080, height: 1920)
@@ -45,7 +47,9 @@ public enum Preset: Sendable {
         }
     }
 
-    internal var frameRate: Int {
+    /// Frames per second this preset renders at. Integer fps; for fractional frame rates
+    /// use ``cinema`` (24 fps) or ``custom(width:height:frameRate:codec:)``.
+    public var frameRate: Int {
         switch self {
         case .auto:
             return 30
