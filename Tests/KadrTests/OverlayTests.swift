@@ -174,6 +174,122 @@ struct OverlayTests {
         try? FileManager.default.removeItem(at: result)
     }
 
+    // MARK: - TextOverlay DSL
+
+    @Test func defaultTextOverlayValues() {
+        let t = TextOverlay("hello")
+        #expect(t.text == "hello")
+        #expect(t.style == .default)
+        #expect(t.position == .center)
+        #expect(t.size == nil)
+        #expect(t.anchor == .center)
+        #expect(t.opacity == 1.0)
+        #expect(t.layerID == nil)
+    }
+
+    @Test func textOverlayModifierChain() {
+        let style = TextStyle(fontSize: 64, alignment: .center, weight: .bold)
+        let t = TextOverlay("HELLO")
+            .style(style)
+            .position(.bottom)
+            .anchor(.bottom)
+            .opacity(0.9)
+            .id("title")
+        #expect(t.text == "HELLO")
+        #expect(t.style == style)
+        #expect(t.position == .bottom)
+        #expect(t.anchor == .bottom)
+        #expect(t.opacity == 0.9)
+        #expect(t.layerID == "title")
+    }
+
+    @Test func videoAcceptsHeterogeneousOverlays() throws {
+        let img = try loadTestImage()
+        let videoURL = URL(fileURLWithPath: "/tmp/test.mov")
+        let video = Video {
+            VideoClip(url: videoURL).trimmed(to: 0...3)
+        }
+        .overlay(ImageOverlay(img).id("watermark"))
+        .overlay(TextOverlay("HELLO").id("title"))
+        #expect(video.overlays.count == 2)
+        #expect(video.overlays[0] is ImageOverlay)
+        #expect(video.overlays[1] is TextOverlay)
+    }
+
+    // MARK: - Engine — text-layer dispatch
+
+    @Test func textOverlayProducesCATextLayer() {
+        let tree = OverlayRenderer.buildLayerTree(
+            overlays: [TextOverlay("hi").id("greeting")],
+            renderSize: CGSize(width: 1080, height: 1920)
+        )
+        // sublayers: video + 1 text overlay
+        #expect(tree.parent.sublayers?.count == 2)
+        let textLayer = tree.parent.sublayers?[1]
+        #expect(textLayer is CATextLayer)
+        #expect(textLayer?.name == "greeting")
+        #expect((textLayer as? CATextLayer)?.string as? String == "hi")
+    }
+
+    @Test func textOverlayDefaultSizeFillsRenderArea() {
+        let renderSize = CGSize(width: 1080, height: 1920)
+        let tree = OverlayRenderer.buildLayerTree(
+            overlays: [TextOverlay("x").position(.topLeft).anchor(.topLeft)],
+            renderSize: renderSize
+        )
+        let textLayer = tree.parent.sublayers?[1] as? CATextLayer
+        // Default size = full render area, anchored top-left at (0,0) → frame is (0,0,1080,1920)
+        #expect(textLayer?.frame == CGRect(origin: .zero, size: renderSize))
+    }
+
+    @Test func textOverlayStyleAppliesToLayer() {
+        let style = TextStyle(fontSize: 100, alignment: .center, weight: .bold)
+        let tree = OverlayRenderer.buildLayerTree(
+            overlays: [TextOverlay("bold", style: style)],
+            renderSize: CGSize(width: 1080, height: 1080)
+        )
+        let textLayer = tree.parent.sublayers?[1] as? CATextLayer
+        #expect(textLayer?.fontSize == 100)
+        #expect(textLayer?.alignmentMode == .center)
+    }
+
+    // MARK: - Export with text
+
+    @Test func exportWithTextOverlay() async throws {
+        let videoURL = try loadTestVideoURL()
+        let outputURL = testOutputURL("text_export")
+
+        let result = try await Video {
+            VideoClip(url: videoURL).trimmed(to: 0...3)
+        }
+        .overlay(
+            TextOverlay("HELLO WORLD", style: TextStyle(fontSize: 80, alignment: .center, weight: .bold))
+                .position(.bottom)
+                .anchor(.bottom)
+                .size(.normalized(width: 1.0, height: 0.2))
+        )
+        .export(to: outputURL)
+
+        #expect(FileManager.default.fileExists(atPath: result.path))
+        try? FileManager.default.removeItem(at: result)
+    }
+
+    @Test func exportWithTextAndImageOverlays() async throws {
+        let videoURL = try loadTestVideoURL()
+        let img = try loadTestImage()
+        let outputURL = testOutputURL("text_and_image")
+
+        let result = try await Video {
+            VideoClip(url: videoURL).trimmed(to: 0...3)
+        }
+        .overlay(ImageOverlay(img).position(.topRight).anchor(.topRight).size(.normalized(width: 0.15, height: 0.15)))
+        .overlay(TextOverlay("CAPTION").position(.bottom).anchor(.bottom).size(.normalized(width: 1.0, height: 0.15)))
+        .export(to: outputURL)
+
+        #expect(FileManager.default.fileExists(atPath: result.path))
+        try? FileManager.default.removeItem(at: result)
+    }
+
     @Test func exportWithOverlayAndTransition() async throws {
         let videoURL = try loadTestVideoURL()
         let img = try loadTestImage()

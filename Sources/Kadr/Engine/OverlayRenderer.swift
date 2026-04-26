@@ -24,7 +24,7 @@ internal enum OverlayRenderer {
 
     /// Build a parent + video layer with each overlay placed as a sublayer.
     static func buildLayerTree(
-        overlays: [ImageOverlay],
+        overlays: [any Overlay],
         renderSize: CGSize
     ) -> LayerTree {
         let bounds = CGRect(origin: .zero, size: renderSize)
@@ -38,17 +38,9 @@ internal enum OverlayRenderer {
         parent.addSublayer(videoLayer)
 
         for overlay in overlays {
-            let sublayer = CALayer()
-            sublayer.frame = resolvedFrame(for: overlay, in: renderSize)
-            sublayer.contents = imageContents(for: overlay.image)
+            let frame = resolvedFrame(for: overlay, in: renderSize)
+            let sublayer = makeContentLayer(for: overlay, frame: frame, renderSize: renderSize)
             sublayer.opacity = Float(overlay.opacity)
-            sublayer.contentsGravity = .resizeAspect
-            // contentsScale matches the render canvas scale; layers default to 1.0 which
-            // produces blocky output if the source image is high-resolution. Using the
-            // ratio of resolved size to source size gives one-to-one pixel mapping.
-            if let cgImage = cgImage(from: overlay.image) {
-                sublayer.contentsScale = CGFloat(cgImage.width) / sublayer.frame.width
-            }
             if let layerID = overlay.layerID {
                 sublayer.name = layerID.rawValue
             }
@@ -58,14 +50,98 @@ internal enum OverlayRenderer {
         return LayerTree(parent: parent, videoLayer: videoLayer)
     }
 
-    private static func resolvedFrame(for overlay: ImageOverlay, in renderSize: CGSize) -> CGRect {
+    // MARK: - Per-type content layers
+
+    private static func makeContentLayer(
+        for overlay: any Overlay,
+        frame: CGRect,
+        renderSize: CGSize
+    ) -> CALayer {
+        if let img = overlay as? ImageOverlay {
+            return makeImageLayer(image: img.image, frame: frame)
+        }
+        if let txt = overlay as? TextOverlay {
+            return makeTextLayer(text: txt.text, style: txt.style, frame: frame)
+        }
+        // Unknown overlay type — return an empty layer so the export still succeeds
+        let layer = CALayer()
+        layer.frame = frame
+        return layer
+    }
+
+    private static func makeImageLayer(image: PlatformImage, frame: CGRect) -> CALayer {
+        let layer = CALayer()
+        layer.frame = frame
+        layer.contents = cgImage(from: image)
+        layer.contentsGravity = .resizeAspect
+        // contentsScale matches the source image's pixel density to the layer's bounds
+        // for one-to-one pixel mapping.
+        if let cg = cgImage(from: image), frame.width > 0 {
+            layer.contentsScale = CGFloat(cg.width) / frame.width
+        }
+        return layer
+    }
+
+    private static func makeTextLayer(text: String, style: TextStyle, frame: CGRect) -> CATextLayer {
+        let layer = CATextLayer()
+        layer.frame = frame
+        layer.string = text
+        layer.fontSize = CGFloat(style.fontSize)
+        layer.foregroundColor = style.color.cgColor
+        layer.alignmentMode = textAlignmentMode(style.alignment)
+        layer.isWrapped = true
+        layer.truncationMode = .none
+
+        if let fontName = style.fontName {
+            layer.font = fontName as CFString
+        } else {
+            // System font at requested weight. CATextLayer.font accepts CFString (font
+            // family name) or CTFont. Use CTFont to honor weight cleanly.
+            let weight = ctFontWeight(for: style.weight)
+            let descriptor = CTFontDescriptorCreateWithAttributes([
+                kCTFontTraitsAttribute: [kCTFontWeightTrait: weight]
+            ] as CFDictionary)
+            let ctFont = CTFontCreateWithFontDescriptor(descriptor, CGFloat(style.fontSize), nil)
+            layer.font = ctFont
+        }
+
+        // 2x renders text crisply at most export resolutions; production pipelines often
+        // bump this further but 2x is a sensible default that won't over-allocate.
+        layer.contentsScale = 2.0
+        return layer
+    }
+
+    private static func textAlignmentMode(_ alignment: TextStyle.Alignment) -> CATextLayerAlignmentMode {
+        switch alignment {
+        case .leading:  return .left
+        case .center:   return .center
+        case .trailing: return .right
+        }
+    }
+
+    private static func ctFontWeight(for weight: TextStyle.Weight) -> CGFloat {
+        // Values from kCTFontWeightRegular / kCTFontWeightMedium / kCTFontWeightBold
+        switch weight {
+        case .regular: return 0.0
+        case .medium:  return 0.23
+        case .bold:    return 0.4
+        }
+    }
+
+    // MARK: - Frame resolution
+
+    private static func resolvedFrame(for overlay: any Overlay, in renderSize: CGSize) -> CGRect {
         let resolvedSize: Size
         if let explicit = overlay.size {
             resolvedSize = explicit
-        } else if let cg = cgImage(from: overlay.image) {
+        } else if let img = overlay as? ImageOverlay, let cg = cgImage(from: img.image) {
+            // ImageOverlay default: natural pixel size
             resolvedSize = .pixels(width: Double(cg.width), height: Double(cg.height))
+        } else if overlay is TextOverlay {
+            // TextOverlay default: full render area so text can wrap edge-to-edge
+            resolvedSize = .normalized(width: 1.0, height: 1.0)
         } else {
-            // Fall back to a sensible default if we can't resolve the image's natural size
+            // Conservative default for unknown / un-resolvable overlays
             resolvedSize = .normalized(width: 0.25, height: 0.25)
         }
         return FrameResolver.resolve(
@@ -76,11 +152,7 @@ internal enum OverlayRenderer {
         )
     }
 
-    /// Cross-platform contents value for a `CALayer`. UIKit and AppKit need slightly
-    /// different shapes — both reduce to a `CGImage`.
-    private static func imageContents(for image: PlatformImage) -> Any? {
-        cgImage(from: image)
-    }
+    // MARK: - Cross-platform CGImage extraction
 
     private static func cgImage(from image: PlatformImage) -> CGImage? {
         #if canImport(UIKit)

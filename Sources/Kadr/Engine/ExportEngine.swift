@@ -7,7 +7,7 @@ private struct ExportConfig: @unchecked Sendable {
     let composition: AVMutableComposition
     let audioMix: AVMutableAudioMix?
     let videoComposition: AVMutableVideoComposition?
-    let overlays: [ImageOverlay]
+    let overlays: [any Overlay]
     let preset: Preset
     let outputURL: URL
     let cancellationToken: CancellationToken
@@ -19,7 +19,7 @@ internal enum ExportEngine {
         composition: AVMutableComposition,
         audioMix: AVMutableAudioMix?,
         videoComposition: AVMutableVideoComposition? = nil,
-        overlays: [ImageOverlay] = [],
+        overlays: [any Overlay] = [],
         preset: Preset,
         to outputURL: URL,
         cancellationToken: CancellationToken = CancellationToken()
