@@ -31,14 +31,23 @@ public enum Position: Sendable, Equatable {
 
     // MARK: - Convenience anchors (resolution-independent)
 
+    /// Top-left of the render canvas. Equivalent to `.normalized(x: 0, y: 0)`.
     public static let topLeft     = Position.normalized(x: 0,   y: 0)
+    /// Top-center of the render canvas.
     public static let top         = Position.normalized(x: 0.5, y: 0)
+    /// Top-right of the render canvas.
     public static let topRight    = Position.normalized(x: 1,   y: 0)
+    /// Left-center of the render canvas.
     public static let left        = Position.normalized(x: 0,   y: 0.5)
+    /// Center of the render canvas.
     public static let center      = Position.normalized(x: 0.5, y: 0.5)
+    /// Right-center of the render canvas.
     public static let right       = Position.normalized(x: 1,   y: 0.5)
+    /// Bottom-left of the render canvas.
     public static let bottomLeft  = Position.normalized(x: 0,   y: 1)
+    /// Bottom-center of the render canvas.
     public static let bottom      = Position.normalized(x: 0.5, y: 1)
+    /// Bottom-right of the render canvas. Equivalent to `.normalized(x: 1, y: 1)`.
     public static let bottomRight = Position.normalized(x: 1,   y: 1)
 
     // MARK: - Resolution

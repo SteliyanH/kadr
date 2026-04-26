@@ -14,8 +14,10 @@ import CoreMedia
 /// Non-drop-frame is correct for all integer frame rates and for export presets that
 /// target whole-number fps.
 public struct Timecode: Sendable {
+    /// The frame rate used to convert between `CMTime` and timecode strings.
     public let frameRate: FrameRate
 
+    /// Frame rates supported by ``Timecode``. Use `.custom(_:)` for non-standard integer rates.
     public enum FrameRate: Sendable, Equatable {
         case fps24
         case fps25
@@ -25,6 +27,7 @@ public struct Timecode: Sendable {
         /// Custom integer frame rate. Drop-frame is not handled.
         case custom(Int)
 
+        /// The integer frames-per-second value backing this rate.
         public var fps: Int {
             switch self {
             case .fps24:        return 24
@@ -37,6 +40,7 @@ public struct Timecode: Sendable {
         }
     }
 
+    /// Build a timecode formatter for the given frame rate.
     public init(fps: FrameRate) {
         self.frameRate = fps
     }

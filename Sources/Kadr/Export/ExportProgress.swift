@@ -15,6 +15,8 @@ public struct ExportProgress: Sendable {
     /// > `CMTime` for frame precision.
     public let estimatedTimeRemaining: TimeInterval?
 
+    /// Build a progress snapshot. Typically constructed by ``Exporter`` and yielded
+    /// through ``Exporter/run()`` rather than created by callers directly.
     public init(fractionCompleted: Double, estimatedTimeRemaining: TimeInterval? = nil) {
         self.fractionCompleted = fractionCompleted
         self.estimatedTimeRemaining = estimatedTimeRemaining

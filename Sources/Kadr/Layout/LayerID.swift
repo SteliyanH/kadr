@@ -22,12 +22,15 @@ import Foundation
 /// would change the ID every time the result-builder closure re-evaluates, breaking
 /// hit-testing. Pass an explicit string and you stay in control.
 public struct LayerID: Hashable, Sendable, ExpressibleByStringLiteral, CustomStringConvertible {
+    /// The wrapped string identifier.
     public let rawValue: String
 
+    /// Build a `LayerID` from an explicit string.
     public init(_ rawValue: String) {
         self.rawValue = rawValue
     }
 
+    /// Build a `LayerID` from a string literal — `let id: LayerID = "watermark"`.
     public init(stringLiteral value: String) {
         self.rawValue = value
     }

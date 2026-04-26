@@ -29,10 +29,15 @@ import AppKit
 public struct StickerOverlay: Overlay, Sendable {
     /// The source image rendered into the sticker layer.
     public let image: PlatformImage
+    /// Where the sticker's anchor lands on the render canvas.
     public let position: Position
+    /// Explicit size, or `nil` to use the image's natural pixel dimensions.
     public let size: Size?
+    /// Which point on the sticker aligns to its ``position``.
     public let anchor: Anchor
+    /// `0.0` invisible to `1.0` fully opaque.
     public let opacity: Double
+    /// Optional stable identifier for KadrUI hit-testing in v0.4.
     public let layerID: LayerID?
 
     /// Rotation around the sticker's center, in radians. `0` means no rotation.
@@ -43,11 +48,16 @@ public struct StickerOverlay: Overlay, Sendable {
 
     /// Drop-shadow parameters for a ``StickerOverlay``.
     public struct Shadow: Sendable, Equatable {
+        /// Shadow color.
         public let color: PlatformColor
+        /// Blur radius in render-space pixels.
         public let radius: Double
+        /// Pixel offset of the shadow from the sticker.
         public let offset: CGSize
+        /// `0.0`...`1.0` opacity of the shadow.
         public let opacity: Double
 
+        /// Build a drop-shadow spec. Defaults: black, 8px blur, (0, 4)px offset, 40% opacity.
         public init(
             color: PlatformColor = .black,
             radius: Double = 8,
@@ -101,22 +111,27 @@ public struct StickerOverlay: Overlay, Sendable {
 
     // MARK: - Standard layout modifiers
 
+    /// Place the sticker's anchor point at the given render-space position.
     public func position(_ position: Position) -> StickerOverlay {
         StickerOverlay(image: image, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, rotation: rotation, shadow: shadow)
     }
 
+    /// Size the sticker using a ``Size``. Omit to fall back to the image's natural pixel size.
     public func size(_ size: Size) -> StickerOverlay {
         StickerOverlay(image: image, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, rotation: rotation, shadow: shadow)
     }
 
+    /// Choose which point on the sticker aligns to its ``position(_:)``. Default `.center`.
     public func anchor(_ anchor: Anchor) -> StickerOverlay {
         StickerOverlay(image: image, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, rotation: rotation, shadow: shadow)
     }
 
+    /// Set the sticker's opacity. `1.0` is fully opaque, `0.0` is invisible.
     public func opacity(_ opacity: Double) -> StickerOverlay {
         StickerOverlay(image: image, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, rotation: rotation, shadow: shadow)
     }
 
+    /// Tag the sticker with a stable ``LayerID`` so KadrUI (v0.4) can route gestures to it.
     public func id(_ layerID: LayerID) -> StickerOverlay {
         StickerOverlay(image: image, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, rotation: rotation, shadow: shadow)
     }

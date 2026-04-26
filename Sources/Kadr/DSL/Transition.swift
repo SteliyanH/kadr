@@ -1,6 +1,8 @@
 import Foundation
 import CoreMedia
 
+/// Direction the **incoming** clip slides in from during a ``Transition`` `.slide`.
+/// The outgoing clip slides off in the opposite direction.
 public enum SlideDirection: Sendable {
     case fromLeft, fromRight, fromTop, fromBottom
 }
