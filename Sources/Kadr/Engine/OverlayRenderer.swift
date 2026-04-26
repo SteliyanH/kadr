@@ -60,12 +60,37 @@ internal enum OverlayRenderer {
         if let img = overlay as? ImageOverlay {
             return makeImageLayer(image: img.image, frame: frame)
         }
+        if let sticker = overlay as? StickerOverlay {
+            return makeStickerLayer(sticker, frame: frame)
+        }
         if let txt = overlay as? TextOverlay {
             return makeTextLayer(text: txt.text, style: txt.style, frame: frame)
         }
         // Unknown overlay type — return an empty layer so the export still succeeds
         let layer = CALayer()
         layer.frame = frame
+        return layer
+    }
+
+    private static func makeStickerLayer(_ sticker: StickerOverlay, frame: CGRect) -> CALayer {
+        // Reuse the image-layer build, then layer on sticker-specific effects.
+        let layer = makeImageLayer(image: sticker.image, frame: frame)
+
+        if sticker.rotation != 0 {
+            // Rotate around the layer's center. Setting CALayer.transform applies
+            // the transform around the anchor point, which defaults to (0.5, 0.5).
+            layer.transform = CATransform3DMakeRotation(CGFloat(sticker.rotation), 0, 0, 1)
+        }
+
+        if let shadow = sticker.shadow {
+            layer.shadowColor = shadow.color.cgColor
+            layer.shadowRadius = CGFloat(shadow.radius)
+            layer.shadowOffset = shadow.offset
+            layer.shadowOpacity = Float(shadow.opacity)
+            // Required so the shadow renders on a layer with image contents
+            layer.masksToBounds = false
+        }
+
         return layer
     }
 
@@ -136,6 +161,9 @@ internal enum OverlayRenderer {
             resolvedSize = explicit
         } else if let img = overlay as? ImageOverlay, let cg = cgImage(from: img.image) {
             // ImageOverlay default: natural pixel size
+            resolvedSize = .pixels(width: Double(cg.width), height: Double(cg.height))
+        } else if let sticker = overlay as? StickerOverlay, let cg = cgImage(from: sticker.image) {
+            // StickerOverlay default: natural pixel size
             resolvedSize = .pixels(width: Double(cg.width), height: Double(cg.height))
         } else if overlay is TextOverlay {
             // TextOverlay default: full render area so text can wrap edge-to-edge

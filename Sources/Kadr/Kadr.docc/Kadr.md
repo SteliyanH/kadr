@@ -58,6 +58,7 @@ let url = try await Video {
 - ``ImageOverlay``
 - ``TextOverlay``
 - ``TextStyle``
+- ``StickerOverlay``
 
 ### Export
 
