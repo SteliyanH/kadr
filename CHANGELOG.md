@@ -4,11 +4,11 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — v0.4.0 in progress
+## [0.4.0] - 2026-04-27
 
 The v0.4.0 release exposes the public introspection and preview primitives needed to build a UI layer on top of `Video`. Tracked separately from the [`kadr-ui`](https://github.com/SteliyanH/kadr-ui) SwiftUI package, which consumes these APIs.
 
-### Added — Public introspection
+### Added — Public introspection ([#34](https://github.com/SteliyanH/kadr/pull/34))
 
 - `Video.clips`, `Video.overlays`, `Video.audioTracks`, `Video.preset`, `Video.crop` are now publicly readable. Iterate the composition's structure for custom timeline / preview / hit-testing UI without re-deriving state from the DSL.
 - `CropRegion` is now public; its `position`, `size`, and `anchor` are publicly readable.
@@ -17,12 +17,12 @@ The v0.4.0 release exposes the public introspection and preview primitives neede
 - `ImageClip` exposes `backgroundColor` and `audioURL` as public read-only properties.
 - `AudioTrack` exposes `volumeLevel`, `fadeInDuration`, `fadeOutDuration`, `duckingLevel` as public read-only properties.
 
-### Added — Layout helpers
+### Added — Layout helpers ([#36](https://github.com/SteliyanH/kadr/pull/36))
 
 - `Layout` — public namespace for layout helpers that mirror the engine's coordinate math.
 - `Layout.resolveFrame(position:size:anchor:in:)` — resolve a `Position` + `Size` + `Anchor` triplet into the same render-space `CGRect` the export engine produces. Use from custom UI to draw hit-test regions that line up exactly with what the engine renders.
 
-### Added — Preview API
+### Added — Preview API ([#37](https://github.com/SteliyanH/kadr/pull/37))
 
 - `Video.makePlayerItem() async throws -> AVPlayerItem` (`@MainActor`) — produces an `AVPlayerItem` with the composition's videoComposition (preset resolution + frame rate, crop, transitions) and audioMix (background music, fades, ducking) pre-attached, ready for `AVKit.VideoPlayer`.
 - `Video.thumbnail(at: CMTime) async throws -> PlatformImage` and `thumbnail(at: TimeInterval)` — render a single composition frame at `time` via `AVAssetImageGenerator`, honoring crop and preset resolution.
@@ -30,13 +30,20 @@ The v0.4.0 release exposes the public introspection and preview primitives neede
 
 ### Changed
 
-- Extracted `buildSimpleVideoComposition` from `ExportEngine` to a shared internal `PlaybackComposer`. Both export and preview pipelines now use the same videoComposition builder, so what plays back in `makePlayerItem()` matches what `export(to:)` writes (apart from the overlay limitation noted above). No behavior change for export.
+- Extracted `buildSimpleVideoComposition` from `ExportEngine` to a shared internal `PlaybackComposer` ([#37](https://github.com/SteliyanH/kadr/pull/37)). Both export and preview pipelines now use the same videoComposition builder, so what plays back in `makePlayerItem()` matches what `export(to:)` writes (apart from the overlay limitation noted above). No behavior change for export.
 
 ### Tests
 
 - New `IntrospectionTests` suite (14 tests) verifies the public read-only contract via a non-`@testable` import — a regression that demotes any introspection property back to `internal` will fail the build.
 - New `LayoutHelpersTests` suite (7 tests) covers the public `Layout` API across normalized / pixel / percent / aspectFit cases and across multiple render sizes.
 - New `PreviewAPITests` suite (8 tests) covers `makePlayerItem()` (image clip duration, video clip videoComposition shape, crop renderSize, overlay non-baking, identity-per-call) and `thumbnail(at:)` (returns a real frame, honors crop, accepts both `CMTime` and `TimeInterval`). Full suite: 202 → 231 across the v0.4.0 prep PRs.
+
+### Documentation ([#38](https://github.com/SteliyanH/kadr/pull/38))
+
+- New `Preview & Introspection (v0.4+)` Topics section in `Kadr.md` listing `Video.makePlayerItem()`, both `thumbnail(at:)` overloads, and the `Layout` namespace.
+- `CropRegion` added to the Cropping section now that it's a public type.
+- `README` Features gains a v0.4 row above v0.3.
+- `Examples/V040Showcase.swift` — five recipes covering introspection-driven timeline, AVPlayer construction, async thumbnail strip, hit-testing via `Layout.resolveFrame`, and an end-to-end preview-then-export flow.
 
 ## [0.3.0] - 2026-04-26
 
