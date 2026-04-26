@@ -4,6 +4,18 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- **API**: time-related parameters now accept `CMTime` for frame-accurate precision, with `TimeInterval` retained as ergonomic overloads. Internal storage of all durations migrated to `CMTime` / `CMTimeRange`.
+  - `Transition.fade`, `.dissolve`, `.slide` cases now bind `CMTime` instead of `TimeInterval`. Direct call sites (`Transition.fade(duration: 0.5)`) continue to work via static factory overloads. **Breaking** for code that pattern-matches the cases (`case .fade(let d)` now binds `CMTime`).
+  - `VideoClip.trimmed(_ range: CMTimeRange)` added. Existing `.trimmed(to: ClosedRange<TimeInterval>)` retained.
+  - `VideoClip.thumbnail(at: CMTime)` added.
+  - `ImageClip(_:duration:)` and `ImageClip.duration(_:)` gain `CMTime` overloads.
+  - `AudioTrack.fadeIn(_:)` / `.fadeOut(_:)` gain `CMTime` overloads.
+- Engine arithmetic now operates in `CMTime` end-to-end; fade halving uses `CMTimeMultiplyByRatio` (exact) instead of `seconds / 2`.
+
 ## [0.2.0] - 2026-04-26
 
 ### Added

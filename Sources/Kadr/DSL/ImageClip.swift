@@ -9,11 +9,17 @@ public struct ImageClip: Clip, Sendable {
 
     public var duration: CMTime { _duration }
 
-    public init(_ image: PlatformImage, duration: TimeInterval = 3.0) {
+    /// Image clip with a `CMTime` duration for frame-accurate precision.
+    public init(_ image: PlatformImage, duration: CMTime) {
         self.image = image
-        self._duration = CMTime(seconds: duration, preferredTimescale: 600)
+        self._duration = duration
         self.backgroundColor = nil
         self.audioURL = nil
+    }
+
+    /// Image clip with a `TimeInterval` duration. Convenience overload.
+    public init(_ image: PlatformImage, duration: TimeInterval = 3.0) {
+        self.init(image, duration: CMTime(seconds: duration, preferredTimescale: 600))
     }
 
     internal init(image: PlatformImage, duration: CMTime, backgroundColor: PlatformColor?, audioURL: URL?) {
@@ -31,7 +37,13 @@ public struct ImageClip: Clip, Sendable {
         ImageClip(image: image, duration: _duration, backgroundColor: backgroundColor, audioURL: audioURL)
     }
 
+    /// Override the duration with a `CMTime` for frame-accurate precision.
+    public func duration(_ duration: CMTime) -> ImageClip {
+        ImageClip(image: image, duration: duration, backgroundColor: backgroundColor, audioURL: audioURL)
+    }
+
+    /// Override the duration with a `TimeInterval`. Convenience overload.
     public func duration(_ duration: TimeInterval) -> ImageClip {
-        ImageClip(image: image, duration: CMTime(seconds: duration, preferredTimescale: 600), backgroundColor: backgroundColor, audioURL: audioURL)
+        self.duration(CMTime(seconds: duration, preferredTimescale: 600))
     }
 }

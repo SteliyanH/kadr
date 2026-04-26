@@ -187,23 +187,17 @@ internal enum CompositionBuilder {
 
     private static func overlap(during transition: Transition) -> CMTime {
         switch transition {
-        case .dissolve(let d):
-            return CMTime(seconds: d, preferredTimescale: 600)
-        case .fade:
-            return .zero
-        case .slide(_, let d):
-            return CMTime(seconds: d, preferredTimescale: 600)
+        case .dissolve(let d): return d
+        case .fade:            return .zero
+        case .slide(_, let d): return d
         }
     }
 
     private static func outgoingTail(of transition: Transition) -> CMTime {
         switch transition {
-        case .dissolve(let d):
-            return CMTime(seconds: d, preferredTimescale: 600)
-        case .fade(let d):
-            return CMTime(seconds: d / 2, preferredTimescale: 600)
-        case .slide(_, let d):
-            return CMTime(seconds: d, preferredTimescale: 600)
+        case .dissolve(let d): return d
+        case .fade(let d):     return CMTimeMultiplyByRatio(d, multiplier: 1, divisor: 2)
+        case .slide(_, let d): return d
         }
     }
 
@@ -252,18 +246,16 @@ internal enum CompositionBuilder {
                 guard let following = i + 2 < clips.count ? clips[i + 2] : nil, !(following is Transition) else {
                     throw KadrError.invalidTransition("Transition must sit between two media clips")
                 }
-                let tDur = CMTimeGetSeconds(transition.duration)
-                let curDur = CMTimeGetSeconds(current.duration)
-                let nextDur = CMTimeGetSeconds(following.duration)
-                if tDur <= 0 {
+                if CMTimeCompare(transition.duration, .zero) <= 0 {
                     throw KadrError.invalidTransition("Transition duration must be positive")
                 }
                 // Each side of the transition must fit within its adjacent clip:
                 // - dissolve: full duration overlaps both clips (constraint = duration)
                 // - fade: each half (duration/2) sits within its clip's tail/head (constraint = duration/2)
-                let perSide = CMTimeGetSeconds(outgoingTail(of: transition))
-                if perSide > curDur || perSide > nextDur {
-                    throw KadrError.invalidTransition("Transition (\(tDur)s) does not fit within adjacent clip durations")
+                let perSide = outgoingTail(of: transition)
+                if CMTimeCompare(perSide, current.duration) > 0 || CMTimeCompare(perSide, following.duration) > 0 {
+                    let tSec = CMTimeGetSeconds(transition.duration)
+                    throw KadrError.invalidTransition("Transition (\(tSec)s) does not fit within adjacent clip durations")
                 }
 
                 items.append(PlannedItem(clip: current, transitionAfter: transition))
@@ -506,26 +498,20 @@ internal enum CompositionBuilder {
                 params.setVolume(Float(audioTrack.volumeLevel), at: .zero)
             }
 
-            if audioTrack.fadeInDuration > 0 {
+            if CMTimeCompare(audioTrack.fadeInDuration, .zero) > 0 {
                 params.setVolumeRamp(
                     fromStartVolume: 0,
                     toEndVolume: Float(audioTrack.volumeLevel),
-                    timeRange: CMTimeRange(
-                        start: .zero,
-                        duration: CMTime(seconds: audioTrack.fadeInDuration, preferredTimescale: 600)
-                    )
+                    timeRange: CMTimeRange(start: .zero, duration: audioTrack.fadeInDuration)
                 )
             }
 
-            if audioTrack.fadeOutDuration > 0 {
-                let fadeStart = CMTimeSubtract(insertDuration, CMTime(seconds: audioTrack.fadeOutDuration, preferredTimescale: 600))
+            if CMTimeCompare(audioTrack.fadeOutDuration, .zero) > 0 {
+                let fadeStart = CMTimeSubtract(insertDuration, audioTrack.fadeOutDuration)
                 params.setVolumeRamp(
                     fromStartVolume: Float(audioTrack.volumeLevel),
                     toEndVolume: 0,
-                    timeRange: CMTimeRange(
-                        start: fadeStart,
-                        duration: CMTime(seconds: audioTrack.fadeOutDuration, preferredTimescale: 600)
-                    )
+                    timeRange: CMTimeRange(start: fadeStart, duration: audioTrack.fadeOutDuration)
                 )
             }
 
@@ -601,9 +587,7 @@ internal enum CompositionBuilder {
 
         let sourceRange: CMTimeRange
         if let trimRange = clip.trimRange {
-            let start = CMTime(seconds: trimRange.lowerBound, preferredTimescale: 600)
-            let end = CMTime(seconds: trimRange.upperBound, preferredTimescale: 600)
-            sourceRange = CMTimeRange(start: start, duration: CMTimeSubtract(end, start))
+            sourceRange = trimRange
         } else {
             sourceRange = CMTimeRange(start: .zero, duration: assetDuration)
         }
@@ -643,10 +627,9 @@ internal enum CompositionBuilder {
         // scaleTimeRange on a track preserves the inserted media but changes its playback rate.
         let advance: CMTime
         if clip.speedRate != 1.0 {
-            let targetDuration = CMTime(
-                seconds: CMTimeGetSeconds(sourceRange.duration) / clip.speedRate,
-                preferredTimescale: 600
-            )
+            // Scale by 1/rate. Speed is a Double ratio so this single CMTime → Float64 multiply
+            // is unavoidable; everything around it stays exact.
+            let targetDuration = CMTimeMultiplyByFloat64(sourceRange.duration, multiplier: 1.0 / clip.speedRate)
             let insertedRange = CMTimeRange(start: insertionPoint, duration: sourceRange.duration)
             videoTrack.scaleTimeRange(insertedRange, toDuration: targetDuration)
             audioTrack?.scaleTimeRange(insertedRange, toDuration: targetDuration)
