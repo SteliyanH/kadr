@@ -96,7 +96,8 @@ internal enum ExportEngine {
                                 let renderSize = cropRect?.size ?? config.preset.resolution
                                 let tree = OverlayRenderer.buildLayerTree(
                                     overlays: config.overlays,
-                                    renderSize: renderSize
+                                    renderSize: renderSize,
+                                    compositionDuration: config.composition.duration
                                 )
                                 videoComposition.animationTool = AVVideoCompositionCoreAnimationTool(
                                     postProcessingAsVideoLayer: tree.videoLayer,

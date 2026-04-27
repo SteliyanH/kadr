@@ -116,6 +116,39 @@ struct OverlayTests {
         #expect(overlayLayer?.opacity == 0.5)
     }
 
+    @Test func visibilityRangeAttachesKeyframeAnimation() throws {
+        // When an overlay has a visibilityRange, the engine should attach a keyframe
+        // animation (key 'kadr.visibilityRange') and pre-set the layer's static opacity
+        // to 0 so it stays hidden outside the animated window.
+        let img = try loadTestImage()
+        let total = CMTime(seconds: 10, preferredTimescale: 600)
+        let tree = OverlayRenderer.buildLayerTree(
+            overlays: [ImageOverlay(img).visible(during: 2.0...5.0)],
+            renderSize: CGSize(width: 1080, height: 1080),
+            compositionDuration: total
+        )
+        let overlayLayer = try #require(tree.parent.sublayers?[1])
+        #expect(overlayLayer.opacity == 0)
+        let anim = try #require(overlayLayer.animation(forKey: "kadr.visibilityRange") as? CAKeyframeAnimation)
+        #expect(anim.duration == 10.0)
+        #expect(anim.calculationMode == .discrete)
+        // 4 keyTimes × 3 values for the discrete on/off pattern.
+        #expect(anim.keyTimes?.count == 4)
+        #expect(anim.values?.count == 3)
+    }
+
+    @Test func noVisibilityRangeMeansNoAnimationAndFullOpacity() throws {
+        let img = try loadTestImage()
+        let tree = OverlayRenderer.buildLayerTree(
+            overlays: [ImageOverlay(img)],
+            renderSize: CGSize(width: 1080, height: 1080),
+            compositionDuration: CMTime(seconds: 10, preferredTimescale: 600)
+        )
+        let overlayLayer = try #require(tree.parent.sublayers?[1])
+        #expect(overlayLayer.opacity == 1.0)
+        #expect(overlayLayer.animation(forKey: "kadr.visibilityRange") == nil)
+    }
+
     @Test func explicitSizeUsedWhenProvided() throws {
         let img = try loadTestImage()
         let tree = OverlayRenderer.buildLayerTree(

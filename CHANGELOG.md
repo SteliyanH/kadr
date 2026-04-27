@@ -4,6 +4,21 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] — v0.5.0 in progress
+
+The "Advanced Composition (per-clip processing)" cycle. v0.5.0 ships in tiers — see [ROADMAP.md](ROADMAP.md#v050--advanced-composition-per-clip-processing). This entry will accumulate as PRs land.
+
+### Added — Time-ranged overlay visibility
+
+- **`Overlay.visibilityRange: CMTimeRange?`** — protocol requirement with a default `nil` implementation. Existing custom conformers don't need to change. `nil` = visible for the whole composition (current behavior).
+- **`.visible(during:)`** modifier on ``ImageOverlay``, ``TextOverlay``, ``StickerOverlay``. Accepts both `CMTimeRange` (frame-accurate) and `ClosedRange<TimeInterval>` (ergonomic) per the project's CMTime/TimeInterval pattern. Preserved across the existing modifier chain.
+- Engine: `OverlayRenderer.buildLayerTree` now accepts a `compositionDuration: CMTime` and attaches a `CAKeyframeAnimation` (calculation mode `.discrete`) to each visibility-bound overlay's `CALayer`, switching `opacity` between `0` and the overlay's `opacity` at the boundary times. Transition is instant (no fade); range is clamped to `[0, composition.duration]`.
+
+### Tests
+
+- New `OverlayVisibilityTests` suite (7 tests) covering the public-API contract via a non-`@testable` import — defaults, both range forms, all three concrete overlays, modifier-chain survival.
+- 2 new engine-side tests in `OverlayTests` verifying the keyframe animation attaches at `kadr.visibilityRange` with the right shape, and that overlays without a range still get full opacity and no animation.
+
 ## [0.4.1] - 2026-04-27
 
 Additive patch release driven by [`kadr-ui`](https://github.com/SteliyanH/kadr-ui)'s timeline component, which needs stable per-clip identity that survives reorders and trims. No breaking changes; adds one new public type and one new modifier method per media-clip type.
