@@ -4,6 +4,23 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] — v0.6.0 in progress
+
+The "Multi-Track Timeline" cycle. Per the design locked in #55, v0.6 adds parallel tracks to the DSL via a hybrid shape (`.at(time:)` + `Track {}`) plus a `MultiInputCompositor` protocol for blending the new parallel tracks. Lands in tiers — see [ROADMAP.md](ROADMAP.md#v060--multi-track-timeline). This entry will accumulate as PRs land.
+
+### Added — `.at(time:)` surface (Tier 1)
+
+The smallest piece of the v0.6 hybrid DSL. Pin a clip to an explicit composition start time; the clip opts out of the implicit linear chain and becomes a free-floating parallel track.
+
+- **`Clip.startTime: CMTime?`** — protocol requirement with default `nil` implementation. Existing custom conformers don't change. ``Transition`` keeps the default since transitions don't make sense as free-floating tracks.
+- **`.at(time:)` modifier** on ``VideoClip``, ``ImageClip``, ``TitleSequence``. Both `CMTime` (frame-accurate) and `TimeInterval` (ergonomic) overloads. Preserved across the existing modifier chain.
+
+> **Surface only.** Engine wiring lands in the multi-track engine PR. Setting `.at(time:)` in v0.6.0-pre builds has no runtime effect yet — the clip still participates in the implicit chain. Final behavior arrives with Tier 4.
+
+### Tests
+
+- New `ClipAtTimeTests` suite (12 tests) covering the public-API contract via a non-`@testable` import — defaults across all clip types, both range forms, modifier-chain survival end-to-end, generic `[any Clip]` access, and surface-level visibility on `Video.clips` after building.
+
 ## [0.5.0] - 2026-04-27
 
 The "Advanced Composition (per-clip processing)" release. Tier-based rollout: standalone additive features (Tier 1), the custom-compositor foundation (Tier 2), and built-in compositor consumers (Tier 3). Multi-track timeline work was scoped out to v0.6 — see [ROADMAP.md](ROADMAP.md#v060--multi-track-timeline).

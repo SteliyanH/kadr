@@ -39,6 +39,11 @@ public struct TitleSequence: Clip, Sendable {
     /// ``id(_:)``. `nil` if no ID has been assigned.
     public let clipID: ClipID?
 
+    /// Explicit composition start time, set via ``at(time:)-(CMTime)`` /
+    /// ``at(time:)-(TimeInterval)``. `nil` participates in the implicit chain. See
+    /// ``Clip/startTime`` for the v0.6 contract.
+    public let startTime: CMTime?
+
     public var duration: CMTime { _duration }
 
     /// Title with a `TimeInterval` duration.
@@ -68,6 +73,7 @@ public struct TitleSequence: Clip, Sendable {
         self.backgroundColor = background
         self._duration = duration
         self.clipID = nil
+        self.startTime = nil
     }
 
     internal init(
@@ -75,19 +81,32 @@ public struct TitleSequence: Clip, Sendable {
         duration: CMTime,
         style: TextStyle,
         backgroundColor: PlatformColor,
-        clipID: ClipID?
+        clipID: ClipID?,
+        startTime: CMTime? = nil
     ) {
         self.text = text
         self.style = style
         self.backgroundColor = backgroundColor
         self._duration = duration
         self.clipID = clipID
+        self.startTime = startTime
     }
 
     /// Assign a stable identifier so callers can address this clip by ID across reorders
     /// or trims. See ``ClipID`` for guidelines on choosing IDs.
     public func id(_ id: ClipID) -> TitleSequence {
-        TitleSequence(text: text, duration: _duration, style: style, backgroundColor: backgroundColor, clipID: id)
+        TitleSequence(text: text, duration: _duration, style: style, backgroundColor: backgroundColor, clipID: id, startTime: startTime)
+    }
+
+    /// Pin this clip to an explicit composition start time. See ``Clip/startTime`` for
+    /// the contract.
+    public func at(time: CMTime) -> TitleSequence {
+        TitleSequence(text: text, duration: _duration, style: style, backgroundColor: backgroundColor, clipID: clipID, startTime: time)
+    }
+
+    /// Pin this clip to an explicit composition start time, in seconds.
+    public func at(time: TimeInterval) -> TitleSequence {
+        at(time: CMTime(seconds: time, preferredTimescale: 600))
     }
 
     /// Render the title to a `PlatformImage` at the given render size.
