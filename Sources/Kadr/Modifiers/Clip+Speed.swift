@@ -14,7 +14,8 @@ extension VideoClip {
             speedRate: rate,
             filters: filters,
             compositors: compositors,
-            clipID: clipID
+            clipID: clipID,
+            startTime: startTime
         )
     }
 }
