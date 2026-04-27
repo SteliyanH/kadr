@@ -49,14 +49,21 @@ public enum Filter: Sendable, Equatable {
     /// clips for cheaper composition. Maps to `CIColorCube`.
     case lut(LUT)
 
+    /// Chroma-key (green-screen) — removes pixels matching ``ChromaKey/color`` within
+    /// ``ChromaKey/threshold``. Use ``Filter/chromaKey(color:threshold:)`` for one-shot
+    /// construction, or build a ``ChromaKey`` once and reuse it. Maps to `CIColorCube`
+    /// with a programmatically-built cube.
+    case chromaKey(ChromaKey)
+
     /// The underlying CIFilter name. Internal — used by ``FilterProcessor``.
     internal var ciFilterName: String {
         switch self {
         case .brightness, .contrast, .saturation: return "CIColorControls"
-        case .exposure: return "CIExposureAdjust"
-        case .sepia:    return "CISepiaTone"
-        case .mono:     return "CIPhotoEffectMono"
-        case .lut:      return "CIColorCube"
+        case .exposure:  return "CIExposureAdjust"
+        case .sepia:     return "CISepiaTone"
+        case .mono:      return "CIPhotoEffectMono"
+        case .lut:       return "CIColorCube"
+        case .chromaKey: return "CIColorCube"
         }
     }
 
@@ -80,6 +87,9 @@ public enum Filter: Sendable, Equatable {
         case .lut(let lut):
             filter?.setValue(lut.dimension, forKey: "inputCubeDimension")
             filter?.setValue(lut.data, forKey: "inputCubeData")
+        case .chromaKey(let key):
+            filter?.setValue(ChromaKey.cubeDimension, forKey: "inputCubeDimension")
+            filter?.setValue(key.cubeData, forKey: "inputCubeData")
         }
         return filter?.outputImage ?? image
     }
@@ -92,5 +102,13 @@ public extension Filter {
     /// convenience so call sites only need a single `try`.
     static func lut(url: URL) throws -> Filter {
         .lut(try LUT(url: url))
+    }
+
+    /// Build a `.chromaKey` filter from a target color and chroma threshold. Equivalent
+    /// to `.chromaKey(ChromaKey(color: color, threshold: threshold))`. Build a
+    /// ``ChromaKey`` directly if you want to share the configuration across clips
+    /// (the cube is computed once at construction).
+    static func chromaKey(color: PlatformColor, threshold: Double) -> Filter {
+        .chromaKey(ChromaKey(color: color, threshold: threshold))
     }
 }
