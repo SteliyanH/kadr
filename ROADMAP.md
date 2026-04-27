@@ -81,6 +81,14 @@ Public APIs that let any caller — including the new [`kadr-ui`](https://github
 
 The `kadr-ui` SwiftUI package consuming these primitives ships on its own version track. See its [roadmap](https://github.com/SteliyanH/kadr-ui#status) for `VideoPreview`, `TimelineView`, `ThumbnailStrip`, and gesture-handler component plans.
 
+## v0.4.1 — Clip identity (in progress)
+
+Additive patch driven by kadr-ui's `TimelineView` selection / reorder / trim work. Pure introspection-style addition; no breaking changes.
+
+- `ClipID` — stable, user-supplied per-clip identifier mirroring `LayerID`'s role for overlays
+- `.id(_:)` modifier on `VideoClip`, `ImageClip`, `TitleSequence` — preserved across modifier chains
+- `Clip.clipID: ClipID?` protocol requirement (defaulted to `nil`); `Transition` keeps the default
+
 ## v0.5.0 — Advanced Composition
 
 Multi-track and precision composition features.

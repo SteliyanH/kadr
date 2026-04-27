@@ -35,6 +35,7 @@ let url = try await Video {
 - ``VideoClip``
 - ``ImageClip``
 - ``VideoClipMetadata``
+- ``ClipID``
 
 ### Audio
 
