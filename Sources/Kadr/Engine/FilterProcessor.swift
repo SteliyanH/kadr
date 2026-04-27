@@ -1,29 +1,47 @@
 import AVFoundation
 import CoreImage
 
-/// Pre-renders a video file with a chain of `CIFilter`s applied per frame, then writes
-/// the result to a temporary `mp4`. The main composition then consumes that temp file
-/// like any other source clip.
+/// Pre-renders a video file with a chain of `CIFilter`s plus user-supplied
+/// ``Compositor``s applied per frame, then writes the result to a temporary `mp4`.
+/// The main composition then consumes that temp file like any other source clip.
 ///
 /// This pre-render approach mirrors ``ReverseProcessor`` and trades an extra
-/// encode/decode pass for engine simplicity — we don't need a custom
-/// `AVVideoCompositing` (deferred to v0.5's "custom compositors" feature).
+/// encode/decode pass for engine simplicity. Order of operations:
+///   1. ``Filter``s in declaration order (predictable color ops)
+///   2. ``Compositor``s in declaration order (arbitrary user code)
+///
+/// Both run inside the same `applyingCIFiltersWithHandler` per-frame closure, so the
+/// pipeline pays for one extra encode/decode pass total even when both filters and
+/// compositors are set on the same clip.
 internal enum FilterProcessor {
 
-    static func apply(filters: [Filter], to url: URL) async throws -> URL {
-        guard !filters.isEmpty else { return url }
+    static func apply(
+        filters: [Filter],
+        compositors: [any Compositor] = [],
+        to url: URL
+    ) async throws -> URL {
+        guard !filters.isEmpty || !compositors.isEmpty else { return url }
 
         let asset = AVURLAsset(url: url)
 
         // AVMutableVideoComposition.videoComposition(withAsset:applyingCIFiltersWithHandler:)
         // is the Apple-blessed CIFilter-per-frame path. The handler runs for each
-        // composition request; we apply each Kadr Filter in order to the source CIImage.
+        // composition request; we apply each Kadr Filter in order, then each Compositor.
         let videoComposition = try await AVMutableVideoComposition.videoComposition(
             with: asset,
             applyingCIFiltersWithHandler: { request in
                 var image = request.sourceImage
                 for filter in filters {
                     image = filter.apply(to: image)
+                }
+                if !compositors.isEmpty {
+                    let context = CompositorContext(
+                        time: request.compositionTime,
+                        renderSize: request.renderSize
+                    )
+                    for compositor in compositors {
+                        image = compositor.process(image: image, context: context)
+                    }
                 }
                 request.finish(with: image, context: nil)
             }

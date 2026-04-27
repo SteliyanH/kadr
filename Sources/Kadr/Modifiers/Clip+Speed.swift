@@ -13,6 +13,7 @@ extension VideoClip {
             replacementAudioURL: replacementAudioURL,
             speedRate: rate,
             filters: filters,
+            compositors: compositors,
             clipID: clipID
         )
     }
