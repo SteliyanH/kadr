@@ -89,16 +89,33 @@ Additive patch driven by kadr-ui's `TimelineView` selection / reorder / trim wor
 - ✓ `.id(_:)` modifier on `VideoClip`, `ImageClip`, `TitleSequence` — preserved across modifier chains
 - ✓ `Clip.clipID: ClipID?` protocol requirement (defaulted to `nil`); `Transition` keeps the default
 
-## v0.5.0 — Advanced Composition
+## v0.5.0 — Advanced Composition (per-clip processing)
 
-Multi-track and precision composition features.
+Per-clip processing features built on a public custom-compositor surface. Multi-track timeline work is split into v0.6 — see below — to give each milestone the focus it needs.
 
-- **Timeline API:** Multi-track composition with explicit time placement
-- **Chroma key:** `.chromaKey(color:threshold:)`
-- **Color grading / LUTs:** `.lut(url:)` for loading `.cube` LUT files
-- **Custom compositors:** Public protocol for user-defined per-frame processing
-- **Per-clip cropping:** `VideoClip.crop(...)` — different crops per clip, enabled by the custom-compositor work
-- **Alpha-mask cropping:** non-rectangular shapes from an image or path, also unlocked by custom compositors
+**Standalone additive features**
+
+- **Time-ranged overlay visibility:** `.visible(during: CMTimeRange)` on overlays — clip rendering to a specific composition time range. Deferred from v0.3.
+- **Color grading / LUTs:** `Filter.lut(url:)` for loading `.cube` LUT files.
+- **Chroma key:** `Filter.chromaKey(color:threshold:)`.
+
+**Foundation: custom compositors**
+
+- **`Compositor` protocol** (`Sendable`) — `func process(image: CIImage, context: CompositorContext) -> CIImage`. Synchronous CIImage in/out so it composes with the existing `CIFilter` pipeline; per-clip pre-render pass slots in after `Filter`s. Closure form `.compositor { image, ctx in ... }` ships alongside the protocol for ad-hoc use.
+
+**Custom-compositor consumers**
+
+- **Per-clip cropping:** `VideoClip.crop(at:size:anchor:)` mirroring `Video.crop(...)`, implemented as a built-in compositor.
+- **Alpha-mask cropping:** `.mask(_:)` taking a `CIImage` / `CGImage`, also a built-in compositor.
+
+## v0.6.0 — Multi-Track Timeline
+
+DSL evolution to support parallel tracks and explicit time placement. Treated as a standalone milestone because it's a real DSL design effort (additive vs breaking, nesting model, kadr-ui implications), not a single feature addition.
+
+- **Multi-track composition:** parallel timelines, e.g. `Video { Track { ... }; Track { ... } }` (exact shape under design)
+- **Explicit time placement:** clips that opt into a fixed timeline range instead of the implicit "next clip starts where previous ended" semantic
+- **kadr-ui:** `TimelineView` extended to render multiple lanes
+- **Multi-track-aware compositors:** the v0.5 single-track-per-clip `Compositor` extended (or paired with a new protocol) for compositors that blend two source images — e.g., custom transitions
 
 ## v1.0.0 — Production Ready
 
