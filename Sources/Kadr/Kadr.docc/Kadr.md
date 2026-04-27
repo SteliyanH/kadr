@@ -64,11 +64,24 @@ let url = try await Video {
 ### Filters (v0.3+)
 
 - ``Filter``
+- ``LUT``
+- ``ChromaKey``
+- ``ColorComponents``
 
 ### Cropping (v0.3+)
 
 - ``Video/crop(at:size:anchor:)``
+- ``VideoClip/crop(at:size:anchor:)``
+- ``VideoClip/mask(_:)-(CIImage)``
+- ``VideoClip/mask(_:)-(PlatformImage)``
 - ``CropRegion``
+
+### Custom Processing (v0.5+)
+
+- ``Compositor``
+- ``CompositorContext``
+- ``VideoClip/compositor(_:)-(any)``
+- ``VideoClip/compositor(_:)-(closure)``
 
 ### Preview & Introspection (v0.4+)
 
