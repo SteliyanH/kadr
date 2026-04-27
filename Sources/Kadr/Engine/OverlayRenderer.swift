@@ -1,6 +1,8 @@
 import Foundation
 import CoreGraphics
+import CoreMedia
 import QuartzCore
+import AVFoundation
 #if canImport(UIKit)
 import UIKit
 #elseif canImport(AppKit)
@@ -23,9 +25,13 @@ internal enum OverlayRenderer {
     }
 
     /// Build a parent + video layer with each overlay placed as a sublayer.
+    ///
+    /// `compositionDuration` is the total composition duration in `CMTime` — required to
+    /// drive ``Overlay/visibilityRange`` timing animations. Pass `composition.duration`.
     static func buildLayerTree(
         overlays: [any Overlay],
-        renderSize: CGSize
+        renderSize: CGSize,
+        compositionDuration: CMTime = .zero
     ) -> LayerTree {
         let bounds = CGRect(origin: .zero, size: renderSize)
 
@@ -40,14 +46,70 @@ internal enum OverlayRenderer {
         for overlay in overlays {
             let frame = resolvedFrame(for: overlay, in: renderSize)
             let sublayer = makeContentLayer(for: overlay, frame: frame, renderSize: renderSize)
-            sublayer.opacity = Float(overlay.opacity)
+            let baseOpacity = Float(overlay.opacity)
+            sublayer.opacity = baseOpacity
             if let layerID = overlay.layerID {
                 sublayer.name = layerID.rawValue
+            }
+            if let range = overlay.visibilityRange {
+                applyVisibilityTiming(
+                    to: sublayer,
+                    range: range,
+                    baseOpacity: baseOpacity,
+                    compositionDuration: compositionDuration
+                )
             }
             parent.addSublayer(sublayer)
         }
 
         return LayerTree(parent: parent, videoLayer: videoLayer)
+    }
+
+    /// Drive a layer's `opacity` so it renders only during `range`.
+    /// The animation uses `CAKeyframeAnimation` with `.discrete` calculation mode for an
+    /// instant on/off transition (no fade). Required machinery:
+    ///   - Animation's `beginTime` must be `AVCoreAnimationBeginTimeAtZero` (a magic
+    ///     value AVFoundation uses to mean "the composition's t=0").
+    ///   - `fillMode = .forwards` and `isRemovedOnCompletion = false` so the final value
+    ///     persists past the animation's end.
+    ///   - `keyTimes` are normalized `[0, 1]` fractions of the animation duration; we use
+    ///     the full composition duration so the fractions match composition time.
+    private static func applyVisibilityTiming(
+        to layer: CALayer,
+        range: CMTimeRange,
+        baseOpacity: Float,
+        compositionDuration: CMTime
+    ) {
+        let total = CMTimeGetSeconds(compositionDuration)
+        guard total > 0 else { return }
+
+        let startSec = max(0, CMTimeGetSeconds(range.start))
+        let endSec = min(total, CMTimeGetSeconds(range.end))
+        // No-op (fully outside or zero-length range): just hide the layer.
+        guard startSec < endSec else {
+            layer.opacity = 0
+            return
+        }
+
+        let startFraction = startSec / total
+        let endFraction = endSec / total
+
+        // Hide by default; the keyframe animation switches the visible window on/off.
+        layer.opacity = 0
+
+        let anim = CAKeyframeAnimation(keyPath: "opacity")
+        anim.keyTimes = [0, NSNumber(value: startFraction), NSNumber(value: endFraction), 1]
+        // 3 values for 4 keyTimes with .discrete mode:
+        //   [0, startFraction):    invisible
+        //   [startFraction, end):  visible at baseOpacity
+        //   [endFraction, 1):      invisible again
+        anim.values = [Float(0), baseOpacity, Float(0)]
+        anim.calculationMode = .discrete
+        anim.duration = total
+        anim.beginTime = AVCoreAnimationBeginTimeAtZero
+        anim.isRemovedOnCompletion = false
+        anim.fillMode = .forwards
+        layer.add(anim, forKey: "kadr.visibilityRange")
     }
 
     // MARK: - Per-type content layers

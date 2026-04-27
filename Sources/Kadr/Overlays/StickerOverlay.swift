@@ -1,5 +1,6 @@
 import Foundation
 import CoreGraphics
+import CoreMedia
 #if canImport(UIKit)
 import UIKit
 #elseif canImport(AppKit)
@@ -87,6 +88,7 @@ public struct StickerOverlay: Overlay, Sendable {
         self.layerID = nil
         self.rotation = 0
         self.shadow = nil
+        self.visibilityRange = nil
     }
 
     internal init(
@@ -97,7 +99,8 @@ public struct StickerOverlay: Overlay, Sendable {
         opacity: Double,
         layerID: LayerID?,
         rotation: Double,
-        shadow: Shadow?
+        shadow: Shadow?,
+        visibilityRange: CMTimeRange? = nil
     ) {
         self.image = image
         self.position = position
@@ -107,40 +110,44 @@ public struct StickerOverlay: Overlay, Sendable {
         self.layerID = layerID
         self.rotation = rotation
         self.shadow = shadow
+        self.visibilityRange = visibilityRange
     }
+
+    /// Composition time range during which this sticker is visible. `nil` = full composition.
+    public let visibilityRange: CMTimeRange?
 
     // MARK: - Standard layout modifiers
 
     /// Place the sticker's anchor point at the given render-space position.
     public func position(_ position: Position) -> StickerOverlay {
-        StickerOverlay(image: image, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, rotation: rotation, shadow: shadow)
+        StickerOverlay(image: image, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, rotation: rotation, shadow: shadow, visibilityRange: visibilityRange)
     }
 
     /// Size the sticker using a ``Size``. Omit to fall back to the image's natural pixel size.
     public func size(_ size: Size) -> StickerOverlay {
-        StickerOverlay(image: image, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, rotation: rotation, shadow: shadow)
+        StickerOverlay(image: image, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, rotation: rotation, shadow: shadow, visibilityRange: visibilityRange)
     }
 
     /// Choose which point on the sticker aligns to its ``position(_:)``. Default `.center`.
     public func anchor(_ anchor: Anchor) -> StickerOverlay {
-        StickerOverlay(image: image, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, rotation: rotation, shadow: shadow)
+        StickerOverlay(image: image, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, rotation: rotation, shadow: shadow, visibilityRange: visibilityRange)
     }
 
     /// Set the sticker's opacity. `1.0` is fully opaque, `0.0` is invisible.
     public func opacity(_ opacity: Double) -> StickerOverlay {
-        StickerOverlay(image: image, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, rotation: rotation, shadow: shadow)
+        StickerOverlay(image: image, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, rotation: rotation, shadow: shadow, visibilityRange: visibilityRange)
     }
 
     /// Tag the sticker with a stable ``LayerID`` so KadrUI (v0.4) can route gestures to it.
     public func id(_ layerID: LayerID) -> StickerOverlay {
-        StickerOverlay(image: image, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, rotation: rotation, shadow: shadow)
+        StickerOverlay(image: image, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, rotation: rotation, shadow: shadow, visibilityRange: visibilityRange)
     }
 
     // MARK: - Sticker-specific modifiers
 
     /// Rotate the sticker around its center, in radians.
     public func rotation(_ radians: Double) -> StickerOverlay {
-        StickerOverlay(image: image, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, rotation: radians, shadow: shadow)
+        StickerOverlay(image: image, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, rotation: radians, shadow: shadow, visibilityRange: visibilityRange)
     }
 
     /// Rotate the sticker around its center, in degrees. Convenience over ``rotation(_:)``.
@@ -150,7 +157,7 @@ public struct StickerOverlay: Overlay, Sendable {
 
     /// Apply a drop shadow with explicit parameters.
     public func shadow(_ shadow: Shadow) -> StickerOverlay {
-        StickerOverlay(image: image, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, rotation: rotation, shadow: shadow)
+        StickerOverlay(image: image, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, rotation: rotation, shadow: shadow, visibilityRange: visibilityRange)
     }
 
     /// Apply a drop shadow with inline parameters. Convenience over ``shadow(_:)``.
@@ -161,5 +168,18 @@ public struct StickerOverlay: Overlay, Sendable {
         opacity: Double = 0.4
     ) -> StickerOverlay {
         shadow(Shadow(color: color, radius: radius, offset: offset, opacity: opacity))
+    }
+
+    /// Show the sticker only during a specific composition time range, in `CMTime` for
+    /// frame-accurate boundaries.
+    public func visible(during range: CMTimeRange) -> StickerOverlay {
+        StickerOverlay(image: image, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, rotation: rotation, shadow: shadow, visibilityRange: range)
+    }
+
+    /// Show the sticker only during a specific composition time range, in seconds.
+    public func visible(during range: ClosedRange<TimeInterval>) -> StickerOverlay {
+        let start = CMTime(seconds: range.lowerBound, preferredTimescale: 600)
+        let end = CMTime(seconds: range.upperBound, preferredTimescale: 600)
+        return visible(during: CMTimeRange(start: start, duration: CMTimeSubtract(end, start)))
     }
 }
