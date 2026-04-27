@@ -15,10 +15,194 @@ internal enum CompositionBuilder {
         preset: Preset,
         cropRect: CGRect? = nil
     ) async throws -> CompositionResult {
+        // Multi-track path engages whenever any clip has an explicit startTime or is a Track —
+        // both shapes of the v0.6 hybrid DSL produce parallel sub-timelines.
+        let isMultiTrack = clips.contains { $0.startTime != nil || $0 is Track }
+        if isMultiTrack {
+            return try await buildMultiTrack(clips: clips, audioTracks: audioTracks, preset: preset, cropRect: cropRect)
+        }
         if clips.contains(where: { $0 is Transition }) {
             return try await buildWithTransitions(clips: clips, audioTracks: audioTracks, preset: preset, cropRect: cropRect)
         }
         return try await buildSimple(clips: clips, audioTracks: audioTracks, preset: preset)
+    }
+
+    // MARK: - Multi-track path (v0.6 Tier 4a)
+    //
+    // Lays out parallel video tracks for free-floating clips and Track {} blocks
+    // alongside the implicit-chain main track. AVFoundation's default compositor handles
+    // alpha-composite later-over-earlier — the v0.5 Compositor protocol's multi-input
+    // counterpart (Video.multiInputCompositor) is not yet engaged in 4a; that requires
+    // a custom AVVideoCompositing implementation and ships in Tier 4b.
+    //
+    // Restrictions surfaced as KadrError.notYetImplemented so users see a clear error
+    // instead of silently-wrong output:
+    //   - Transitions in the implicit chain when multi-track is active (the chain
+    //     would need the alternating-tracks transition machinery, which is non-trivial
+    //     to merge with multi-track parallel tracks).
+    //   - Transitions inside a Track { } block.
+    //   - Nested Track { }.
+
+    private static func buildMultiTrack(
+        clips: [any Clip],
+        audioTracks: [AudioTrack],
+        preset: Preset,
+        cropRect: CGRect? = nil
+    ) async throws -> CompositionResult {
+        let composition = AVMutableComposition()
+        let compositionAudioTrack = composition.addMutableTrack(
+            withMediaType: .audio,
+            preferredTrackID: kCMPersistentTrackID_Invalid
+        )
+
+        // Per-piece video tracks, in declaration order. Used for layer instructions
+        // below — earlier layer instruction = lower (background); later = on top.
+        var videoTracks: [AVMutableCompositionTrack] = []
+        var clipAudioRanges: [CMTimeRange] = []
+        var totalDuration: CMTime = .zero
+
+        // 1. Implicit-chain clips → main video track at t=0
+        let chained = clips.filter { $0.startTime == nil && !($0 is Track) }
+        if !chained.isEmpty {
+            // 4a restriction: no transitions in the chain alongside multi-track
+            if chained.contains(where: { $0 is Transition }) {
+                throw KadrError.notYetImplemented(
+                    "Transitions in the implicit chain alongside multi-track parallel clips. " +
+                    "Workaround: place the chain inside a Track {} block, or land Tier 4b which adds support."
+                )
+            }
+            guard let mainTrack = composition.addMutableTrack(
+                withMediaType: .video,
+                preferredTrackID: kCMPersistentTrackID_Invalid
+            ) else {
+                throw KadrError.exportFailed(underlying: NSError(domain: "Kadr", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create main video track"]))
+            }
+            videoTracks.append(mainTrack)
+            var insertion: CMTime = .zero
+            for clip in chained {
+                let beforeIP = insertion
+                let contributesAudio = try await insertChainClip(
+                    clip,
+                    videoTrack: mainTrack,
+                    audioTrack: compositionAudioTrack,
+                    at: &insertion,
+                    preset: preset
+                )
+                if contributesAudio {
+                    clipAudioRanges.append(CMTimeRange(start: beforeIP, duration: CMTimeSubtract(insertion, beforeIP)))
+                }
+            }
+            totalDuration = CMTimeMaximum(totalDuration, insertion)
+        }
+
+        // 2. Free-floating clips and Tracks → each gets its own parallel video track
+        for clip in clips where clip.startTime != nil || clip is Track {
+            guard let parallelTrack = composition.addMutableTrack(
+                withMediaType: .video,
+                preferredTrackID: kCMPersistentTrackID_Invalid
+            ) else {
+                throw KadrError.exportFailed(underlying: NSError(domain: "Kadr", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create parallel video track"]))
+            }
+            videoTracks.append(parallelTrack)
+
+            // Track {}'s startTime is always non-nil (the type's invariant). Free-floating
+            // single clips also have non-nil startTime here (filtered by the where clause).
+            var insertion = clip.startTime ?? .zero
+
+            if let track = clip as? Track {
+                for innerClip in track.clips {
+                    if innerClip is Transition {
+                        throw KadrError.notYetImplemented(
+                            "Transitions inside a Track {} block (v0.6 Tier 4a). Tier 4b adds support."
+                        )
+                    }
+                    if innerClip is Track {
+                        throw KadrError.notYetImplemented(
+                            "Nested Track {} blocks (v0.6 Tier 4a). Tier 4b adds support."
+                        )
+                    }
+                    let beforeIP = insertion
+                    let contributesAudio = try await insertChainClip(
+                        innerClip,
+                        videoTrack: parallelTrack,
+                        audioTrack: compositionAudioTrack,
+                        at: &insertion,
+                        preset: preset
+                    )
+                    if contributesAudio {
+                        clipAudioRanges.append(CMTimeRange(start: beforeIP, duration: CMTimeSubtract(insertion, beforeIP)))
+                    }
+                }
+            } else {
+                let beforeIP = insertion
+                let contributesAudio = try await insertChainClip(
+                    clip,
+                    videoTrack: parallelTrack,
+                    audioTrack: compositionAudioTrack,
+                    at: &insertion,
+                    preset: preset
+                )
+                if contributesAudio {
+                    clipAudioRanges.append(CMTimeRange(start: beforeIP, duration: CMTimeSubtract(insertion, beforeIP)))
+                }
+            }
+
+            totalDuration = CMTimeMaximum(totalDuration, insertion)
+        }
+
+        // 3. Build the videoComposition with layer instructions for every track. One
+        // instruction spans 0..totalDuration; layer instructions in declaration order so
+        // AVFoundation's default compositor renders later tracks over earlier ones.
+        let videoComposition = AVMutableVideoComposition()
+        videoComposition.renderSize = cropRect?.size ?? preset.resolution
+        videoComposition.frameDuration = CMTime(value: 1, timescale: CMTimeScale(preset.frameRate))
+
+        let cropOffset = cropRect?.origin ?? .zero
+        let cropTransform = CGAffineTransform(translationX: -cropOffset.x, y: -cropOffset.y)
+
+        let instruction = AVMutableVideoCompositionInstruction()
+        instruction.timeRange = CMTimeRange(start: .zero, duration: totalDuration)
+        instruction.layerInstructions = videoTracks.map { track in
+            makeLayerInstruction(for: track, preset: preset, cropTransform: cropTransform)
+        }
+        videoComposition.instructions = [instruction]
+
+        // 4. Audio mix from background music — same pipeline as buildSimple/Transitions.
+        let audioMix = try await buildBackgroundAudioMix(
+            composition: composition,
+            audioTracks: audioTracks,
+            totalDuration: totalDuration,
+            clipAudioRanges: clipAudioRanges
+        )
+
+        return CompositionResult(composition: composition, audioMix: audioMix, videoComposition: videoComposition)
+    }
+
+    /// Insert a single non-transition clip on the given video / audio tracks. Wraps
+    /// the per-type ``insertVideoClip`` / ``insertImageClip`` / TitleSequence rendering
+    /// in a single uniform call. Returns whether the clip contributes any clip audio.
+    private static func insertChainClip(
+        _ clip: any Clip,
+        videoTrack: AVMutableCompositionTrack,
+        audioTrack: AVMutableCompositionTrack?,
+        at insertionPoint: inout CMTime,
+        preset: Preset
+    ) async throws -> Bool {
+        if let videoClip = clip as? VideoClip {
+            try await insertVideoClip(videoClip, videoTrack: videoTrack, audioTrack: audioTrack, at: &insertionPoint, preset: preset)
+            return !videoClip.isMuted || videoClip.replacementAudioURL != nil
+        }
+        if let imageClip = clip as? ImageClip {
+            try await insertImageClip(imageClip, videoTrack: videoTrack, audioTrack: audioTrack, at: &insertionPoint, preset: preset)
+            return imageClip.audioURL != nil
+        }
+        if let title = clip as? TitleSequence {
+            let titleImage = title.render(at: preset.resolution)
+            let imageClip = ImageClip(titleImage, duration: title.duration)
+            try await insertImageClip(imageClip, videoTrack: videoTrack, audioTrack: audioTrack, at: &insertionPoint, preset: preset)
+            return false
+        }
+        return false
     }
 
     // MARK: - No-transition path (single video track)
