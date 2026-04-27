@@ -114,41 +114,10 @@ struct MultiTrackEngineTests {
         }
     }
 
-    @Test func transitionInsideTrackBlockRejected() async throws {
-        let img = try loadTestImage()
-        await #expect(throws: KadrError.self) {
-            _ = try await CompositionBuilder.build(
-                from: [
-                    ImageClip(img, duration: 1.0),
-                    Track(at: 0) {
-                        ImageClip(img, duration: 1.0)
-                        Kadr.Transition.dissolve(duration: 0.3)
-                        ImageClip(img, duration: 1.0)
-                    },
-                ],
-                audioTracks: [],
-                preset: self.preset
-            )
-        }
-    }
-
-    @Test func nestedTrackRejected() async throws {
-        let img = try loadTestImage()
-        await #expect(throws: KadrError.self) {
-            _ = try await CompositionBuilder.build(
-                from: [
-                    ImageClip(img, duration: 1.0),
-                    Track(at: 0) {
-                        Track(at: 0) {
-                            ImageClip(img, duration: 1.0)
-                        }
-                    },
-                ],
-                audioTracks: [],
-                preset: self.preset
-            )
-        }
-    }
+    // Note: in v0.6 Tier 4c, transitions inside Track {} and nested Track {} are
+    // supported via recursive pre-render (CompositionBuilder.preRenderTrackToTempFile).
+    // The earlier rejection tests were removed when those restrictions lifted; positive
+    // coverage lives in `MultiTrackRecursiveTests`.
 
     // MARK: - Total duration
 

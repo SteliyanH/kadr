@@ -76,7 +76,7 @@ internal enum CompositionBuilder {
             if chained.contains(where: { $0 is Transition }) {
                 throw KadrError.notYetImplemented(
                     "Transitions in the implicit chain alongside multi-track parallel clips. " +
-                    "Workaround: place the chain inside a Track {} block, or land Tier 4b which adds support."
+                    "Workaround: place the chain inside a Track {} block — Tracks support transitions internally as of v0.6."
                 )
             }
             guard let mainTrack = composition.addMutableTrack(
@@ -118,27 +118,39 @@ internal enum CompositionBuilder {
             var insertion = clip.startTime ?? .zero
 
             if let track = clip as? Track {
-                for innerClip in track.clips {
-                    if innerClip is Transition {
-                        throw KadrError.notYetImplemented(
-                            "Transitions inside a Track {} block (v0.6 Tier 4a). Tier 4b adds support."
-                        )
-                    }
-                    if innerClip is Track {
-                        throw KadrError.notYetImplemented(
-                            "Nested Track {} blocks (v0.6 Tier 4a). Tier 4b adds support."
-                        )
-                    }
+                if track.clips.contains(where: { $0 is Transition || $0 is Track }) {
+                    // Track contains transitions or nested Tracks — recursive composition.
+                    // Pre-render the Track's content to a temp .mp4 (mirrors FilterProcessor's
+                    // pre-render pattern), then insert that file as a single piece on the
+                    // parallel track. The pre-render captures both video and audio, so the
+                    // insertion preserves clip audio without extra plumbing.
+                    let preRenderedURL = try await preRenderTrackToTempFile(
+                        track,
+                        preset: preset
+                    )
                     let beforeIP = insertion
-                    let contributesAudio = try await insertChainClip(
-                        innerClip,
+                    try await insertVideoClip(
+                        VideoClip(url: preRenderedURL),
                         videoTrack: parallelTrack,
                         audioTrack: compositionAudioTrack,
                         at: &insertion,
                         preset: preset
                     )
-                    if contributesAudio {
-                        clipAudioRanges.append(CMTimeRange(start: beforeIP, duration: CMTimeSubtract(insertion, beforeIP)))
+                    clipAudioRanges.append(CMTimeRange(start: beforeIP, duration: CMTimeSubtract(insertion, beforeIP)))
+                } else {
+                    // Pure-media Track — the Tier 4a sequential-insert fast path.
+                    for innerClip in track.clips {
+                        let beforeIP = insertion
+                        let contributesAudio = try await insertChainClip(
+                            innerClip,
+                            videoTrack: parallelTrack,
+                            audioTrack: compositionAudioTrack,
+                            at: &insertion,
+                            preset: preset
+                        )
+                        if contributesAudio {
+                            clipAudioRanges.append(CMTimeRange(start: beforeIP, duration: CMTimeSubtract(insertion, beforeIP)))
+                        }
                     }
                 }
             } else {
@@ -200,6 +212,77 @@ internal enum CompositionBuilder {
         )
 
         return CompositionResult(composition: composition, audioMix: audioMix, videoComposition: videoComposition)
+    }
+
+    /// Pre-render a Track's inner content (which may contain transitions and / or nested
+    /// Tracks) to a temporary `.mp4` file. The Track is recursively built via the same
+    /// `CompositionBuilder.build` dispatch — a Track's clips form a self-contained
+    /// sub-timeline, so `buildSimple` / `buildWithTransitions` / `buildMultiTrack`
+    /// handle whatever the inner content needs.
+    ///
+    /// The returned URL is later loaded as a single ``VideoClip`` on the parent's
+    /// parallel video track, matching how `FilterProcessor` handles its pre-render
+    /// pass. Temp files are left in `FileManager.temporaryDirectory` for the system
+    /// to reap — same convention as the rest of the engine.
+    private static func preRenderTrackToTempFile(
+        _ track: Track,
+        preset: Preset
+    ) async throws -> URL {
+        // Recursively build the Track's content. Tracks have no background-audio of
+        // their own and don't carry a crop or multi-input compositor — those are the
+        // parent Video's concerns. Pass empty / nil for those.
+        let trackResult = try await build(
+            from: track.clips,
+            audioTracks: [],
+            preset: preset,
+            cropRect: nil,
+            multiInputCompositor: nil
+        )
+
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("mp4")
+        try? FileManager.default.removeItem(at: outputURL)
+
+        // Choose a compatible preset. HighestQuality is the right call for re-encoded
+        // multi-track compositions, but it can be incompatible with arbitrary AVMutableComposition
+        // shapes (synthetic image-only timelines, unusual dimensions, etc.) — falling
+        // back to Passthrough avoids the -11838 "Operation not supported" failure. The
+        // same fallback pattern lives in `ExportEngine.export`.
+        let preferred = AVAssetExportPresetHighestQuality
+        let compatible = await AVAssetExportSession.compatibility(
+            ofExportPreset: preferred,
+            with: trackResult.composition,
+            outputFileType: .mp4
+        )
+        let presetName = compatible ? preferred : AVAssetExportPresetPassthrough
+
+        guard let session = AVAssetExportSession(
+            asset: trackResult.composition,
+            presetName: presetName
+        ) else {
+            throw KadrError.exportFailed(underlying: NSError(
+                domain: "Kadr", code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to create Track pre-render export session"]
+            ))
+        }
+        session.outputURL = outputURL
+        session.outputFileType = .mp4
+        session.audioMix = trackResult.audioMix
+        // Only attach videoComposition when the preset re-encodes; passthrough rejects it.
+        if compatible {
+            session.videoComposition = trackResult.videoComposition
+        }
+
+        await session.export()
+
+        if session.status == .completed {
+            return outputURL
+        }
+        throw KadrError.exportFailed(underlying: session.error ?? NSError(
+            domain: "Kadr", code: -1,
+            userInfo: [NSLocalizedDescriptionKey: "Track pre-render failed: \(session.status.rawValue)"]
+        ))
     }
 
     /// Insert a single non-transition clip on the given video / audio tracks. Wraps
