@@ -35,6 +35,10 @@ public struct TitleSequence: Clip, Sendable {
     public let backgroundColor: PlatformColor
     private let _duration: CMTime
 
+    /// Stable identifier for addressing this clip across reorders or trims, set via
+    /// ``id(_:)``. `nil` if no ID has been assigned.
+    public let clipID: ClipID?
+
     public var duration: CMTime { _duration }
 
     /// Title with a `TimeInterval` duration.
@@ -63,6 +67,27 @@ public struct TitleSequence: Clip, Sendable {
         self.style = style
         self.backgroundColor = background
         self._duration = duration
+        self.clipID = nil
+    }
+
+    internal init(
+        text: String,
+        duration: CMTime,
+        style: TextStyle,
+        backgroundColor: PlatformColor,
+        clipID: ClipID?
+    ) {
+        self.text = text
+        self.style = style
+        self.backgroundColor = backgroundColor
+        self._duration = duration
+        self.clipID = clipID
+    }
+
+    /// Assign a stable identifier so callers can address this clip by ID across reorders
+    /// or trims. See ``ClipID`` for guidelines on choosing IDs.
+    public func id(_ id: ClipID) -> TitleSequence {
+        TitleSequence(text: text, duration: _duration, style: style, backgroundColor: backgroundColor, clipID: id)
     }
 
     /// Render the title to a `PlatformImage` at the given render size.

@@ -12,7 +12,8 @@ extension VideoClip {
             isMuted: isMuted,
             replacementAudioURL: replacementAudioURL,
             speedRate: rate,
-            filters: filters
+            filters: filters,
+            clipID: clipID
         )
     }
 }
