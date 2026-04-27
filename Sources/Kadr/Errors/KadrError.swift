@@ -34,4 +34,9 @@ public enum KadrError: Error, Sendable {
     /// `AudioTrack.ducking(_:)` was called with a value outside `0.0...1.0`. The
     /// associated value is the offending level.
     case invalidDuckingLevel(Double)
+
+    /// A `.cube` LUT file could not be loaded or parsed. The associated values are the
+    /// source URL and a short human-readable reason (missing dimension, mismatched
+    /// entry count, malformed line, etc.).
+    case invalidLUT(URL, reason: String)
 }
