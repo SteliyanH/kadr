@@ -18,15 +18,25 @@ public final class Exporter: @unchecked Sendable {
     internal let preset: Preset
     internal let overlays: [any Overlay]
     internal let crop: CropRegion?
+    internal let multiInputCompositor: (any MultiInputCompositor)?
     internal let outputURL: URL
     private let cancellationToken = CancellationToken()
 
-    internal init(clips: [any Clip], audioTracks: [AudioTrack], preset: Preset, overlays: [any Overlay] = [], crop: CropRegion? = nil, outputURL: URL) {
+    internal init(
+        clips: [any Clip],
+        audioTracks: [AudioTrack],
+        preset: Preset,
+        overlays: [any Overlay] = [],
+        crop: CropRegion? = nil,
+        multiInputCompositor: (any MultiInputCompositor)? = nil,
+        outputURL: URL
+    ) {
         self.clips = clips
         self.audioTracks = audioTracks
         self.preset = preset
         self.overlays = overlays
         self.crop = crop
+        self.multiInputCompositor = multiInputCompositor
         self.outputURL = outputURL
     }
 
@@ -70,7 +80,8 @@ public final class Exporter: @unchecked Sendable {
                         from: clips,
                         audioTracks: audioTracks,
                         preset: preset,
-                        cropRect: crop?.resolved(in: preset.resolution)
+                        cropRect: crop?.resolved(in: preset.resolution),
+                        multiInputCompositor: multiInputCompositor
                     )
 
                     let stream = ExportEngine.export(
