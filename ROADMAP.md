@@ -89,24 +89,26 @@ Additive patch driven by kadr-ui's `TimelineView` selection / reorder / trim wor
 - ✓ `.id(_:)` modifier on `VideoClip`, `ImageClip`, `TitleSequence` — preserved across modifier chains
 - ✓ `Clip.clipID: ClipID?` protocol requirement (defaulted to `nil`); `Transition` keeps the default
 
-## v0.5.0 — Advanced Composition (per-clip processing)
+## v0.5.0 — Advanced Composition (per-clip processing) ✓ shipped
 
-Per-clip processing features built on a public custom-compositor surface. Multi-track timeline work is split into v0.6 — see below — to give each milestone the focus it needs.
+Per-clip processing features built on a public custom-compositor surface. See [CHANGELOG.md](CHANGELOG.md#050---2026-04-27).
 
 **Standalone additive features**
 
-- **Time-ranged overlay visibility:** `.visible(during: CMTimeRange)` on overlays — clip rendering to a specific composition time range. Deferred from v0.3.
-- **Color grading / LUTs:** `Filter.lut(url:)` for loading `.cube` LUT files.
-- **Chroma key:** `Filter.chromaKey(color:threshold:)`.
+- ✓ Time-ranged overlay visibility — `.visible(during:)` (CMTimeRange + TimeInterval overloads) on every overlay type
+- ✓ LUTs — `Filter.lut(LUT)` + `Filter.lut(url:)` factory; standalone `LUT` value type
+- ✓ Chroma key — `Filter.chromaKey(color:threshold:)` + standalone `ChromaKey` value type
 
 **Foundation: custom compositors**
 
-- **`Compositor` protocol** (`Sendable`) — `func process(image: CIImage, context: CompositorContext) -> CIImage`. Synchronous CIImage in/out so it composes with the existing `CIFilter` pipeline; per-clip pre-render pass slots in after `Filter`s. Closure form `.compositor { image, ctx in ... }` ships alongside the protocol for ad-hoc use.
+- ✓ `Compositor` protocol (`Sendable`) + `CompositorContext` struct
+- ✓ `VideoClip.compositor(any Compositor)` and closure form `.compositor { image, ctx in ... }`
+- ✓ Pipeline integrated through the existing per-clip pre-render pass (after `Filter`s)
 
 **Custom-compositor consumers**
 
-- **Per-clip cropping:** `VideoClip.crop(at:size:anchor:)` mirroring `Video.crop(...)`, implemented as a built-in compositor.
-- **Alpha-mask cropping:** `.mask(_:)` taking a `CIImage` / `CGImage`, also a built-in compositor.
+- ✓ Per-clip cropping — `VideoClip.crop(at:size:anchor:)`, built as a thin built-in `Compositor`
+- ✓ Alpha-mask cropping — `VideoClip.mask(_: CIImage)` / `mask(_: PlatformImage)`, also built as a built-in `Compositor`
 
 ## v0.6.0 — Multi-Track Timeline
 
