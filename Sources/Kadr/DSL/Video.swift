@@ -220,7 +220,8 @@ public struct Video: Sendable {
             from: clips,
             audioTracks: audioTracks,
             preset: preset,
-            cropRect: crop?.resolved(in: preset.resolution)
+            cropRect: crop?.resolved(in: preset.resolution),
+            multiInputCompositor: multiInputCompositor
         )
 
         let stream = ExportEngine.export(
@@ -243,7 +244,7 @@ public struct Video: Sendable {
     /// progress reporting via `AsyncThrowingStream<ExportProgress, Error>`,
     /// estimated time remaining, or cancellation. Otherwise prefer ``export(to:)``.
     public func exporter(to url: URL) -> Exporter {
-        Exporter(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays, crop: crop, outputURL: url)
+        Exporter(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor, outputURL: url)
     }
 
     // MARK: - Preview

@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 The "Multi-Track Timeline" cycle. Per the design locked in #55, v0.6 adds parallel tracks to the DSL via a hybrid shape (`.at(time:)` + `Track {}`) plus a `MultiInputCompositor` protocol for blending the new parallel tracks. Lands in tiers — see [ROADMAP.md](ROADMAP.md#v060--multi-track-timeline). This entry will accumulate as PRs land.
 
+### Added — Custom `AVVideoCompositing` for `MultiInputCompositor` (Tier 4b)
+
+Lifts the v0.6 Tier 4a "MultiInputCompositor ignored" restriction. When a user attaches a `MultiInputCompositor` via `Video.compositor(_:)`, the engine now actually invokes it per frame.
+
+- **`KadrVideoCompositor`** (internal `NSObject`, `AVVideoCompositing`) — runs on a dedicated render queue; for each `AVAsynchronousVideoCompositionRequest`, pulls source frames from each parallel track, converts to `CIImage`, calls the user's compositor (or `AlphaCompositeBlender` as fallback), and renders the result to a fresh `CVPixelBuffer` from the request's render context.
+- **`KadrVideoCompositionInstruction`** (internal `AVMutableVideoCompositionInstruction` subclass) — carries the active `MultiInputCompositor` reference and overrides `requiredSourceTrackIDs` / `passthroughTrackID` so AVFoundation knows to schedule per-track source frame decode and never to passthrough.
+- **`CompositionBuilder.build`** gains a `multiInputCompositor` parameter, threaded from `Video.export` / `Exporter` / `PlaybackComposer`. When non-`nil` and the composition is multi-track, the build path attaches `KadrVideoCompositor` as the `customVideoCompositorClass` and uses the custom-instruction subclass; when `nil`, the multi-track path continues using AVFoundation's default compositor with layer-instruction blending (Tier 4a behavior).
+- **`Exporter.multiInputCompositor`** internal property — Exporter retains the compositor for its build call; threaded by `Video.exporter(to:)`.
+
+Single-track compositions continue using the v0.5 fast path (`applyingCIFiltersWithHandler`) with no change.
+
 ### Added — Multi-track engine (Tier 4a)
 
 The first piece of v0.6's actual multi-track functionality. `CompositionBuilder` now detects multi-track compositions and wires them through a new `buildMultiTrack` path; default alpha-composite later-over-earlier blending via `AVMutableVideoComposition` layer instructions.
@@ -62,6 +73,7 @@ The smallest piece of the v0.6 hybrid DSL. Pin a clip to an explicit composition
 - New `TrackTests` suite (10 tests) covering `Track` construction (parameter-less + `at: CMTime` + `at: TimeInterval` overloads), duration summing (with and without transitions), Track-as-`Clip` participation in `Video.clips`, internal `clipID` addressability, generic protocol access, nested-track structural legality.
 - New `MultiInputCompositorTests` suite (6 tests) covering the public `Video.compositor(_:)` modifier surface — defaults, protocol form, closure form, replacement semantics, survival across other Video modifiers, and inline closure-context assertion. Plus an `AlphaCompositeBlenderTests` suite (3 tests, `@testable`) exercising the engine-side default blender's empty / single / multi-input paths.
 - New `MultiTrackEngineTests` suite (8 tests, `@testable`) covering the multi-track dispatch path: single-track unchanged → no `videoComposition`; free-floating clip → 2 video tracks + 2 layer instructions; `Track {}` block → 2 video tracks (chain + Track-as-one); free-floating-only (no chain) → exactly N tracks; transitions-in-chain / transitions-in-Track / nested-Track all throw `KadrError.notYetImplemented`; total duration covers free-floating tails past the chain.
+- New `KadrVideoCompositorTests` suite (5 tests, `@testable`) covering Tier 4b wiring: multi-track without compositor skips the custom class; multi-track with compositor attaches `KadrVideoCompositor` and upgrades the instruction to `KadrVideoCompositionInstruction` carrying the compositor reference; instruction's `requiredSourceTrackIDs` matches video-track count; `passthroughTrackID` is invalid; `Video.exporter(to:)` threads the compositor into `Exporter.multiInputCompositor`.
 
 ## [0.5.0] - 2026-04-27
 

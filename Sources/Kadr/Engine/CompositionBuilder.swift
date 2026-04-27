@@ -13,13 +13,20 @@ internal enum CompositionBuilder {
         from clips: [any Clip],
         audioTracks: [AudioTrack],
         preset: Preset,
-        cropRect: CGRect? = nil
+        cropRect: CGRect? = nil,
+        multiInputCompositor: (any MultiInputCompositor)? = nil
     ) async throws -> CompositionResult {
         // Multi-track path engages whenever any clip has an explicit startTime or is a Track —
         // both shapes of the v0.6 hybrid DSL produce parallel sub-timelines.
         let isMultiTrack = clips.contains { $0.startTime != nil || $0 is Track }
         if isMultiTrack {
-            return try await buildMultiTrack(clips: clips, audioTracks: audioTracks, preset: preset, cropRect: cropRect)
+            return try await buildMultiTrack(
+                clips: clips,
+                audioTracks: audioTracks,
+                preset: preset,
+                cropRect: cropRect,
+                multiInputCompositor: multiInputCompositor
+            )
         }
         if clips.contains(where: { $0 is Transition }) {
             return try await buildWithTransitions(clips: clips, audioTracks: audioTracks, preset: preset, cropRect: cropRect)
@@ -47,7 +54,8 @@ internal enum CompositionBuilder {
         clips: [any Clip],
         audioTracks: [AudioTrack],
         preset: Preset,
-        cropRect: CGRect? = nil
+        cropRect: CGRect? = nil,
+        multiInputCompositor: (any MultiInputCompositor)? = nil
     ) async throws -> CompositionResult {
         let composition = AVMutableComposition()
         let compositionAudioTrack = composition.addMutableTrack(
@@ -153,6 +161,12 @@ internal enum CompositionBuilder {
         // 3. Build the videoComposition with layer instructions for every track. One
         // instruction spans 0..totalDuration; layer instructions in declaration order so
         // AVFoundation's default compositor renders later tracks over earlier ones.
+        //
+        // When a user has set a multiInputCompositor on the Video, swap the default
+        // AVFoundation compositor for KadrVideoCompositor (which calls into the user
+        // compositor per frame). The instruction is upgraded to a KadrVideoCompositionInstruction
+        // subclass that carries the compositor reference, so the custom compositor can
+        // read it inside startRequest.
         let videoComposition = AVMutableVideoComposition()
         videoComposition.renderSize = cropRect?.size ?? preset.resolution
         videoComposition.frameDuration = CMTime(value: 1, timescale: CMTimeScale(preset.frameRate))
@@ -160,7 +174,17 @@ internal enum CompositionBuilder {
         let cropOffset = cropRect?.origin ?? .zero
         let cropTransform = CGAffineTransform(translationX: -cropOffset.x, y: -cropOffset.y)
 
-        let instruction = AVMutableVideoCompositionInstruction()
+        let instruction: AVMutableVideoCompositionInstruction
+        if multiInputCompositor != nil {
+            let kadrInstruction = KadrVideoCompositionInstruction()
+            kadrInstruction.multiInputCompositor = multiInputCompositor
+            // Custom compositor needs to know which track IDs to pull source frames from.
+            kadrInstruction.setRequiredSourceTrackIDs(videoTracks.map { $0.trackID })
+            instruction = kadrInstruction
+            videoComposition.customVideoCompositorClass = KadrVideoCompositor.self
+        } else {
+            instruction = AVMutableVideoCompositionInstruction()
+        }
         instruction.timeRange = CMTimeRange(start: .zero, duration: totalDuration)
         instruction.layerInstructions = videoTracks.map { track in
             makeLayerInstruction(for: track, preset: preset, cropTransform: cropTransform)
