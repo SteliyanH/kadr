@@ -1,5 +1,6 @@
 import Foundation
 import CoreMedia
+import CoreImage
 import AVFoundation
 #if canImport(UIKit)
 import UIKit
@@ -55,6 +56,10 @@ public struct VideoClip: Clip, Sendable {
     /// Filters applied to this clip in declaration order. Set via ``filter(_:)``.
     public let filters: [Filter]
 
+    /// User-supplied compositors applied to this clip in declaration order, after
+    /// ``filters``. Set via ``compositor(_:)-(any)`` or ``compositor(_:)-(closure)``.
+    public let compositors: [any Compositor]
+
     /// Stable identifier for addressing this clip across reorders or trims, set via
     /// ``id(_:)``. `nil` if no ID has been assigned.
     public let clipID: ClipID?
@@ -98,7 +103,7 @@ public struct VideoClip: Clip, Sendable {
     }
 
     /// Build a clip from a video file `URL`. Defaults: full duration, original audio,
-    /// 1x speed, not reversed, not muted.
+    /// 1x speed, not reversed, not muted, no filters or compositors.
     public init(url: URL) {
         self.url = url
         self.trimRange = nil
@@ -107,6 +112,7 @@ public struct VideoClip: Clip, Sendable {
         self.replacementAudioURL = nil
         self.speedRate = 1.0
         self.filters = []
+        self.compositors = []
         self.clipID = nil
     }
 
@@ -118,6 +124,7 @@ public struct VideoClip: Clip, Sendable {
         replacementAudioURL: URL?,
         speedRate: Double = 1.0,
         filters: [Filter] = [],
+        compositors: [any Compositor] = [],
         clipID: ClipID? = nil
     ) {
         self.url = url
@@ -127,12 +134,13 @@ public struct VideoClip: Clip, Sendable {
         self.replacementAudioURL = replacementAudioURL
         self.speedRate = speedRate
         self.filters = filters
+        self.compositors = compositors
         self.clipID = clipID
     }
 
     /// Trim with a `CMTimeRange` for frame-accurate precision.
     public func trimmed(to range: CMTimeRange) -> VideoClip {
-        VideoClip(url: url, trimRange: range, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, clipID: clipID)
+        VideoClip(url: url, trimRange: range, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: clipID)
     }
 
     /// Trim with a `ClosedRange<TimeInterval>`. Convenience overload — converts to `CMTimeRange`
@@ -147,13 +155,13 @@ public struct VideoClip: Clip, Sendable {
     /// Play this clip backwards. The source is pre-processed via a temporary file before
     /// composition; for very long clips this can be memory-intensive.
     public func reversed() -> VideoClip {
-        VideoClip(url: url, trimRange: trimRange, isReversed: true, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, clipID: clipID)
+        VideoClip(url: url, trimRange: trimRange, isReversed: true, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: clipID)
     }
 
     /// Drop the source's audio track from the composition. Use ``withAudio(_:)`` to also
     /// substitute a different audio file.
     public func muted() -> VideoClip {
-        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: true, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, clipID: clipID)
+        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: true, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: clipID)
     }
 
     /// Apply one or more ``Filter``s to this clip. Filters are pre-rendered to a
@@ -178,6 +186,7 @@ public struct VideoClip: Clip, Sendable {
             replacementAudioURL: replacementAudioURL,
             speedRate: speedRate,
             filters: self.filters + filters,
+            compositors: compositors,
             clipID: clipID
         )
     }
@@ -186,13 +195,32 @@ public struct VideoClip: Clip, Sendable {
     /// If the replacement audio is longer than the clip, it is truncated; if shorter, it
     /// is not looped.
     public func withAudio(_ audioURL: URL) -> VideoClip {
-        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: true, replacementAudioURL: audioURL, speedRate: speedRate, filters: filters, clipID: clipID)
+        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: true, replacementAudioURL: audioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: clipID)
     }
 
     /// Assign a stable identifier so callers can address this clip by ID across reorders
     /// or trims. See ``ClipID`` for guidelines on choosing IDs.
     public func id(_ id: ClipID) -> VideoClip {
-        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, clipID: id)
+        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: id)
+    }
+
+    /// Append a ``Compositor`` to this clip. Compositors run after ``Filter``s during
+    /// the export pre-render pass; multiple `.compositor` calls accumulate in declaration
+    /// order. See the ``Compositor`` documentation for the per-frame contract.
+    public func compositor(_ compositor: any Compositor) -> VideoClip {
+        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors + [compositor], clipID: clipID)
+    }
+
+    /// Append an inline closure-backed ``Compositor``. Convenient for one-off
+    /// transformations:
+    ///
+    /// ```swift
+    /// VideoClip(url: clipURL).compositor { image, _ in
+    ///     image.applyingFilter("CIColorInvert")
+    /// }
+    /// ```
+    public func compositor(_ body: @Sendable @escaping (CIImage, CompositorContext) -> CIImage) -> VideoClip {
+        compositor(ClosureCompositor(body: body))
     }
 
     /// Extract a thumbnail at a `CMTime` offset for frame-accurate selection.
