@@ -1,5 +1,6 @@
 import Foundation
 import CoreMedia
+import CoreImage
 import AVFoundation
 #if canImport(UIKit)
 import UIKit
@@ -42,6 +43,17 @@ public struct Video: Sendable {
     /// The active crop region, or `nil` if no crop is applied. Set via ``crop(at:size:anchor:)``.
     public let crop: CropRegion?
 
+    /// Optional multi-track blender. Set via ``compositor(_:)-(any)`` /
+    /// ``compositor(_:)-(closure)``. `nil` (default) means the engine will use its
+    /// built-in alpha-composite later-over-earlier blender when the composition has
+    /// multiple parallel tracks.
+    ///
+    /// > **v0.6 Tier 3 status:** the surface is in place but the engine wiring lands
+    /// > with the multi-track engine PR (Tier 4). Setting a multi-input compositor in
+    /// > v0.6.0-pre builds is recorded on the value but not yet consulted at export
+    /// > time — single-track compositions continue to bypass this surface entirely.
+    public let multiInputCompositor: (any MultiInputCompositor)?
+
     /// Build a `Video` from a result-builder block of clips.
     public init(@VideoBuilder _ content: () -> [any Clip]) {
         self.clips = content()
@@ -49,39 +61,48 @@ public struct Video: Sendable {
         self.preset = .auto
         self.overlays = []
         self.crop = nil
+        self.multiInputCompositor = nil
     }
 
-    internal init(clips: [any Clip], audioTracks: [AudioTrack], preset: Preset, overlays: [any Overlay] = [], crop: CropRegion? = nil) {
+    internal init(
+        clips: [any Clip],
+        audioTracks: [AudioTrack],
+        preset: Preset,
+        overlays: [any Overlay] = [],
+        crop: CropRegion? = nil,
+        multiInputCompositor: (any MultiInputCompositor)? = nil
+    ) {
         self.clips = clips
         self.audioTracks = audioTracks
         self.preset = preset
         self.overlays = overlays
         self.crop = crop
+        self.multiInputCompositor = multiInputCompositor
     }
 
     /// Add one or more background audio tracks via the ``AudioBuilder`` DSL.
     /// Useful for chained modifiers like `.volume(_:)`, `.fadeIn(_:)`, `.ducking(_:)`.
     public func audio(@AudioBuilder _ tracks: () -> [AudioTrack]) -> Video {
-        Video(clips: clips, audioTracks: audioTracks + tracks(), preset: preset, overlays: overlays, crop: crop)
+        Video(clips: clips, audioTracks: audioTracks + tracks(), preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor)
     }
 
     /// Convenience: add a single background audio track from `url`. Equivalent to
     /// `.audio { AudioTrack(url: url) }` with default volume and no fades.
     public func audio(url: URL) -> Video {
-        Video(clips: clips, audioTracks: audioTracks + [AudioTrack(url: url)], preset: preset, overlays: overlays, crop: crop)
+        Video(clips: clips, audioTracks: audioTracks + [AudioTrack(url: url)], preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor)
     }
 
     /// Apply an export preset (resolution, frame rate, codec). Defaults to ``Preset/auto`` if
     /// unset. See ``Preset`` for the built-in choices and ``Preset/custom(width:height:frameRate:codec:)``.
     public func preset(_ preset: Preset) -> Video {
-        Video(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays, crop: crop)
+        Video(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor)
     }
 
     /// Add an overlay drawn on top of the composition for its full duration.
     /// Accepts any ``Overlay`` conformer — currently ``ImageOverlay`` and ``TextOverlay``.
     /// Each overlay is drawn above the previous one in declaration order.
     public func overlay<O: Overlay>(_ overlay: O) -> Video {
-        Video(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays + [overlay], crop: crop)
+        Video(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays + [overlay], crop: crop, multiInputCompositor: multiInputCompositor)
     }
 
     /// Crop the composition to a rectangular region of the render canvas. The export's
@@ -117,8 +138,47 @@ public struct Video: Sendable {
             audioTracks: audioTracks,
             preset: preset,
             overlays: overlays,
-            crop: CropRegion(position: position, size: size, anchor: anchor)
+            crop: CropRegion(position: position, size: size, anchor: anchor),
+            multiInputCompositor: multiInputCompositor
         )
+    }
+
+    /// Attach a multi-track blender to this composition. The compositor is consulted
+    /// at output time when more than one parallel track is active. With no compositor
+    /// set (the default), the engine alpha-composites later-over-earlier.
+    ///
+    /// ```swift
+    /// Video {
+    ///     VideoClip(url: base).trimmed(to: 0...10)
+    ///     VideoClip(url: overlay).trimmed(to: 0...10).at(time: 0)
+    /// }
+    /// .compositor(MultiplyBlend())
+    /// ```
+    ///
+    /// Single-track compositions ignore the compositor entirely — the v0.5 fast-path
+    /// pipeline doesn't engage it. See ``MultiInputCompositor``.
+    public func compositor(_ compositor: any MultiInputCompositor) -> Video {
+        Video(
+            clips: clips,
+            audioTracks: audioTracks,
+            preset: preset,
+            overlays: overlays,
+            crop: crop,
+            multiInputCompositor: compositor
+        )
+    }
+
+    /// Attach a closure-backed multi-track blender. Convenient for one-off blends:
+    ///
+    /// ```swift
+    /// Video { ... }
+    ///     .compositor { images, _ in
+    ///         // Custom blend math
+    ///         images.dropFirst().reduce(images.first ?? .empty()) { acc, layer in ... }
+    ///     }
+    /// ```
+    public func compositor(_ body: @Sendable @escaping ([CIImage], CompositorContext) -> CIImage) -> Video {
+        compositor(ClosureMultiInputCompositor(body: body))
     }
 
     /// The total media-timeline duration of the composition.

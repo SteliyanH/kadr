@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 The "Multi-Track Timeline" cycle. Per the design locked in #55, v0.6 adds parallel tracks to the DSL via a hybrid shape (`.at(time:)` + `Track {}`) plus a `MultiInputCompositor` protocol for blending the new parallel tracks. Lands in tiers — see [ROADMAP.md](ROADMAP.md#v060--multi-track-timeline). This entry will accumulate as PRs land.
 
+### Added — `MultiInputCompositor` protocol (Tier 3)
+
+The multi-track / multi-input counterpart to v0.5's single-input ``Compositor``. Surface only — engine wiring lands with Tier 4.
+
+- **`MultiInputCompositor` protocol** (`Sendable`) — `func process(images: [CIImage], context: CompositorContext) -> CIImage`. Synchronous return; same per-frame contract as v0.5's `Compositor`. `images` is the per-track contributions in declaration order (earlier = lower / background, later = higher / foreground).
+- **`Video.compositor(any MultiInputCompositor)`** — attach a multi-track blender. Replaces any prior compositor (single-compositor model — multi-track output has one merge step).
+- **`Video.compositor(@Sendable closure)`** — closure form, wraps in an internal `ClosureMultiInputCompositor`.
+- **`Video.multiInputCompositor: (any MultiInputCompositor)?`** — public read-only storage. `nil` (default) means the engine uses its built-in alpha-composite later-over-earlier blender (`AlphaCompositeBlender`, internal) when more than one parallel track is active.
+- Single-track compositions don't engage this surface — the v0.5 fast-path pipeline bypasses it entirely.
+
 ### Added — `Track {}` block (Tier 2)
 
 Hybrid DSL's grouping form. A ``Track`` is a parallel sub-timeline anchored at an explicit composition time; clips inside chain in track-relative time and the whole track lives alongside the main timeline.
@@ -32,6 +42,7 @@ The smallest piece of the v0.6 hybrid DSL. Pin a clip to an explicit composition
 
 - New `ClipAtTimeTests` suite (12 tests) covering the public-API contract via a non-`@testable` import — defaults across all clip types, both range forms, modifier-chain survival end-to-end, generic `[any Clip]` access, and surface-level visibility on `Video.clips` after building.
 - New `TrackTests` suite (10 tests) covering `Track` construction (parameter-less + `at: CMTime` + `at: TimeInterval` overloads), duration summing (with and without transitions), Track-as-`Clip` participation in `Video.clips`, internal `clipID` addressability, generic protocol access, nested-track structural legality.
+- New `MultiInputCompositorTests` suite (6 tests) covering the public `Video.compositor(_:)` modifier surface — defaults, protocol form, closure form, replacement semantics, survival across other Video modifiers, and inline closure-context assertion. Plus an `AlphaCompositeBlenderTests` suite (3 tests, `@testable`) exercising the engine-side default blender's empty / single / multi-input paths.
 
 ## [0.5.0] - 2026-04-27
 
