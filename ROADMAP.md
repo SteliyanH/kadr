@@ -110,30 +110,32 @@ Per-clip processing features built on a public custom-compositor surface. See [C
 - ✓ Per-clip cropping — `VideoClip.crop(at:size:anchor:)`, built as a thin built-in `Compositor`
 - ✓ Alpha-mask cropping — `VideoClip.mask(_: CIImage)` / `mask(_: PlatformImage)`, also built as a built-in `Compositor`
 
-## v0.6.0 — Multi-Track Timeline
+## v0.6.0 — Multi-Track Timeline ✓ shipped
 
-DSL evolution to support parallel tracks and explicit time placement. Fully additive — every v0.5 single-track composition continues to compile and behave identically.
+DSL evolution to support parallel tracks and explicit time placement. Fully additive — every v0.5 single-track composition continues to compile and behave identically. See [CHANGELOG.md](CHANGELOG.md#060---2026-04-27).
 
 **DSL — hybrid shape**
 
-- `.at(time:)` modifier on clips (and `Track`) — opts a clip out of the implicit linear chain and pins it to an explicit composition time. Smallest change for the common picture-in-picture case.
-- `Track { ... }` block — groups clips into a sub-timeline that chains internally; the whole track can be `.at(time:)`-positioned. For when you want several clips on a parallel sub-track without sprinkling `.at(...)` on each.
-- Top-level clips without `.at(...)` continue to chain as today (current behavior is the implicit "main track").
-- Layer ordering: declaration order = render order (later renders on top), matching `Video.overlay(_:)`.
+- ✓ `.at(time:)` modifier on `VideoClip` / `ImageClip` / `TitleSequence` — pins a clip to an explicit composition time. CMTime + TimeInterval overloads
+- ✓ `Track { ... }` block — groups clips into a parallel sub-timeline anchored at `Track(at:)`. Always parallel; never participates in the implicit chain
+- ✓ Top-level clips without `.at(...)` continue to chain as today (the implicit "main track")
+- ✓ Layer ordering: declaration order = render order (later renders on top), matching `Video.overlay(_:)`
 
 **Multi-input compositors**
 
-- New `MultiInputCompositor` protocol (separate from v0.5's single-input `Compositor`) — `func process(images: [CIImage], context: CompositorContext) -> CIImage`. Additive; v0.5 conformers keep working unchanged.
-- Required for blending the new parallel video tracks — the engine attaches one to merge multi-track output. Default behavior (no custom compositor) is alpha-composite later-over-earlier.
-- Unlocks user-defined custom transitions (the v0.5 deferred case) and per-frame multi-source effects (chroma-key + plate composite, picture-in-picture with custom edge treatment, etc).
+- ✓ `MultiInputCompositor` protocol (separate from v0.5's single-input `Compositor`) — `func process(images: [CIImage], context: CompositorContext) -> CIImage`. Additive; v0.5 conformers unchanged
+- ✓ `Video.compositor(_:)` modifier (protocol form + closure form) — attaches a multi-track blender. Default when no custom compositor is set: alpha-composite later-over-earlier (`AlphaCompositeBlender`)
 
 **Engine**
 
-- Switch from `applyingCIFiltersWithHandler` (single-source) to a custom `AVVideoCompositing` implementation for any composition with more than one video track. Single-track compositions keep the existing fast path.
+- ✓ `CompositionBuilder.buildMultiTrack` — detects multi-track compositions and assembles per-piece parallel video tracks; default `AVMutableVideoComposition` layer-instruction blending
+- ✓ Custom `AVVideoCompositing` (`KadrVideoCompositor`) — engaged when a `MultiInputCompositor` is set; pulls source frames from each parallel track per request, calls the user compositor, renders the result to a fresh `CVPixelBuffer`
+- ✓ Recursive Track composition — Tracks containing transitions or nested Tracks are pre-rendered to a temp `.mp4` then inserted as a single piece on the parent's parallel video track. Same pattern as `FilterProcessor`
 
-**kadr-ui v0.5+**
+**Out of scope (carries over)**
 
-- `TimelineView` extended to render multiple lanes. Lands as kadr-ui v0.5+ after kadr v0.6 ships, same staging as the v0.3 → kadr-ui 0.4 cycle.
+- Transitions in the implicit chain alongside multi-track parallel clips still rejected with `KadrError.notYetImplemented`. Workaround: wrap the chain in a `Track { }` — Tracks support transitions internally
+- kadr-ui's multi-lane `TimelineView` ships with kadr-ui v0.5+ as a follow-up milestone, same staging as the v0.4 → kadr-ui v0.4 cycle
 
 ## v1.0.0 — Production Ready
 
