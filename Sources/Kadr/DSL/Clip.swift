@@ -17,6 +17,21 @@ public protocol Clip: Sendable {
     /// trim. Returns `nil` for unidentified clips and for ``Transition``, which isn't
     /// an addressable unit.
     var clipID: ClipID? { get }
+
+    /// Optional explicit composition time at which this clip starts. `nil` (the default)
+    /// means the clip participates in the implicit linear chain — the composition appends
+    /// it after the previous clip ends. Setting a non-`nil` `startTime` opts the clip out
+    /// of the chain and pins it to that time on the composition's timeline; the clip
+    /// becomes its own free-floating parallel track.
+    ///
+    /// Set via `.at(time:)` on a media-clip type. Multiple clips can share a `startTime`
+    /// or overlap; render order follows declaration order (later renders on top).
+    ///
+    /// > **v0.6 Tier 1 status:** the surface is in place but the engine wiring lands in
+    /// > a subsequent PR. Setting `startTime` in v0.6 pre-release builds has no runtime
+    /// > effect yet — the clip still participates in the chain. Final behavior arrives
+    /// > with the multi-track engine PR.
+    var startTime: CMTime? { get }
 }
 
 public extension Clip {
@@ -24,4 +39,9 @@ public extension Clip {
     /// (``VideoClip``, ``ImageClip``, ``TitleSequence``) override this with storage and
     /// expose an `.id(_:)` modifier; ``Transition`` keeps the default.
     var clipID: ClipID? { nil }
+
+    /// Default: clips without explicit `startTime` participate in the implicit chain.
+    /// Media-clip types override this with storage and expose `.at(time:)`; ``Transition``
+    /// keeps the default since transitions don't make sense as free-floating tracks.
+    var startTime: CMTime? { nil }
 }
