@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 The "Multi-Track Timeline" cycle. Per the design locked in #55, v0.6 adds parallel tracks to the DSL via a hybrid shape (`.at(time:)` + `Track {}`) plus a `MultiInputCompositor` protocol for blending the new parallel tracks. Lands in tiers — see [ROADMAP.md](ROADMAP.md#v060--multi-track-timeline). This entry will accumulate as PRs land.
 
+### Added — `Track {}` block (Tier 2)
+
+Hybrid DSL's grouping form. A ``Track`` is a parallel sub-timeline anchored at an explicit composition time; clips inside chain in track-relative time and the whole track lives alongside the main timeline.
+
+- **`Track`** — value type conforming to ``Clip``. Holds an ordered `[any Clip]` plus a `startTime`. Always parallel — never participates in the implicit linear chain. Inner clips chain among themselves following the same single-track rules (transitions allowed).
+- **`Track { ... }`** — parameter-less init starts the track at composition `.zero`.
+- **`Track(at: CMTime, ...)`** / **`Track(at: TimeInterval, ...)`** — anchored start.
+- `Track.duration` sums inner clip durations. `Track.clipID` is `nil` (the inner clips carry their own IDs); inner clips remain individually addressable via `track.clips`.
+
+Surface only — engine wiring lands with Tier 4. Tracks compile, read back through ``Video/clips``, and expose their inner clips via `Track.clips` for inspection; the engine still treats them like clips in the implicit chain in v0.6.0-pre builds.
+
 ### Added — `.at(time:)` surface (Tier 1)
 
 The smallest piece of the v0.6 hybrid DSL. Pin a clip to an explicit composition start time; the clip opts out of the implicit linear chain and becomes a free-floating parallel track.
@@ -20,6 +31,7 @@ The smallest piece of the v0.6 hybrid DSL. Pin a clip to an explicit composition
 ### Tests
 
 - New `ClipAtTimeTests` suite (12 tests) covering the public-API contract via a non-`@testable` import — defaults across all clip types, both range forms, modifier-chain survival end-to-end, generic `[any Clip]` access, and surface-level visibility on `Video.clips` after building.
+- New `TrackTests` suite (10 tests) covering `Track` construction (parameter-less + `at: CMTime` + `at: TimeInterval` overloads), duration summing (with and without transitions), Track-as-`Clip` participation in `Video.clips`, internal `clipID` addressability, generic protocol access, nested-track structural legality.
 
 ## [0.5.0] - 2026-04-27
 
