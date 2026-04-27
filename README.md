@@ -49,7 +49,16 @@ FFmpegKit retired in January 2025. Pixel SDK sunset in February 2025. AVFoundati
 
 ## Features
 
-### v0.4.1 (current — `0.4.1`)
+### v0.5.0 (current — `0.5.0`)
+
+- **Time-ranged overlay visibility**: `.visible(during: CMTimeRange)` / `.visible(during: ClosedRange<TimeInterval>)` on every overlay type — overlays render only during a portion of the composition.
+- **LUTs**: `Filter.lut(LUT)` and the throwing factory `Filter.lut(url:)` for `.cube` 3D color-grading files. Standalone `LUT` value type loads + parses once for reuse across clips.
+- **Chroma key**: `Filter.chromaKey(color:threshold:)` and the standalone `ChromaKey` value type. ITU-R BT.601 chroma distance, programmatic `CIColorCube` cube.
+- **Custom compositors** *(foundation)*: public `Compositor` protocol + closure form, plus `CompositorContext` carrying per-frame `time` + `renderSize`. Plugs into the engine's existing per-clip pre-render pass.
+- **Per-clip crop**: `VideoClip.crop(at:size:anchor:)` mirroring the composition-wide `Video.crop`. Built as a thin `Compositor`.
+- **Alpha-mask crop**: `VideoClip.mask(_: CIImage)` / `mask(_: PlatformImage)` for non-rectangular shapes via `CIBlendWithAlphaMask`. Built as a thin `Compositor`.
+
+### v0.4.1 (`0.4.1`)
 
 - **Clip identity**: `ClipID` (string-backed, mirrors `LayerID`). Assign with `.id(_:)` on `VideoClip`, `ImageClip`, `TitleSequence`. IDs survive the existing modifier chain (`.trimmed`, `.reversed`, `.speed`, `.filter`, etc.) so callers can address clips across reorders and trims — driven by [`kadr-ui`](https://github.com/SteliyanH/kadr-ui)'s timeline component.
 
