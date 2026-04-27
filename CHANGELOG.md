@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 The "Multi-Track Timeline" cycle. Per the design locked in #55, v0.6 adds parallel tracks to the DSL via a hybrid shape (`.at(time:)` + `Track {}`) plus a `MultiInputCompositor` protocol for blending the new parallel tracks. Lands in tiers — see [ROADMAP.md](ROADMAP.md#v060--multi-track-timeline). This entry will accumulate as PRs land.
 
+### Added — Recursive Track composition (Tier 4c)
+
+Lifts the v0.6 Tier 4a restrictions on transitions inside `Track {}` and nested `Track {}`. Both now compose correctly via a recursive pre-render pattern.
+
+- A `Track` containing a `Transition` or another `Track` triggers the **pre-render path**: its inner content is recursively built (via `CompositionBuilder.build` — picks up `buildSimple` / `buildWithTransitions` / `buildMultiTrack` as appropriate), exported to a temp `.mp4` via `AVAssetExportSession`, then loaded as a single `VideoClip` and inserted on the parent's parallel video track at the Track's `startTime`.
+- A `Track` with only media clips (no transitions, no nested Tracks) continues to use the existing Tier 4a sequential-insert fast path — no extra encode/decode pass.
+- Same pattern as `FilterProcessor`'s pre-render. Temp files are left in `FileManager.temporaryDirectory` for the system to reap; matches the rest of the engine's convention.
+- Pre-render preset fallback: `AVAssetExportPresetHighestQuality` is preferred but falls back to `AVAssetExportPresetPassthrough` when incompatible with the composition shape (mirroring `ExportEngine`'s existing fallback). When passthrough is used, the inner videoComposition isn't applied — that's a known limitation for unusual composition shapes; transitions in real-video Tracks consistently take the re-encoded path.
+
+This closes the v0.6 Tier 4 engine work. All four Tier 4a `notYetImplemented` paths (transitions in chain, transitions in Track, nested Track, custom `MultiInputCompositor`) now have engine support.
+
 ### Added — Custom `AVVideoCompositing` for `MultiInputCompositor` (Tier 4b)
 
 Lifts the v0.6 Tier 4a "MultiInputCompositor ignored" restriction. When a user attaches a `MultiInputCompositor` via `Video.compositor(_:)`, the engine now actually invokes it per frame.
@@ -74,6 +85,7 @@ The smallest piece of the v0.6 hybrid DSL. Pin a clip to an explicit composition
 - New `MultiInputCompositorTests` suite (6 tests) covering the public `Video.compositor(_:)` modifier surface — defaults, protocol form, closure form, replacement semantics, survival across other Video modifiers, and inline closure-context assertion. Plus an `AlphaCompositeBlenderTests` suite (3 tests, `@testable`) exercising the engine-side default blender's empty / single / multi-input paths.
 - New `MultiTrackEngineTests` suite (8 tests, `@testable`) covering the multi-track dispatch path: single-track unchanged → no `videoComposition`; free-floating clip → 2 video tracks + 2 layer instructions; `Track {}` block → 2 video tracks (chain + Track-as-one); free-floating-only (no chain) → exactly N tracks; transitions-in-chain / transitions-in-Track / nested-Track all throw `KadrError.notYetImplemented`; total duration covers free-floating tails past the chain.
 - New `KadrVideoCompositorTests` suite (5 tests, `@testable`) covering Tier 4b wiring: multi-track without compositor skips the custom class; multi-track with compositor attaches `KadrVideoCompositor` and upgrades the instruction to `KadrVideoCompositionInstruction` carrying the compositor reference; instruction's `requiredSourceTrackIDs` matches video-track count; `passthroughTrackID` is invalid; `Video.exporter(to:)` threads the compositor into `Exporter.multiInputCompositor`.
+- New `MultiTrackRecursiveTests` suite (3 tests, integration — real `AVAssetExportSession` round-trip): Track with transition pre-renders and composes; nested Track pre-renders and composes; pure-media Track uses the fast path. The two `notYetImplemented` rejection tests for transitions-in-Track and nested-Track were removed from `MultiTrackEngineTests` since those restrictions lifted.
 
 ## [0.5.0] - 2026-04-27
 
