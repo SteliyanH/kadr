@@ -246,6 +246,33 @@ public struct VideoClip: Clip, Sendable {
         compositor(CropCompositor(position: position, size: size, anchor: anchor))
     }
 
+    /// Mask this clip with an alpha mask image. Pixels under fully-opaque mask alpha
+    /// pass through; pixels under fully-transparent mask alpha become transparent.
+    /// Anti-aliased mask edges produce proportional alpha — useful for soft-edge or
+    /// shape-cropped looks (circular bug, irregular cutouts, vignettes).
+    ///
+    /// ```swift
+    /// VideoClip(url: clipURL).mask(circularMask)
+    /// ```
+    ///
+    /// **Sizing**: the mask is stretched to fit each frame's extent. Authoring masks at
+    /// the composition's preset resolution avoids distortion when aspect ratios differ.
+    ///
+    /// **Implementation**: wraps a built-in ``Compositor`` (internal `MaskCompositor`)
+    /// using `CIBlendWithAlphaMask`. Multiple `.mask` calls accumulate; each subsequent
+    /// mask further restricts the visible region (logical AND of mask alphas).
+    public func mask(_ mask: CIImage) -> VideoClip {
+        compositor(MaskCompositor(mask: mask))
+    }
+
+    /// Mask this clip with a `PlatformImage` (UIImage / NSImage). Convenience overload —
+    /// extracts a `CIImage` from the platform image and delegates to ``mask(_:)-(CIImage)``.
+    /// If the image can't be converted to a `CIImage`, this clip passes through unchanged.
+    public func mask(_ mask: PlatformImage) -> VideoClip {
+        guard let ci = MaskCompositor.ciImage(from: mask) else { return self }
+        return self.mask(ci)
+    }
+
     /// Extract a thumbnail at a `CMTime` offset for frame-accurate selection.
     public func thumbnail(at time: CMTime) async throws -> PlatformImage {
         let asset = AVURLAsset(url: url)
