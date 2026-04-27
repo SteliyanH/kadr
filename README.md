@@ -49,7 +49,11 @@ FFmpegKit retired in January 2025. Pixel SDK sunset in February 2025. AVFoundati
 
 ## Features
 
-### v0.4 (current — `0.4.0`)
+### v0.4.1 (current — `0.4.1`)
+
+- **Clip identity**: `ClipID` (string-backed, mirrors `LayerID`). Assign with `.id(_:)` on `VideoClip`, `ImageClip`, `TitleSequence`. IDs survive the existing modifier chain (`.trimmed`, `.reversed`, `.speed`, `.filter`, etc.) so callers can address clips across reorders and trims — driven by [`kadr-ui`](https://github.com/SteliyanH/kadr-ui)'s timeline component.
+
+### v0.4.0 (`0.4.0`)
 
 - **Composition introspection**: `Video.clips`, `overlays`, `audioTracks`, `preset`, and `crop` are publicly readable so callers can build their own timeline / preview / hit-testing UI without re-deriving state. Per-clip storage on `VideoClip`, `ImageClip`, and `AudioTrack` is also publicly readable.
 - **Preview**: `Video.makePlayerItem()` returns an `AVPlayerItem` with the composition's videoComposition (preset, crop, transitions) and audioMix (background music, fades, ducking) pre-attached, ready for `AVKit.VideoPlayer`. `Video.thumbnail(at:)` renders a single composition frame.
