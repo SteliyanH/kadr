@@ -8,6 +8,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 The "Multi-Track Timeline" cycle. Per the design locked in #55, v0.6 adds parallel tracks to the DSL via a hybrid shape (`.at(time:)` + `Track {}`) plus a `MultiInputCompositor` protocol for blending the new parallel tracks. Lands in tiers — see [ROADMAP.md](ROADMAP.md#v060--multi-track-timeline). This entry will accumulate as PRs land.
 
+### Added — Multi-track engine (Tier 4a)
+
+The first piece of v0.6's actual multi-track functionality. `CompositionBuilder` now detects multi-track compositions and wires them through a new `buildMultiTrack` path; default alpha-composite later-over-earlier blending via `AVMutableVideoComposition` layer instructions.
+
+- **Detection** in `CompositionBuilder.build`: any clip with non-`nil` `startTime` *or* any `Track` instance routes to the multi-track path.
+- **Per-piece video tracks**: implicit-chain clips on a main video track at t=0; each free-floating clip and `Track {}` on its own parallel video track at its declared start time. Each track's content goes through the existing `insertVideoClip` / `insertImageClip` / `TitleSequence` rendering helpers.
+- **VideoComposition** with one instruction spanning `0...totalDuration` and one layer instruction per video track, in declaration order — AVFoundation's default compositor handles "later layer = on top".
+- **Audio**: clip audio from chain and parallel pieces continues to flow through the shared composition audio track; background music mix unchanged.
+
+**Tier 4a restrictions** (surfaced as `KadrError.notYetImplemented` so users get a clear error instead of silently-wrong output):
+
+- Transitions in the implicit chain alongside multi-track parallel clips
+- Transitions inside a `Track {}` block
+- Nested `Track {}` blocks
+- Custom `MultiInputCompositor`s — set on `Video.compositor(_:)` but not yet engaged. Default alpha-composite blending only.
+
+All four lift in **Tier 4b**, which adds a custom `AVVideoCompositing` implementation for arbitrary blending and recursive Track composition.
+
 ### Added — `MultiInputCompositor` protocol (Tier 3)
 
 The multi-track / multi-input counterpart to v0.5's single-input ``Compositor``. Surface only — engine wiring lands with Tier 4.
@@ -43,6 +61,7 @@ The smallest piece of the v0.6 hybrid DSL. Pin a clip to an explicit composition
 - New `ClipAtTimeTests` suite (12 tests) covering the public-API contract via a non-`@testable` import — defaults across all clip types, both range forms, modifier-chain survival end-to-end, generic `[any Clip]` access, and surface-level visibility on `Video.clips` after building.
 - New `TrackTests` suite (10 tests) covering `Track` construction (parameter-less + `at: CMTime` + `at: TimeInterval` overloads), duration summing (with and without transitions), Track-as-`Clip` participation in `Video.clips`, internal `clipID` addressability, generic protocol access, nested-track structural legality.
 - New `MultiInputCompositorTests` suite (6 tests) covering the public `Video.compositor(_:)` modifier surface — defaults, protocol form, closure form, replacement semantics, survival across other Video modifiers, and inline closure-context assertion. Plus an `AlphaCompositeBlenderTests` suite (3 tests, `@testable`) exercising the engine-side default blender's empty / single / multi-input paths.
+- New `MultiTrackEngineTests` suite (8 tests, `@testable`) covering the multi-track dispatch path: single-track unchanged → no `videoComposition`; free-floating clip → 2 video tracks + 2 layer instructions; `Track {}` block → 2 video tracks (chain + Track-as-one); free-floating-only (no chain) → exactly N tracks; transitions-in-chain / transitions-in-Track / nested-Track all throw `KadrError.notYetImplemented`; total duration covers free-floating tails past the chain.
 
 ## [0.5.0] - 2026-04-27
 
