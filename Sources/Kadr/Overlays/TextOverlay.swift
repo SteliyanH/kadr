@@ -1,5 +1,6 @@
 import Foundation
 import CoreGraphics
+import CoreMedia
 
 /// A text label drawn on top of the video composition for the entire export duration.
 ///
@@ -33,9 +34,11 @@ public struct TextOverlay: Overlay, Sendable {
     public let opacity: Double
     /// Optional stable identifier for KadrUI hit-testing in v0.4.
     public let layerID: LayerID?
+    /// Composition time range during which this overlay is visible. `nil` = full composition.
+    public let visibilityRange: CMTimeRange?
 
     /// Build a text overlay. Defaults: full-render-area frame, centered position,
-    /// `.center` anchor, full opacity, no layer ID.
+    /// `.center` anchor, full opacity, no layer ID, visible for the entire composition.
     public init(_ text: String, style: TextStyle = .default) {
         self.text = text
         self.style = style
@@ -44,6 +47,7 @@ public struct TextOverlay: Overlay, Sendable {
         self.anchor = .center
         self.opacity = 1.0
         self.layerID = nil
+        self.visibilityRange = nil
     }
 
     internal init(
@@ -53,7 +57,8 @@ public struct TextOverlay: Overlay, Sendable {
         size: Size?,
         anchor: Anchor,
         opacity: Double,
-        layerID: LayerID?
+        layerID: LayerID?,
+        visibilityRange: CMTimeRange? = nil
     ) {
         self.text = text
         self.style = style
@@ -62,36 +67,50 @@ public struct TextOverlay: Overlay, Sendable {
         self.anchor = anchor
         self.opacity = opacity
         self.layerID = layerID
+        self.visibilityRange = visibilityRange
     }
 
     /// Place the overlay's anchor point at the given render-space position.
     public func position(_ position: Position) -> TextOverlay {
-        TextOverlay(text: text, style: style, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID)
+        TextOverlay(text: text, style: style, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, visibilityRange: visibilityRange)
     }
 
     /// Constrain the text to a bounding box. Omit to let it fill the full render area
     /// (useful for headlines that should wrap edge-to-edge).
     public func size(_ size: Size) -> TextOverlay {
-        TextOverlay(text: text, style: style, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID)
+        TextOverlay(text: text, style: style, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, visibilityRange: visibilityRange)
     }
 
     /// Choose which point on the overlay aligns to its ``position(_:)``. Default `.center`.
     public func anchor(_ anchor: Anchor) -> TextOverlay {
-        TextOverlay(text: text, style: style, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID)
+        TextOverlay(text: text, style: style, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, visibilityRange: visibilityRange)
     }
 
     /// Set the overlay's opacity. `1.0` is fully opaque, `0.0` is invisible.
     public func opacity(_ opacity: Double) -> TextOverlay {
-        TextOverlay(text: text, style: style, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID)
+        TextOverlay(text: text, style: style, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, visibilityRange: visibilityRange)
     }
 
     /// Tag the overlay with a stable ``LayerID`` so KadrUI (v0.4) can route gestures to it.
     public func id(_ layerID: LayerID) -> TextOverlay {
-        TextOverlay(text: text, style: style, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID)
+        TextOverlay(text: text, style: style, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, visibilityRange: visibilityRange)
     }
 
     /// Replace the visual style.
     public func style(_ style: TextStyle) -> TextOverlay {
-        TextOverlay(text: text, style: style, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID)
+        TextOverlay(text: text, style: style, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, visibilityRange: visibilityRange)
+    }
+
+    /// Show the overlay only during a specific composition time range, in `CMTime` for
+    /// frame-accurate boundaries.
+    public func visible(during range: CMTimeRange) -> TextOverlay {
+        TextOverlay(text: text, style: style, position: position, size: size, anchor: anchor, opacity: opacity, layerID: layerID, visibilityRange: range)
+    }
+
+    /// Show the overlay only during a specific composition time range, in seconds.
+    public func visible(during range: ClosedRange<TimeInterval>) -> TextOverlay {
+        let start = CMTime(seconds: range.lowerBound, preferredTimescale: 600)
+        let end = CMTime(seconds: range.upperBound, preferredTimescale: 600)
+        return visible(during: CMTimeRange(start: start, duration: CMTimeSubtract(end, start)))
     }
 }
