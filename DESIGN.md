@@ -167,3 +167,74 @@ Multi-track / multi-input compositors (e.g., a compositor that blends two source
 **Migration path for built-in features**
 
 The v0.5 per-clip `VideoClip.crop(at:size:anchor:)` and `VideoClip.mask(_:)` ship as named built-ins on top of the same `Compositor` protocol — Tier 3 of the v0.5 plan.
+
+## v0.6 design — Multi-Track Timeline
+
+DSL evolution to support parallel tracks. Fully additive: every v0.5 single-track composition continues to compile and behave identically.
+
+**Hybrid DSL — three shapes from least to most explicit**
+
+```swift
+// 1. Top-level chain (unchanged from v0.5)
+Video {
+    VideoClip(url: a).trimmed(to: 0...5)
+    Transition.fade(duration: 0.5)
+    VideoClip(url: b).trimmed(to: 0...5)
+}
+
+// 2. .at(time:) — single floating overlay
+Video {
+    VideoClip(url: a).trimmed(to: 0...10)            // main track
+    VideoClip(url: pip).trimmed(to: 0...3)
+        .at(time: 2.0)                                // floats over the main at t=2s
+}
+
+// 3. Track { } — grouped parallel sub-timeline
+Video {
+    VideoClip(url: a).trimmed(to: 0...10)            // main track
+    Track(at: 2.0) {                                  // parallel track starting at t=2s
+        VideoClip(url: pipA).trimmed(to: 0...2)
+        VideoClip(url: pipB).trimmed(to: 0...2)
+    }
+}
+```
+
+Top-level clips without `.at(...)` form an implicit "main track" — current v0.5 behavior. Clips with `.at(...)` and `Track {}` blocks become parallel video tracks anchored at the declared time.
+
+**Key decisions and rationale**
+
+| Decision | Choice | Why |
+|---|---|---|
+| DSL shape | Hybrid: top-level chain + `.at(time:)` + `Track {}` | Smallest change for v0.5 users (no breaking change); `.at(time:)` covers PiP with one modifier; `Track {}` covers grouped sub-timelines. Each shape's call site reads exactly as much complexity as the use case requires. |
+| Layer ordering | Declaration order = render order (later on top) | Symmetry with `Video.overlay(_:)` which already chains this way. Explicit z-order can land later if needed. |
+| Multi-input API | New `MultiInputCompositor` protocol (separate from v0.5's `Compositor`) | Additive; v0.5 single-input conformers stay source-compatible. Single protocol enriched with `[CIImage]` would have been a breaking change. |
+| Default track blend | Alpha-composite later-over-earlier | Most-expected default for layered video. Custom blending (e.g., subject + plate, custom transitions) attaches via `MultiInputCompositor`. |
+| Audio model | Unchanged | `Video.audio { AudioTrack }` already supports parallel audio tracks. Clips inside `Track {}` contribute their clip audio same as top-level. Don't force unrelated nesting. |
+| Engine path | `AVVideoCompositing` for multi-track; `applyingCIFiltersWithHandler` fast path stays for single-track | Apple's lower-level path is needed for multi-source blending. Single-track compositions don't pay for it. |
+
+**Public surface sketch**
+
+```swift
+public struct Track: Sendable {
+    public init(at time: CMTime, @VideoBuilder _ content: () -> [any Clip])
+    public init(at time: TimeInterval, @VideoBuilder _ content: () -> [any Clip])
+}
+
+public extension VideoClip {
+    func at(time: CMTime) -> VideoClip
+    func at(time: TimeInterval) -> VideoClip
+}
+
+public protocol MultiInputCompositor: Sendable {
+    func process(images: [CIImage], context: CompositorContext) -> CIImage
+}
+
+public extension Video {
+    func compositor(_ compositor: any MultiInputCompositor) -> Video    // Composition-wide multi-track blender
+}
+```
+
+**Out of scope for v0.6**
+
+- kadr-ui's multi-lane `TimelineView` — kadr-ui v0.5+, lands after kadr v0.6 ships
+- Automatic time-aware compositor selection (e.g., "use this compositor only between t=2s and t=5s") — could land in v0.6.x if needed; v0.6 keeps the engine attaching one global multi-track blender
