@@ -49,7 +49,13 @@ FFmpegKit retired in January 2025. Pixel SDK sunset in February 2025. AVFoundati
 
 ## Features
 
-### v0.5.0 (current — `0.5.0`)
+### v0.6.0 (current — `0.6.0`)
+
+- **Multi-track timeline.** Hybrid DSL: top-level clips chain implicitly (v0.5 unchanged); `.at(time:)` pins a clip to an explicit composition time as a free-floating parallel track; `Track { ... }` groups clips into a parallel sub-timeline anchored at `Track(at:)`. Layer ordering is declaration order — later renders on top.
+- **Multi-input compositors.** `MultiInputCompositor` protocol (separate from v0.5's single-input `Compositor`) — `func process(images: [CIImage], context:) -> CIImage`. Attach via `Video.compositor(_:)`. Default behavior is alpha-composite later-over-earlier; custom blends run via a `KadrVideoCompositor` (custom `AVVideoCompositing` implementation).
+- **Transitions inside Tracks** and **nested Tracks** via recursive pre-render. Mirrors the `FilterProcessor` pattern — Tracks containing transitions or nested Tracks are pre-rendered to a temp `.mp4` then inserted as a single piece on the parent's parallel video track.
+
+### v0.5.0 (`0.5.0`)
 
 - **Time-ranged overlay visibility**: `.visible(during: CMTimeRange)` / `.visible(during: ClosedRange<TimeInterval>)` on every overlay type — overlays render only during a portion of the composition.
 - **LUTs**: `Filter.lut(LUT)` and the throwing factory `Filter.lut(url:)` for `.cube` 3D color-grading files. Standalone `LUT` value type loads + parses once for reuse across clips.

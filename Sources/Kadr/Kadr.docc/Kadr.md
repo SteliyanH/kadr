@@ -37,6 +37,15 @@ let url = try await Video {
 - ``VideoClipMetadata``
 - ``ClipID``
 
+### Multi-track Timeline (v0.6+)
+
+- ``Track``
+- ``VideoClip/at(time:)-(CMTime)``
+- ``VideoClip/at(time:)-(TimeInterval)``
+- ``MultiInputCompositor``
+- ``Video/compositor(_:)-(any)``
+- ``Video/compositor(_:)-(closure)``
+
 ### Audio
 
 - ``AudioTrack``
