@@ -44,6 +44,11 @@ public enum Filter: Sendable, Equatable {
     /// Photographic black-and-white conversion via `CIPhotoEffectMono`.
     case mono
 
+    /// 3D color lookup table loaded from a `.cube` file. Use ``Filter/lut(url:)`` for
+    /// one-shot construction from a URL, or build a ``LUT`` once and reuse it across
+    /// clips for cheaper composition. Maps to `CIColorCube`.
+    case lut(LUT)
+
     /// The underlying CIFilter name. Internal — used by ``FilterProcessor``.
     internal var ciFilterName: String {
         switch self {
@@ -51,6 +56,7 @@ public enum Filter: Sendable, Equatable {
         case .exposure: return "CIExposureAdjust"
         case .sepia:    return "CISepiaTone"
         case .mono:     return "CIPhotoEffectMono"
+        case .lut:      return "CIColorCube"
         }
     }
 
@@ -71,7 +77,20 @@ public enum Filter: Sendable, Equatable {
             filter?.setValue(intensity, forKey: kCIInputIntensityKey)
         case .mono:
             break  // no parameters
+        case .lut(let lut):
+            filter?.setValue(lut.dimension, forKey: "inputCubeDimension")
+            filter?.setValue(lut.data, forKey: "inputCubeData")
         }
         return filter?.outputImage ?? image
+    }
+}
+
+public extension Filter {
+    /// Build a `.lut` filter from a `.cube` file URL. Loads and parses the file
+    /// synchronously; throws ``KadrError/invalidLUT(_:reason:)`` if the file is missing
+    /// or malformed. Equivalent to `.lut(try LUT(url: url))` — provided as a
+    /// convenience so call sites only need a single `try`.
+    static func lut(url: URL) throws -> Filter {
+        .lut(try LUT(url: url))
     }
 }
