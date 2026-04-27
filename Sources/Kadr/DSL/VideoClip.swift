@@ -55,6 +55,10 @@ public struct VideoClip: Clip, Sendable {
     /// Filters applied to this clip in declaration order. Set via ``filter(_:)``.
     public let filters: [Filter]
 
+    /// Stable identifier for addressing this clip across reorders or trims, set via
+    /// ``id(_:)``. `nil` if no ID has been assigned.
+    public let clipID: ClipID?
+
     /// Timeline contribution after trim and speed are applied. Returns `CMTime.zero` when
     /// the clip hasn't been trimmed (the source asset's duration isn't known synchronously
     /// — call ``metadata`` for that).
@@ -103,6 +107,7 @@ public struct VideoClip: Clip, Sendable {
         self.replacementAudioURL = nil
         self.speedRate = 1.0
         self.filters = []
+        self.clipID = nil
     }
 
     internal init(
@@ -112,7 +117,8 @@ public struct VideoClip: Clip, Sendable {
         isMuted: Bool,
         replacementAudioURL: URL?,
         speedRate: Double = 1.0,
-        filters: [Filter] = []
+        filters: [Filter] = [],
+        clipID: ClipID? = nil
     ) {
         self.url = url
         self.trimRange = trimRange
@@ -121,11 +127,12 @@ public struct VideoClip: Clip, Sendable {
         self.replacementAudioURL = replacementAudioURL
         self.speedRate = speedRate
         self.filters = filters
+        self.clipID = clipID
     }
 
     /// Trim with a `CMTimeRange` for frame-accurate precision.
     public func trimmed(to range: CMTimeRange) -> VideoClip {
-        VideoClip(url: url, trimRange: range, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters)
+        VideoClip(url: url, trimRange: range, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, clipID: clipID)
     }
 
     /// Trim with a `ClosedRange<TimeInterval>`. Convenience overload — converts to `CMTimeRange`
@@ -140,13 +147,13 @@ public struct VideoClip: Clip, Sendable {
     /// Play this clip backwards. The source is pre-processed via a temporary file before
     /// composition; for very long clips this can be memory-intensive.
     public func reversed() -> VideoClip {
-        VideoClip(url: url, trimRange: trimRange, isReversed: true, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters)
+        VideoClip(url: url, trimRange: trimRange, isReversed: true, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, clipID: clipID)
     }
 
     /// Drop the source's audio track from the composition. Use ``withAudio(_:)`` to also
     /// substitute a different audio file.
     public func muted() -> VideoClip {
-        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: true, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters)
+        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: true, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, clipID: clipID)
     }
 
     /// Apply one or more ``Filter``s to this clip. Filters are pre-rendered to a
@@ -170,7 +177,8 @@ public struct VideoClip: Clip, Sendable {
             isMuted: isMuted,
             replacementAudioURL: replacementAudioURL,
             speedRate: speedRate,
-            filters: self.filters + filters
+            filters: self.filters + filters,
+            clipID: clipID
         )
     }
 
@@ -178,7 +186,13 @@ public struct VideoClip: Clip, Sendable {
     /// If the replacement audio is longer than the clip, it is truncated; if shorter, it
     /// is not looped.
     public func withAudio(_ audioURL: URL) -> VideoClip {
-        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: true, replacementAudioURL: audioURL, speedRate: speedRate)
+        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: true, replacementAudioURL: audioURL, speedRate: speedRate, filters: filters, clipID: clipID)
+    }
+
+    /// Assign a stable identifier so callers can address this clip by ID across reorders
+    /// or trims. See ``ClipID`` for guidelines on choosing IDs.
+    public func id(_ id: ClipID) -> VideoClip {
+        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, clipID: id)
     }
 
     /// Extract a thumbnail at a `CMTime` offset for frame-accurate selection.
