@@ -126,3 +126,44 @@ func apiValidationExamples() async throws {
 | `mergeVideoWithAudio(videoUrl:audioUrl:)` | `Video { VideoClip(url:).muted() }.audio(url:).export(to:)` |
 
 **Key insight:** 7 imperative public functions → 3 DSL primitives + modifiers.
+
+## v0.5 design — Custom Compositors
+
+Foundation feature for v0.5.0. A `Compositor` is user code that processes a single per-clip frame. Built-in compositors (per-clip crop, alpha-mask crop) consume the same protocol the public API exposes.
+
+**Public surface**
+
+```swift
+public struct CompositorContext: Sendable {
+    public let time: CMTime          // composition time of this frame
+    public let renderSize: CGSize    // engine's render canvas in pixels
+}
+
+public protocol Compositor: Sendable {
+    func process(image: CIImage, context: CompositorContext) -> CIImage
+}
+
+extension VideoClip {
+    public func compositor(_ compositor: any Compositor) -> VideoClip
+    public func compositor(_ body: @Sendable @escaping (CIImage, CompositorContext) -> CIImage) -> VideoClip
+}
+```
+
+**Key decisions and rationale**
+
+| Decision | Choice | Why |
+|---|---|---|
+| Pixel format | `CIImage` in / out | Composes with the existing `CIFilter` pipeline (`applyingCIFiltersWithHandler`). Lazy + GPU-backed. `CGImage` would force eager rasterization per frame and break GPU continuity. |
+| Synchronicity | Synchronous return | The engine wraps the call in `applyingCIFiltersWithHandler` for the async finish. Per-frame `async` is a footgun (export rate × clip-fps = blocking work); implementers preload state at construction. |
+| Concurrency | Protocol declared `Sendable`; `CIImage` is `Sendable` on iOS 14+ / macOS 11+ | Required for the engine's actor crossings. |
+| Pipeline order | Per-clip pre-render, **after** `Filter`s | Filters are predictable color ops; compositors are arbitrary user code. Order: filter → compositor → composition assembly. Implementation generalizes the existing `FilterProcessor` pre-render into a "passes" pipeline. |
+| Surface shape | Both protocol and closure | Protocol for reusable / named / testable compositors (used by the built-in crop + mask). Closure for ad-hoc use; wraps a closure-based conformance internally. |
+| Context | Struct (`CompositorContext`) | Lets us add fields (`clipDuration`, `clipIndex`, etc.) later without breaking the protocol. |
+
+**Out of scope for v0.5**
+
+Multi-track / multi-input compositors (e.g., a compositor that blends two source images, like a custom transition) require the lower-level `AVVideoCompositing` path. Land with v0.6's multi-track timeline.
+
+**Migration path for built-in features**
+
+The v0.5 per-clip `VideoClip.crop(at:size:anchor:)` and `VideoClip.mask(_:)` ship as named built-ins on top of the same `Compositor` protocol — Tier 3 of the v0.5 plan.
