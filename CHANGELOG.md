@@ -4,11 +4,11 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — v0.4.1 in progress
+## [0.4.1] - 2026-04-27
 
 Additive patch release driven by [`kadr-ui`](https://github.com/SteliyanH/kadr-ui)'s timeline component, which needs stable per-clip identity that survives reorders and trims. No breaking changes; adds one new public type and one new modifier method per media-clip type.
 
-### Added
+### Added ([#41](https://github.com/SteliyanH/kadr/pull/41))
 
 - **`ClipID`** — stable, user-supplied identifier for clips, mirroring ``LayerID``'s role for overlays. `Hashable`, `Sendable`, `ExpressibleByStringLiteral`. Returns `nil` from ``Clip/clipID`` for unidentified clips and for ``Transition`` (which isn't an addressable unit).
 - **`Clip.clipID: ClipID?`** — new protocol requirement with a default `nil` implementation. Existing custom conformers don't need to change.
@@ -16,7 +16,12 @@ Additive patch release driven by [`kadr-ui`](https://github.com/SteliyanH/kadr-u
 
 ### Tests
 
-- New `ClipIDTests` suite (12 tests) verifying the public surface, ID survival across modifier chains, generic protocol access via `[any Clip]`, and that ``Transition`` keeps the default `nil` ID.
+- New `ClipIDTests` suite (12 tests) verifying the public surface, ID survival across modifier chains, generic protocol access via `[any Clip]`, and that ``Transition`` keeps the default `nil` ID. Full suite: 243.
+
+### Documentation ([#42](https://github.com/SteliyanH/kadr/pull/42))
+
+- README gains a v0.4.1 Features section.
+- New `Examples/V041Showcase.swift` covering ID survival through modifier chains, generic `[any Clip]` iteration, and the selection-model pattern that timeline UIs use.
 
 ## [0.4.0] - 2026-04-27
 
