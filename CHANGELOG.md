@@ -4,9 +4,9 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — v0.5.0 in progress
+## [0.5.0] - 2026-04-27
 
-The "Advanced Composition (per-clip processing)" cycle. v0.5.0 ships in tiers — see [ROADMAP.md](ROADMAP.md#v050--advanced-composition-per-clip-processing). This entry will accumulate as PRs land.
+The "Advanced Composition (per-clip processing)" release. Tier-based rollout: standalone additive features (Tier 1), the custom-compositor foundation (Tier 2), and built-in compositor consumers (Tier 3). Multi-track timeline work was scoped out to v0.6 — see [ROADMAP.md](ROADMAP.md#v060--multi-track-timeline).
 
 ### Added — Time-ranged overlay visibility
 
