@@ -656,10 +656,16 @@ internal enum CompositionBuilder {
             assetURL = try await ReverseProcessor.reverse(videoAt: assetURL)
         }
 
-        // Filters pre-render to a temporary file before composition. Order: reverse
-        // first (so filters operate on the reversed frames), then filters.
-        if !clip.filters.isEmpty {
-            assetURL = try await FilterProcessor.apply(filters: clip.filters, to: assetURL)
+        // Filters and compositors pre-render to a temporary file before composition.
+        // Order: reverse first (so filters/compositors operate on the reversed frames),
+        // then filters, then compositors. Filters and compositors run in the same
+        // applyingCIFiltersWithHandler pass — one extra encode/decode total.
+        if !clip.filters.isEmpty || !clip.compositors.isEmpty {
+            assetURL = try await FilterProcessor.apply(
+                filters: clip.filters,
+                compositors: clip.compositors,
+                to: assetURL
+            )
         }
 
         let asset = AVURLAsset(url: assetURL)
