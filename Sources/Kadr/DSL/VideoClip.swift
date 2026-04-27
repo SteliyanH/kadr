@@ -223,6 +223,29 @@ public struct VideoClip: Clip, Sendable {
         compositor(ClosureCompositor(body: body))
     }
 
+    /// Crop this clip to a rectangular region, scaling the result to fill the clip's
+    /// original frame ("reframe / zoom-in" semantics). Mirrors the composition-wide
+    /// ``Video/crop(at:size:anchor:)`` shape but operates per-clip.
+    ///
+    /// ```swift
+    /// VideoClip(url: clipURL)
+    ///     .crop(at: .center, size: .normalized(width: 0.5, height: 0.5))
+    /// ```
+    ///
+    /// `position` is where the crop's `anchor` lands within the clip's source frame, in
+    /// the same coordinate system as overlays. Default `anchor` is `.center` so the
+    /// most common case — "crop to the middle X%" — reads naturally.
+    ///
+    /// **Implementation:** wraps a built-in ``Compositor`` (internal `CropCompositor`)
+    /// and appends it to the clip's compositor list. Multiple `.crop` calls accumulate
+    /// — each subsequent crop further crops the result of the previous, in declaration
+    /// order. If the crop's aspect ratio doesn't match the source frame's, the cropped
+    /// region is stretched to fill (no letterbox). For aspect-preserved letterbox or
+    /// composition-wide cropping, use ``Video/crop(at:size:anchor:)``.
+    public func crop(at position: Position, size: Size, anchor: Anchor = .center) -> VideoClip {
+        compositor(CropCompositor(position: position, size: size, anchor: anchor))
+    }
+
     /// Extract a thumbnail at a `CMTime` offset for frame-accurate selection.
     public func thumbnail(at time: CMTime) async throws -> PlatformImage {
         let asset = AVURLAsset(url: url)
