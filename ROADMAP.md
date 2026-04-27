@@ -112,12 +112,28 @@ Per-clip processing features built on a public custom-compositor surface. See [C
 
 ## v0.6.0 — Multi-Track Timeline
 
-DSL evolution to support parallel tracks and explicit time placement. Treated as a standalone milestone because it's a real DSL design effort (additive vs breaking, nesting model, kadr-ui implications), not a single feature addition.
+DSL evolution to support parallel tracks and explicit time placement. Fully additive — every v0.5 single-track composition continues to compile and behave identically.
 
-- **Multi-track composition:** parallel timelines, e.g. `Video { Track { ... }; Track { ... } }` (exact shape under design)
-- **Explicit time placement:** clips that opt into a fixed timeline range instead of the implicit "next clip starts where previous ended" semantic
-- **kadr-ui:** `TimelineView` extended to render multiple lanes
-- **Multi-track-aware compositors:** the v0.5 single-track-per-clip `Compositor` extended (or paired with a new protocol) for compositors that blend two source images — e.g., custom transitions
+**DSL — hybrid shape**
+
+- `.at(time:)` modifier on clips (and `Track`) — opts a clip out of the implicit linear chain and pins it to an explicit composition time. Smallest change for the common picture-in-picture case.
+- `Track { ... }` block — groups clips into a sub-timeline that chains internally; the whole track can be `.at(time:)`-positioned. For when you want several clips on a parallel sub-track without sprinkling `.at(...)` on each.
+- Top-level clips without `.at(...)` continue to chain as today (current behavior is the implicit "main track").
+- Layer ordering: declaration order = render order (later renders on top), matching `Video.overlay(_:)`.
+
+**Multi-input compositors**
+
+- New `MultiInputCompositor` protocol (separate from v0.5's single-input `Compositor`) — `func process(images: [CIImage], context: CompositorContext) -> CIImage`. Additive; v0.5 conformers keep working unchanged.
+- Required for blending the new parallel video tracks — the engine attaches one to merge multi-track output. Default behavior (no custom compositor) is alpha-composite later-over-earlier.
+- Unlocks user-defined custom transitions (the v0.5 deferred case) and per-frame multi-source effects (chroma-key + plate composite, picture-in-picture with custom edge treatment, etc).
+
+**Engine**
+
+- Switch from `applyingCIFiltersWithHandler` (single-source) to a custom `AVVideoCompositing` implementation for any composition with more than one video track. Single-track compositions keep the existing fast path.
+
+**kadr-ui v0.5+**
+
+- `TimelineView` extended to render multiple lanes. Lands as kadr-ui v0.5+ after kadr v0.6 ships, same staging as the v0.3 → kadr-ui 0.4 cycle.
 
 ## v1.0.0 — Production Ready
 
