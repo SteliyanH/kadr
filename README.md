@@ -49,7 +49,14 @@ FFmpegKit retired in January 2025. Pixel SDK sunset in February 2025. AVFoundati
 
 ## Features
 
-### v0.6.0 (current — `0.6.0`)
+### v0.7.0 (current — `0.7.0`)
+
+- **Track names.** Optional `name:` parameter on `Track(...)` for downstream tooling. kadr-ui's `TimelineView` consumes it for lane labels.
+- **Transitions in the implicit chain alongside multi-track parallel clips** — closes the v0.6 deferral. The engine pre-renders the chain to a temp `.mp4` (mirroring v0.6's Tracks-with-transitions pattern), then inserts it as a single piece on the main video track. No more `KadrError.notYetImplemented` for that combination.
+- **Time-windowed compositors.** `Video.compositor(_:during:)` — single global `MultiInputCompositor` active only during a `CMTimeRange` / `ClosedRange<TimeInterval>`. Outside the window the engine falls back to its built-in alpha-composite blender. Closure forms also available.
+- **AudioTrack timing.** `AudioTrack.at(time:)` and `.duration(_:)` — pin a track to a composition time and cap its playback length. Sound effects and time-anchored music are first-class. All volume / fade / ducking automation re-anchored to absolute composition time so timing-aware tracks layer correctly with chain audio.
+
+### v0.6.0 (`0.6.0`)
 
 - **Multi-track timeline.** Hybrid DSL: top-level clips chain implicitly (v0.5 unchanged); `.at(time:)` pins a clip to an explicit composition time as a free-floating parallel track; `Track { ... }` groups clips into a parallel sub-timeline anchored at `Track(at:)`. Layer ordering is declaration order — later renders on top.
 - **Multi-input compositors.** `MultiInputCompositor` protocol (separate from v0.5's single-input `Compositor`) — `func process(images: [CIImage], context:) -> CIImage`. Attach via `Video.compositor(_:)`. Default behavior is alpha-composite later-over-earlier; custom blends run via a `KadrVideoCompositor` (custom `AVVideoCompositing` implementation).

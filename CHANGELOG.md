@@ -4,6 +4,53 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-04-28
+
+Multi-track polish + audio timing. Closes the two v0.6 deferrals (transitions-in-chain alongside multi-track, time-ranged compositor selection), adds named `Track` blocks for downstream tooling, and introduces real audio timing controls. Built across an RFC + 3 implementation tiers ([#65](https://github.com/SteliyanH/kadr/pull/65) → [#66](https://github.com/SteliyanH/kadr/pull/66) → [#67](https://github.com/SteliyanH/kadr/pull/67) → [#68](https://github.com/SteliyanH/kadr/pull/68)). Pure additive — every v0.6 composition compiles and behaves identically.
+
+### Added — Track names ([#66](https://github.com/SteliyanH/kadr/pull/66))
+
+- `Track.name: String?` — optional human-readable label on `Track`. `nil` by default. Three init overloads gain a `name:` parameter:
+  - `Track(name:_:)`
+  - `Track(at: CMTime, name:_:)`
+  - `Track(at: TimeInterval, name:_:)`
+- Surfaces via `Video.clips` for downstream tooling. kadr-ui v0.5.x will use this for `TimelineView` lane labels in place of auto-generated "Track 1" / "Track 2" captions.
+
+### Fixed — Transitions in implicit chain alongside multi-track ([#66](https://github.com/SteliyanH/kadr/pull/66))
+
+- Closes the v0.6.0 deferral. Previously the engine threw `KadrError.notYetImplemented` when the chain had a transition in multi-track mode (workaround: wrap the chain in a `Track {}`). Now it just works.
+- Engine fix: `preRenderTrackToTempFile` generalized to `preRenderClipsToTempFile(clips:preset:)`. In `buildMultiTrack`'s chain handler, when the chain contains a transition, the full chain is pre-rendered to a temp `.mp4` and inserted as a single piece on the main video track. Same recursive pre-render pattern as v0.6 tier 4c.
+- `clipAudioRanges` spans the full pre-rendered piece so background-music ducking continues to apply during the chain's duration.
+
+### Added — Time-windowed compositors ([#67](https://github.com/SteliyanH/kadr/pull/67))
+
+- `Video.compositor(_:during:)` — single global multi-input compositor active only during a window. Outside the window, the engine runs its built-in `AlphaCompositeBlender`. Frame-accurate; the active compositor is selected per frame at the composition-time level.
+- Four overloads:
+  - `compositor(any MultiInputCompositor, during: CMTimeRange) -> Video`
+  - `compositor(any MultiInputCompositor, during: ClosedRange<TimeInterval>) -> Video`
+  - `compositor(during: CMTimeRange) { images, ctx in ... } -> Video`
+  - `compositor(during: ClosedRange<TimeInterval>) { images, ctx in ... } -> Video`
+- New stored field `Video.compositorWindow: CMTimeRange?` (nil default, public read). Threaded through `Video → Exporter → CompositionBuilder.build → KadrVideoCompositionInstruction → KadrVideoCompositor.process`. Preview path (`PlaybackComposer`) also threaded so `makePlayerItem()` matches export.
+
+### Added — AudioTrack timing ([#68](https://github.com/SteliyanH/kadr/pull/68))
+
+- `AudioTrack.at(time:)` — pin an audio track to start at an explicit composition time. CMTime + TimeInterval overloads. Sound effects and time-anchored music are first-class.
+- `AudioTrack.duration(_:)` — explicit cap on playback length from `startTime`. CMTime + TimeInterval overloads. When `nil` (default), the track plays the asset from `startTime` to its natural end, clamped to the composition's end.
+- New stored fields: `AudioTrack.startTime: CMTime?`, `AudioTrack.explicitDuration: CMTime?`. Both nil-default — every v0.6 audio call site behaves identically.
+- Engine (`CompositionBuilder.buildBackgroundAudioMixParameters`):
+  - Inserts at `startTime ?? .zero` (was always `.zero`).
+  - `insertDuration = min(audioDuration, totalDuration - insertionStart, explicitDuration ?? .infinity)`.
+  - Volume / fade-in / fade-out / ducking automation re-anchored to absolute composition time so timing-aware tracks layer correctly with chain audio and other background tracks.
+  - Tracks starting at or past `totalDuration` are skipped (no audible output, no allocated background track).
+
+### Tests
+
+- 19 new tests across the cycle:
+  - 4 `Track(name:)` cases + 1 chain-pre-render integration test
+  - 4 time-windowed compositor cases
+  - 8 audio-timing modifier-storage cases + 3 engine-integration cases
+- Suite: 338 → 357.
+
 ## [0.6.0] - 2026-04-27
 
 The "Multi-Track Timeline" release. Per the design locked in #55, v0.6 adds parallel tracks to the DSL via a hybrid shape (`.at(time:)` + `Track {}`) plus a `MultiInputCompositor` protocol for blending the new parallel tracks. Shipped in tiers (#56 → #61) — see [ROADMAP.md](ROADMAP.md#v060--multi-track-timeline).
