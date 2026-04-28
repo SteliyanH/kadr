@@ -157,27 +157,103 @@ Closes the v0.6 deferrals on transitions-in-chain and time-ranged compositors, a
 - ✓ `AudioTrack.duration(_:)` — explicit cap on playback length from `startTime`. Engine inserts at `min(asset duration, available window, explicit cap)`.
 - ✓ All volume / fade-in / fade-out / ducking automation re-anchored to absolute composition time so timing-aware tracks layer correctly with chain audio and other background tracks.
 
+## v0.8.0 — Animation & Transform
+
+The last feature cycle before v1.0. Foundational additions that would be breaking if they landed after semver lock — per-clip transform, keyframe animations on every animatable property, animated text overlays. Plus audio cross-fades on `AudioTrack` boundaries to round out the audio surface.
+
+- **Per-clip Transform** — `Transform(center:rotation:scale:anchor:)` on `VideoClip` / `ImageClip` / `TitleSequence`. Wires to `AVMutableVideoCompositionLayerInstruction.transform` for the static case and feeds into the keyframe pipeline for animated cases.
+- **Keyframe animations** — `Animation<T>` value type, `Animatable` protocol conformance on `Transform` / `Opacity` / `Filter` intensity, timing functions (linear, easeIn, easeOut, easeInOut, custom Bézier). Drives both export and `makePlayerItem()` preview.
+- **Animated `TextOverlay`** — `CALayer`-backed render path with optional `[CAAnimation]` for kinetic typography (fade-by-letter, slide-in, kerning). Static text continues to work unchanged.
+- **Audio cross-fades** — `AudioTrack.crossfade(_ duration:)` (or implicit when adjacent `.at(time:)` audio tracks overlap). Engine emits matching volume ramps so one track fades out as the next fades in.
+
+## v0.8.x — Polish patches
+
+- `AudioTrack.volumeRamp(start:end:during:)` — granular volume automation curves between two points.
+- More `Filter` presets: `gaussianBlur`, `vignette`, `sharpen`, `zoomBlur`, `glow`. Closes the parity gap with IMG.LY (60+ filters) and VideoLab.
+- Bug fixes from v0.8.0 surface.
+
+## v0.9.0 — Advanced timing
+
+The pre-v1.0 cleanup of timing-related deferrals.
+
+- **Speed curves** on `VideoClip` — non-linear speed (ease in/out, custom Bézier, hold), beyond v0.2's flat speed multiplier. The signature CapCut feature.
+- **`AudioTrack.speed(_:)`** — pitch-preserving via `audioTimePitchAlgorithm`. Closes the v0.7-deferred audio-side speed.
+- **Caption authoring / ingest** (SRT, VTT) — read existing caption files, attach to `Video` as `AVMetadataItem` group, write into the export. Alternative landing spot: the `kadr-captions` adapter package below.
+
 ## v1.0.0 — Production Ready
 
-Semver stability guarantee.
+Semver stability guarantee. Every public surface from v0.8 / v0.9 is locked.
 
 - API stability commitment — no breaking changes without major version bump
-- Comprehensive documentation with tutorials
-- Performance benchmarks
+- Comprehensive DocC tutorials: Slideshow, Multi-track, Custom compositors, Keyframe animations, Editor app walkthrough
+- Performance benchmarks — single-track export, multi-track with `KadrVideoCompositor`, keyframe-heavy compositions
+- Migration guide v0.x → v1.0
 - CocoaPods support (if community demand warrants it)
+
+---
+
+## Adapter packages (separate repos, optional)
+
+Small, focused, dependency-bearing packages that consume kadr's public surface without bloating the core. Each lives in its own GitHub repo and ships on its own version track.
+
+### `kadr-photos`
+
+Photos-library integration. Adds clip source types backed by `PHAsset`. Lives in its own repo because it depends on the `Photos` / `PhotosUI` frameworks, which kadr core deliberately avoids.
+
+- `PHAssetClip(asset:)` — adopt `Clip`, load video / image data from a Photos library asset
+- Live Photo support (still + motion as a unit)
+- iCloud download progress reporting
+
+Targets first release after kadr v0.8 ships (when `Transform` is stable for image-clip framing).
+
+### `kadr-captions`
+
+SRT / VTT / iTT caption file parsing and authoring. Could land as part of kadr v0.9 instead of as a separate package if the surface stays small (one parser + one author + one `AVMetadataItem` builder). Decision in the v0.9 RFC.
+
+---
+
+## Example application — `kadr-reels-studio`
+
+Flagship example app demonstrating the full kadr + kadr-ui surface end-to-end. Lives in its own repo (not buried in `Examples/`) so it gets its own README, screenshots, App Store-quality demo. Ships as a real free app on the App Store alongside kadr v1.0.
+
+**Purpose**
+
+- Integration test for the full kadr + kadr-ui surface — feature gaps surface as missing in the app
+- Marketing material — screenshots and GIFs for launch posts and the README
+- A real reference implementation showing the "post-FFmpegKit / Pixel SDK" replacement story
+
+**Feature surface (matches kadr's release cadence)**
+
+- **v0.1** (against kadr v0.7 / kadr-ui v0.5.3) — Slideshow + multi-track timeline + overlays + BGM with ducking + time-pinned SFX + presets + export with progress
+- **v0.2** (after kadr v0.8 / kadr-ui v0.6) — adds Inspector panel (Transform, Filters, Opacity sliders), keyframe editor surface, animated text reveals
+- **v1.0** — alongside kadr v1.0; production-ready, App Store distribution
 
 ---
 
 ## Kadr Pro
 
-Premium features under a commercial license in the separate `kadr-pro` repository. Apple-platform–native — no GPU-bound research pipelines.
+Premium features under a commercial license in the separate `kadr-pro` repository. Kicks off **after kadr v1.0** so the OSS core's API surface is locked first. Apple-platform–native — no GPU-bound research pipelines.
 
 - **HDR / pro export:** HDR10, Dolby Vision, ProRes.
 - **On-device AI:** auto-captions (`Speech`), smart crop (`Vision` saliency / face detection), background removal (`VNGenerateForegroundInstanceMask`). Runs on Apple Neural Engine; no cloud, no GPU dependencies.
 - **Custom Metal shader effects:** user-supplied `.metal` shaders for per-frame effects.
+- **Templates engine:** brand-consistency layer for SDK consumers (matches IMG.LY's templates surface).
 - **Priority support.**
 
 > Note: Text-driven generative AI editing (e.g. CLIP-based pipelines like Text2LIVE) is intentionally **out of scope**. Those need research-grade GPUs and don't fit the Apple-platform-native, ship-on-iPhone model. If we do anything in that direction it would be via on-device CoreML / Apple Intelligence APIs as they mature.
+
+---
+
+## Explicit non-goals
+
+Captured here to keep scope focused — these are *not* on any roadmap unless community demand changes:
+
+- AR / face tracking effects (Banuba's lane)
+- Multiplexed compositor chains — keyframe animations on a single compositor cover this
+- Per-Track compositor overrides — time-windowed global compositor covers it
+- Real-time DSP audio nodes (reverb, EQ, compression) — users wanting that should reach for AudioKit
+- After-Effects-style pre-compose / `RenderLayerGroup` — `Track {}` already covers the use case
+- Templates engine in the OSS core — application-level concern; kadr-pro covers SDK-consumer templates
 
 ---
 
