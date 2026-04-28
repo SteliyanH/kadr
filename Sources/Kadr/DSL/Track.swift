@@ -28,10 +28,9 @@ import CoreMedia
 /// the track's `startTime`, the next picks up where the previous ended, and so on.
 /// Transitions and the v0.6 single-track timeline rules apply within the track.
 ///
-/// > **v0.6 Tier 2 status:** the surface is in place but engine wiring lands with the
-/// > multi-track engine PR (Tier 4). Tracks declared in v0.6.0-pre builds compile and
-/// > read back through ``Video/clips``, but the engine still treats them like other
-/// > clips in the implicit chain. Final behavior arrives with Tier 4.
+/// **Optional name (v0.7).** Pass `name:` to attach a human-readable label that
+/// surfaces through ``Video/clips``. Downstream tooling (kadr-ui's `TimelineView`)
+/// uses it for lane labels in place of auto-generated "Track 1" / "Track 2" captions.
 public struct Track: Clip, Sendable {
 
     /// The clips belonging to this track, in declaration order. Iterate to inspect the
@@ -44,21 +43,29 @@ public struct Track: Clip, Sendable {
     /// (`Transition` and unanchored regular clips).
     public let startTime: CMTime?
 
+    /// Optional human-readable label for the track. Surfaced through ``Video/clips``
+    /// for downstream tooling — kadr-ui's `TimelineView` uses it for lane labels in
+    /// place of auto-generated "Track 1" / "Track 2" captions. `nil` by default.
+    /// Added in v0.7.
+    public let name: String?
+
     /// Build a track that starts at composition time `.zero` (composition's t=0).
-    public init(@VideoBuilder _ content: () -> [any Clip]) {
+    public init(name: String? = nil, @VideoBuilder _ content: () -> [any Clip]) {
         self.clips = content()
         self.startTime = .zero
+        self.name = name
     }
 
     /// Build a track anchored at a `CMTime` start position.
-    public init(at time: CMTime, @VideoBuilder _ content: () -> [any Clip]) {
+    public init(at time: CMTime, name: String? = nil, @VideoBuilder _ content: () -> [any Clip]) {
         self.clips = content()
         self.startTime = time
+        self.name = name
     }
 
     /// Build a track anchored at a `TimeInterval` start position. Convenience overload.
-    public init(at time: TimeInterval, @VideoBuilder _ content: () -> [any Clip]) {
-        self.init(at: CMTime(seconds: time, preferredTimescale: 600), content)
+    public init(at time: TimeInterval, name: String? = nil, @VideoBuilder _ content: () -> [any Clip]) {
+        self.init(at: CMTime(seconds: time, preferredTimescale: 600), name: name, content)
     }
 
     /// Sum of the track's inner clip durations (in track-relative time). For untrimmed

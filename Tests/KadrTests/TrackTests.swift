@@ -33,6 +33,44 @@ struct TrackTests {
         #expect(CMTimeGetSeconds(track.startTime!) == 1.5)
     }
 
+    // MARK: - Name (v0.7)
+
+    @Test func nameDefaultsToNilOnAllInitForms() {
+        let bare = Track { ImageClip(PlatformImage(), duration: 1.0) }
+        let cmt = Track(at: CMTime(seconds: 1, preferredTimescale: 600)) {
+            ImageClip(PlatformImage(), duration: 1.0)
+        }
+        let ti = Track(at: 1.0) { ImageClip(PlatformImage(), duration: 1.0) }
+        #expect(bare.name == nil)
+        #expect(cmt.name == nil)
+        #expect(ti.name == nil)
+    }
+
+    @Test func parameterlessInitWithName() {
+        let track = Track(name: "B-Roll") {
+            ImageClip(PlatformImage(), duration: 1.0)
+        }
+        #expect(track.name == "B-Roll")
+        #expect(track.startTime == .zero)
+    }
+
+    @Test func atCMTimeInitWithName() {
+        let t = CMTime(seconds: 2.5, preferredTimescale: 600)
+        let track = Track(at: t, name: "Cutaway") {
+            ImageClip(PlatformImage(), duration: 1.0)
+        }
+        #expect(track.name == "Cutaway")
+        #expect(track.startTime == t)
+    }
+
+    @Test func atTimeIntervalInitWithName() {
+        let track = Track(at: 1.5, name: "Reaction") {
+            ImageClip(PlatformImage(), duration: 1.0)
+        }
+        #expect(track.name == "Reaction")
+        #expect(CMTimeGetSeconds(track.startTime!) == 1.5)
+    }
+
     // MARK: - Duration
 
     @Test func durationSumsClipDurations() {
