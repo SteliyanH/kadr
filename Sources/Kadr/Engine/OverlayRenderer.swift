@@ -59,6 +59,17 @@ internal enum OverlayRenderer {
                     compositionDuration: compositionDuration
                 )
             }
+            // v0.8: text animation. The recipe builds CAAnimation(s) targeting the
+            // overlay's text layer; we add them with stable keys so they don't collide
+            // with the visibility-timing animation. The recipe is responsible for its
+            // own beginTime / fillMode / removedOnCompletion semantics.
+            if let textOverlay = overlay as? TextOverlay,
+               let textAnim = textOverlay.textAnimation {
+                let animations = textAnim.makeAnimations(for: sublayer)
+                for (i, anim) in animations.enumerated() {
+                    sublayer.add(anim, forKey: "kadr.textAnimation.\(i)")
+                }
+            }
             parent.addSublayer(sublayer)
         }
 
