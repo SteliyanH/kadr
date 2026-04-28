@@ -69,6 +69,11 @@ public struct VideoClip: Clip, Sendable {
     /// See ``Clip/startTime`` for the v0.6 surface contract.
     public let startTime: CMTime?
 
+    /// Optional per-clip affine transform applied in the engine's render space. `nil`
+    /// (default) leaves the clip's natural aspect-fill layout unchanged. Set via
+    /// ``transform(_:)``. Added in v0.8.
+    public let transform: Transform?
+
     /// Timeline contribution after trim and speed are applied. Returns `CMTime.zero` when
     /// the clip hasn't been trimmed (the source asset's duration isn't known synchronously
     /// — call ``metadata`` for that).
@@ -120,6 +125,7 @@ public struct VideoClip: Clip, Sendable {
         self.compositors = []
         self.clipID = nil
         self.startTime = nil
+        self.transform = nil
     }
 
     internal init(
@@ -132,7 +138,8 @@ public struct VideoClip: Clip, Sendable {
         filters: [Filter] = [],
         compositors: [any Compositor] = [],
         clipID: ClipID? = nil,
-        startTime: CMTime? = nil
+        startTime: CMTime? = nil,
+        transform: Transform? = nil
     ) {
         self.url = url
         self.trimRange = trimRange
@@ -144,11 +151,12 @@ public struct VideoClip: Clip, Sendable {
         self.compositors = compositors
         self.clipID = clipID
         self.startTime = startTime
+        self.transform = transform
     }
 
     /// Trim with a `CMTimeRange` for frame-accurate precision.
     public func trimmed(to range: CMTimeRange) -> VideoClip {
-        VideoClip(url: url, trimRange: range, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: clipID, startTime: startTime)
+        VideoClip(url: url, trimRange: range, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: clipID, startTime: startTime, transform: transform)
     }
 
     /// Trim with a `ClosedRange<TimeInterval>`. Convenience overload — converts to `CMTimeRange`
@@ -163,13 +171,13 @@ public struct VideoClip: Clip, Sendable {
     /// Play this clip backwards. The source is pre-processed via a temporary file before
     /// composition; for very long clips this can be memory-intensive.
     public func reversed() -> VideoClip {
-        VideoClip(url: url, trimRange: trimRange, isReversed: true, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: clipID, startTime: startTime)
+        VideoClip(url: url, trimRange: trimRange, isReversed: true, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: clipID, startTime: startTime, transform: transform)
     }
 
     /// Drop the source's audio track from the composition. Use ``withAudio(_:)`` to also
     /// substitute a different audio file.
     public func muted() -> VideoClip {
-        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: true, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: clipID, startTime: startTime)
+        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: true, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: clipID, startTime: startTime, transform: transform)
     }
 
     /// Apply one or more ``Filter``s to this clip. Filters are pre-rendered to a
@@ -196,7 +204,8 @@ public struct VideoClip: Clip, Sendable {
             filters: self.filters + filters,
             compositors: compositors,
             clipID: clipID,
-            startTime: startTime
+            startTime: startTime,
+            transform: transform
         )
     }
 
@@ -204,13 +213,13 @@ public struct VideoClip: Clip, Sendable {
     /// If the replacement audio is longer than the clip, it is truncated; if shorter, it
     /// is not looped.
     public func withAudio(_ audioURL: URL) -> VideoClip {
-        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: true, replacementAudioURL: audioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: clipID, startTime: startTime)
+        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: true, replacementAudioURL: audioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: clipID, startTime: startTime, transform: transform)
     }
 
     /// Assign a stable identifier so callers can address this clip by ID across reorders
     /// or trims. See ``ClipID`` for guidelines on choosing IDs.
     public func id(_ id: ClipID) -> VideoClip {
-        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: id, startTime: startTime)
+        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: id, startTime: startTime, transform: transform)
     }
 
     /// Pin this clip to an explicit composition start time. The clip opts out of the
@@ -228,7 +237,7 @@ public struct VideoClip: Clip, Sendable {
     /// > with the multi-track engine PR. Setting `.at(time:)` in v0.6.0-pre builds has
     /// > no runtime effect yet — the clip still participates in the implicit chain.
     public func at(time: CMTime) -> VideoClip {
-        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: clipID, startTime: time)
+        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: clipID, startTime: time, transform: transform)
     }
 
     /// Pin this clip to an explicit composition start time, in seconds. Convenience
@@ -237,11 +246,29 @@ public struct VideoClip: Clip, Sendable {
         at(time: CMTime(seconds: time, preferredTimescale: 600))
     }
 
+    /// Apply a per-clip affine transform in the engine's render space.
+    ///
+    /// `Transform` composes with the engine's built-in aspect-fill scaling — the clip's
+    /// natural content fills the canvas, then the transform's `scale`, `rotation`, and
+    /// `center` reposition it. Pass `.identity` (default-initialized `Transform`) for a
+    /// no-op base. Calling `.transform(_:)` again replaces the previous value (transforms
+    /// don't accumulate). Added in v0.8.
+    ///
+    /// ```swift
+    /// // Picture-in-picture pinned to the top-right corner at 40% scale
+    /// VideoClip(url: pip)
+    ///     .trimmed(to: 0...3)
+    ///     .transform(Transform(center: .topRight, scale: 0.4, anchor: .topRight))
+    /// ```
+    public func transform(_ transform: Transform) -> VideoClip {
+        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: clipID, startTime: startTime, transform: transform)
+    }
+
     /// Append a ``Compositor`` to this clip. Compositors run after ``Filter``s during
     /// the export pre-render pass; multiple `.compositor` calls accumulate in declaration
     /// order. See the ``Compositor`` documentation for the per-frame contract.
     public func compositor(_ compositor: any Compositor) -> VideoClip {
-        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors + [compositor], clipID: clipID, startTime: startTime)
+        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors + [compositor], clipID: clipID, startTime: startTime, transform: transform)
     }
 
     /// Append an inline closure-backed ``Compositor``. Convenient for one-off

@@ -44,6 +44,11 @@ public struct TitleSequence: Clip, Sendable {
     /// ``Clip/startTime`` for the v0.6 contract.
     public let startTime: CMTime?
 
+    /// Optional per-clip affine transform applied in the engine's render space. `nil`
+    /// (default) leaves the clip's natural aspect-fill layout unchanged. Set via
+    /// ``transform(_:)``. Added in v0.8.
+    public let transform: Transform?
+
     public var duration: CMTime { _duration }
 
     /// Title with a `TimeInterval` duration.
@@ -74,6 +79,7 @@ public struct TitleSequence: Clip, Sendable {
         self._duration = duration
         self.clipID = nil
         self.startTime = nil
+        self.transform = nil
     }
 
     internal init(
@@ -82,7 +88,8 @@ public struct TitleSequence: Clip, Sendable {
         style: TextStyle,
         backgroundColor: PlatformColor,
         clipID: ClipID?,
-        startTime: CMTime? = nil
+        startTime: CMTime? = nil,
+        transform: Transform? = nil
     ) {
         self.text = text
         self.style = style
@@ -90,23 +97,31 @@ public struct TitleSequence: Clip, Sendable {
         self._duration = duration
         self.clipID = clipID
         self.startTime = startTime
+        self.transform = transform
     }
 
     /// Assign a stable identifier so callers can address this clip by ID across reorders
     /// or trims. See ``ClipID`` for guidelines on choosing IDs.
     public func id(_ id: ClipID) -> TitleSequence {
-        TitleSequence(text: text, duration: _duration, style: style, backgroundColor: backgroundColor, clipID: id, startTime: startTime)
+        TitleSequence(text: text, duration: _duration, style: style, backgroundColor: backgroundColor, clipID: id, startTime: startTime, transform: transform)
     }
 
     /// Pin this clip to an explicit composition start time. See ``Clip/startTime`` for
     /// the contract.
     public func at(time: CMTime) -> TitleSequence {
-        TitleSequence(text: text, duration: _duration, style: style, backgroundColor: backgroundColor, clipID: clipID, startTime: time)
+        TitleSequence(text: text, duration: _duration, style: style, backgroundColor: backgroundColor, clipID: clipID, startTime: time, transform: transform)
     }
 
     /// Pin this clip to an explicit composition start time, in seconds.
     public func at(time: TimeInterval) -> TitleSequence {
         at(time: CMTime(seconds: time, preferredTimescale: 600))
+    }
+
+    /// Apply a per-clip affine transform in the engine's render space. See
+    /// ``Kadr/Transform`` and ``Kadr/VideoClip/transform(_:)`` for the contract.
+    /// Added in v0.8.
+    public func transform(_ transform: Transform) -> TitleSequence {
+        TitleSequence(text: text, duration: _duration, style: style, backgroundColor: backgroundColor, clipID: clipID, startTime: startTime, transform: transform)
     }
 
     /// Render the title to a `PlatformImage` at the given render size.
