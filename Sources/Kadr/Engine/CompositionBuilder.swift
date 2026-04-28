@@ -22,7 +22,7 @@ internal enum CompositionBuilder {
         // transform-bearing single-track compositions through this path, since the multi-track
         // builder is the only one that produces a videoComposition with per-clip layer
         // instructions (which is where setTransform(_:at:) lives).
-        let isMultiTrack = clips.contains { $0.startTime != nil || $0 is Track || $0.transform != nil }
+        let isMultiTrack = clips.contains { $0.startTime != nil || $0 is Track || $0.hasAnimationOrLayout }
         if isMultiTrack {
             return try await buildMultiTrack(
                 clips: clips,
@@ -73,11 +73,12 @@ internal enum CompositionBuilder {
         var clipAudioRanges: [CMTimeRange] = []
         var totalDuration: CMTime = .zero
 
-        // Per-track transform info, indexed parallel to `videoTracks`. Each entry is a
-        // list of `(time, transform)` pairs to apply via setTransform(_:at:) on that
-        // track's layer instruction. Empty list = no per-clip transforms (engine still
-        // applies the base aspect-fill + crop transform at .zero). Added in v0.8.
-        var trackTransforms: [[(time: CMTime, transform: Transform)]] = []
+        // Per-track animation info, indexed parallel to `videoTracks`. Each entry is a
+        // list of clip-level animation records (static transform/opacity + their optional
+        // keyframe animations + the clip's absolute composition start time and duration).
+        // The layer-instruction builder samples animations at preset frame rate within
+        // each clip's window. Empty list = pre-v0.8 behavior (base aspect-fill + crop only).
+        var trackAnimations: [[ClipAnimationInfo]] = []
 
         // 1. Implicit-chain clips → main video track at t=0
         let chained = clips.filter { $0.startTime == nil && !($0 is Track) }
@@ -90,7 +91,7 @@ internal enum CompositionBuilder {
             }
             videoTracks.append(mainTrack)
             var insertion: CMTime = .zero
-            var chainTransforms: [(time: CMTime, transform: Transform)] = []
+            var chainAnimations: [ClipAnimationInfo] = []
 
             if chained.contains(where: { $0 is Transition }) {
                 // v0.7: chain has transitions. Pre-render the full chain to a temp .mp4
@@ -124,12 +125,19 @@ internal enum CompositionBuilder {
                     if contributesAudio {
                         clipAudioRanges.append(CMTimeRange(start: beforeIP, duration: CMTimeSubtract(insertion, beforeIP)))
                     }
-                    if let transform = clip.transform {
-                        chainTransforms.append((time: beforeIP, transform: transform))
+                    if clip.hasAnimationOrLayout {
+                        chainAnimations.append(ClipAnimationInfo(
+                            clipStart: beforeIP,
+                            clipDuration: CMTimeSubtract(insertion, beforeIP),
+                            transform: clip.transform,
+                            transformAnimation: clip.transformAnimation,
+                            opacity: clip.opacity,
+                            opacityAnimation: clip.opacityAnimation
+                        ))
                     }
                 }
             }
-            trackTransforms.append(chainTransforms)
+            trackAnimations.append(chainAnimations)
             totalDuration = CMTimeMaximum(totalDuration, insertion)
         }
 
@@ -197,17 +205,24 @@ internal enum CompositionBuilder {
                 }
             }
 
-            // Per-parallel-track transform: applies for the full clip's lifetime in this
-            // track. For free-floater clips with a `.transform(...)`, set it at the
-            // clip's `startTime` (composition time). For Tracks themselves we ignore
-            // transform — Track has no `.transform(_:)` modifier in v0.8 (`Track` doesn't
-            // inherit it; see Clip default). Inner-Track clip transforms are deferred
-            // to v0.8.2.
-            var parallelTransforms: [(time: CMTime, transform: Transform)] = []
-            if let transform = clip.transform {
-                parallelTransforms.append((time: clip.startTime ?? .zero, transform: transform))
+            // Per-parallel-track animation info: applies for the full clip's lifetime in
+            // this track. For free-floater clips with `.transform(...)` / animations, attach
+            // the info at the clip's `startTime` (composition time) with the clip's
+            // duration. Tracks themselves don't carry transform / opacity in v0.8 (they
+            // inherit Clip defaults). Inner-Track clip transforms / animations are
+            // deferred to v0.8.2.
+            var parallelAnimations: [ClipAnimationInfo] = []
+            if clip.hasAnimationOrLayout {
+                parallelAnimations.append(ClipAnimationInfo(
+                    clipStart: clip.startTime ?? .zero,
+                    clipDuration: CMTimeSubtract(insertion, clip.startTime ?? .zero),
+                    transform: clip.transform,
+                    transformAnimation: clip.transformAnimation,
+                    opacity: clip.opacity,
+                    opacityAnimation: clip.opacityAnimation
+                ))
             }
-            trackTransforms.append(parallelTransforms)
+            trackAnimations.append(parallelAnimations)
 
             totalDuration = CMTimeMaximum(totalDuration, insertion)
         }
@@ -242,12 +257,12 @@ internal enum CompositionBuilder {
         }
         instruction.timeRange = CMTimeRange(start: .zero, duration: totalDuration)
         instruction.layerInstructions = videoTracks.enumerated().map { (index, track) in
-            let transforms = trackTransforms.indices.contains(index) ? trackTransforms[index] : []
+            let infos = trackAnimations.indices.contains(index) ? trackAnimations[index] : []
             return makeLayerInstruction(
                 for: track,
                 preset: preset,
                 cropTransform: cropTransform,
-                userTransforms: transforms
+                clipAnimations: infos
             )
         }
         videoComposition.instructions = [instruction]
@@ -766,12 +781,12 @@ internal enum CompositionBuilder {
         for track: AVMutableCompositionTrack,
         preset: Preset,
         cropTransform: CGAffineTransform = .identity,
-        userTransforms: [(time: CMTime, transform: Transform)] = []
+        clipAnimations: [ClipAnimationInfo] = []
     ) -> AVMutableVideoCompositionLayerInstruction {
         let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
         let base = baseTransform(for: track, preset: preset)
 
-        if userTransforms.isEmpty {
+        if clipAnimations.isEmpty {
             // Pre-v0.8 behavior — single transform at .zero composing base + crop.
             if let base {
                 layer.setTransform(base.concatenating(cropTransform), at: .zero)
@@ -781,30 +796,94 @@ internal enum CompositionBuilder {
             return layer
         }
 
-        // v0.8: per-clip user transforms. Each entry composes
-        // base × userTransform.resolved(in: renderSize) × cropTransform
-        // and is applied at the clip's start time on the layer instruction.
-        // The transforms list is in declaration order — earlier transforms apply
-        // first; later setTransform(_:at:) calls override from their `at` time forward.
+        // v0.8: per-clip transforms / animations / opacity. For each clip:
+        //   * Static transform (no animation): one setTransform call at clipStart.
+        //   * Animated transform: sample at preset.frameRate within the animation's
+        //     keyframe range and emit setTransform per sample. AVFoundation
+        //     interpolates linearly between samples; sampling at the export's frame
+        //     rate gives the user's eased timing without further engine work.
+        //   * Static opacity: one setOpacity call at clipStart.
+        //   * Animated opacity: sample similarly.
         //
-        // Anchor at .zero with the base+crop only (no user transform) so any chain
-        // segment before the first transform-bearing clip renders normally. Then layer
-        // each user transform at its clip's start time.
+        // Anchor at .zero with base+crop only (no user transform) so any chain segment
+        // before the first transform/animation-bearing clip renders normally.
         let renderSize = preset.resolution
         let baseOrIdentity = base ?? .identity
         let baseCombined = baseOrIdentity.concatenating(cropTransform)
-        let firstTime = userTransforms.first?.time ?? .zero
-        if CMTimeCompare(firstTime, .zero) > 0 {
+        let firstClipStart = clipAnimations.first?.clipStart ?? .zero
+        if CMTimeCompare(firstClipStart, .zero) > 0 {
             layer.setTransform(baseCombined, at: .zero)
         }
-        for entry in userTransforms {
-            let userResolved = entry.transform.resolved(in: renderSize)
-            let combined = baseOrIdentity
-                .concatenating(userResolved)
-                .concatenating(cropTransform)
-            layer.setTransform(combined, at: entry.time)
+
+        // Sample interval: one frame at the preset's frame rate.
+        let frameRate = max(1, preset.frameRate)
+        let frameDuration = CMTime(value: 1, timescale: CMTimeScale(frameRate))
+
+        for info in clipAnimations {
+            // ---- Transform ----
+            if let anim = info.transformAnimation {
+                // Sample at frame rate from clipStart + animStart to clipStart + animEnd.
+                let animSpanStart = CMTimeAdd(info.clipStart, anim.startTime)
+                let animSpanEnd = CMTimeAdd(info.clipStart, anim.endTime)
+                var t = animSpanStart
+                while CMTimeCompare(t, animSpanEnd) <= 0 {
+                    let clipRelative = CMTimeSubtract(t, info.clipStart)
+                    let value = anim.value(at: clipRelative) ?? info.transform ?? .identity
+                    let combined = baseOrIdentity
+                        .concatenating(value.resolved(in: renderSize))
+                        .concatenating(cropTransform)
+                    layer.setTransform(combined, at: t)
+                    t = CMTimeAdd(t, frameDuration)
+                }
+                // Hold the final keyframe value for the rest of the clip.
+                if CMTimeCompare(animSpanEnd, CMTimeAdd(info.clipStart, info.clipDuration)) < 0 {
+                    let final = anim.value(at: anim.endTime) ?? info.transform ?? .identity
+                    let combined = baseOrIdentity
+                        .concatenating(final.resolved(in: renderSize))
+                        .concatenating(cropTransform)
+                    layer.setTransform(combined, at: animSpanEnd)
+                }
+            } else if let staticTransform = info.transform {
+                let combined = baseOrIdentity
+                    .concatenating(staticTransform.resolved(in: renderSize))
+                    .concatenating(cropTransform)
+                layer.setTransform(combined, at: info.clipStart)
+            } else if CMTimeCompare(info.clipStart, .zero) > 0 {
+                // Clip without transform but with opacity / animation — keep base+crop.
+                layer.setTransform(baseCombined, at: info.clipStart)
+            }
+
+            // ---- Opacity ----
+            if let anim = info.opacityAnimation {
+                let animSpanStart = CMTimeAdd(info.clipStart, anim.startTime)
+                let animSpanEnd = CMTimeAdd(info.clipStart, anim.endTime)
+                var t = animSpanStart
+                while CMTimeCompare(t, animSpanEnd) <= 0 {
+                    let clipRelative = CMTimeSubtract(t, info.clipStart)
+                    let value = anim.value(at: clipRelative) ?? info.opacity ?? 1.0
+                    layer.setOpacity(Float(value), at: t)
+                    t = CMTimeAdd(t, frameDuration)
+                }
+                if CMTimeCompare(animSpanEnd, CMTimeAdd(info.clipStart, info.clipDuration)) < 0 {
+                    let final = anim.value(at: anim.endTime) ?? info.opacity ?? 1.0
+                    layer.setOpacity(Float(final), at: animSpanEnd)
+                }
+            } else if let staticOpacity = info.opacity {
+                layer.setOpacity(Float(staticOpacity), at: info.clipStart)
+            }
         }
         return layer
+    }
+
+    /// Per-clip animation info collected during chain / parallel-track insertion.
+    /// Consumed by `makeLayerInstruction` to emit setTransform / setOpacity calls.
+    fileprivate struct ClipAnimationInfo: Sendable {
+        let clipStart: CMTime
+        let clipDuration: CMTime
+        let transform: Transform?
+        let transformAnimation: Animation<Transform>?
+        let opacity: Double?
+        let opacityAnimation: Animation<Double>?
     }
 
     /// The aspect-fill scale + center transform applied to every layer before any slide offset.

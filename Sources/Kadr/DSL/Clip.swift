@@ -39,6 +39,18 @@ public protocol Clip: Sendable {
     /// modifier for setting it; ``Transition`` and ``Track`` keep the default.
     /// Added in v0.8.
     var transform: Transform? { get }
+
+    /// Optional clip-relative keyframe animation driving ``transform``. When set, the
+    /// engine evaluates the animation per frame and overrides the static base. Set
+    /// via `.transform(_:animation:)`. Added in v0.8.
+    var transformAnimation: Animation<Transform>? { get }
+
+    /// Optional per-clip opacity in `0...1`. `nil` (default) means fully opaque.
+    /// Added in v0.8.
+    var opacity: Double? { get }
+
+    /// Optional clip-relative keyframe animation driving ``opacity``. Added in v0.8.
+    var opacityAnimation: Animation<Double>? { get }
 }
 
 public extension Clip {
@@ -56,4 +68,25 @@ public extension Clip {
     /// leave layout unchanged. Media-clip types override this with storage; ``Transition``
     /// and ``Track`` keep the default.
     var transform: Transform? { nil }
+
+    /// Default: nil. Media-clip types override with storage; Transition / Track keep nil.
+    var transformAnimation: Animation<Transform>? { nil }
+
+    /// Default: nil (fully opaque). Media-clip types override with storage.
+    var opacity: Double? { nil }
+
+    /// Default: nil. Media-clip types override with storage.
+    var opacityAnimation: Animation<Double>? { nil }
+}
+
+extension Clip {
+    /// `true` if the clip carries any v0.8 transform / opacity / animation surface that
+    /// the engine needs per-clip layer-instruction tracking for. Internal — engine uses
+    /// it to skip clips that don't need any per-clip wiring.
+    internal var hasAnimationOrLayout: Bool {
+        transform != nil
+            || transformAnimation != nil
+            || opacity != nil
+            || opacityAnimation != nil
+    }
 }
