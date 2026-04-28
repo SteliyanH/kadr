@@ -96,28 +96,12 @@ struct MultiTrackEngineTests {
         #expect(videoTracks.count == 2)
     }
 
-    // MARK: - Restrictions surfaced as KadrError.notYetImplemented
-
-    @Test func transitionInChainRejectedInMultiTrack() async throws {
-        let img = try loadTestImage()
-        await #expect(throws: KadrError.self) {
-            _ = try await CompositionBuilder.build(
-                from: [
-                    ImageClip(img, duration: 1.0),
-                    Kadr.Transition.dissolve(duration: 0.3),
-                    ImageClip(img, duration: 1.0),
-                    ImageClip(img, duration: 1.0).at(time: 5.0),
-                ],
-                audioTracks: [],
-                preset: self.preset
-            )
-        }
-    }
-
     // Note: in v0.6 Tier 4c, transitions inside Track {} and nested Track {} are
-    // supported via recursive pre-render (CompositionBuilder.preRenderTrackToTempFile).
-    // The earlier rejection tests were removed when those restrictions lifted; positive
-    // coverage lives in `MultiTrackRecursiveTests`.
+    // supported via recursive pre-render (CompositionBuilder.preRenderClipsToTempFile).
+    // In v0.7 Tier 1, transitions in the **implicit chain** alongside multi-track
+    // parallel clips are also supported via the same pre-render pattern. The original
+    // rejection tests have been replaced with positive coverage — see
+    // `MultiTrackRecursiveTests.transitionsInChainAlongsideMultiTrackPreRenders`.
 
     // MARK: - Total duration
 
