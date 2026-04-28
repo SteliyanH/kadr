@@ -134,8 +134,28 @@ DSL evolution to support parallel tracks and explicit time placement. Fully addi
 
 **Out of scope (carries over)**
 
-- Transitions in the implicit chain alongside multi-track parallel clips still rejected with `KadrError.notYetImplemented`. Workaround: wrap the chain in a `Track { }` — Tracks support transitions internally
-- kadr-ui's multi-lane `TimelineView` ships with kadr-ui v0.5+ as a follow-up milestone, same staging as the v0.4 → kadr-ui v0.4 cycle
+- Transitions in the implicit chain alongside multi-track parallel clips still rejected with `KadrError.notYetImplemented`. Workaround: wrap the chain in a `Track { }` — Tracks support transitions internally *(closed in v0.7 via chain pre-render)*
+- kadr-ui's multi-lane `TimelineView` ships with kadr-ui v0.5+ as a follow-up milestone, same staging as the v0.4 → kadr-ui v0.4 cycle *(shipped in kadr-ui v0.5.0 / v0.5.1)*
+
+## v0.7.0 — Multi-track polish & audio timing ✓ shipped
+
+Closes the v0.6 deferrals on transitions-in-chain and time-ranged compositors, adds named Tracks for downstream tooling, and introduces the first audio timing controls. Pure additive — every v0.6 composition compiles and behaves identically. See [CHANGELOG.md](CHANGELOG.md#070---2026-04-28).
+
+**Polish**
+
+- ✓ `Track(name:)` — optional human-readable label on Track. Surfaces via `Video.clips` for downstream tooling; kadr-ui v0.5.x consumes it for `TimelineView` lane labels.
+- ✓ Closes v0.6 deferral: transitions in the implicit chain alongside multi-track parallel clips. Engine pre-renders the chain to a temp `.mp4` (same pattern as Tracks-with-transitions in v0.6 tier 4c).
+
+**Time-windowed compositors**
+
+- ✓ `Video.compositor(_:during:)` — single global multi-input compositor active only during a `CMTimeRange` / `ClosedRange<TimeInterval>`. Outside the window, the engine falls back to its built-in alpha-composite blender.
+- ✓ Closure forms: `Video.compositor(during:){ images, ctx in ... }`.
+
+**Audio timing**
+
+- ✓ `AudioTrack.at(time:)` — pin an audio track to start at a composition time. CMTime + TimeInterval overloads.
+- ✓ `AudioTrack.duration(_:)` — explicit cap on playback length from `startTime`. Engine inserts at `min(asset duration, available window, explicit cap)`.
+- ✓ All volume / fade-in / fade-out / ducking automation re-anchored to absolute composition time so timing-aware tracks layer correctly with chain audio and other background tracks.
 
 ## v1.0.0 — Production Ready
 
