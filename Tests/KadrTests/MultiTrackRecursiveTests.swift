@@ -60,6 +60,32 @@ struct MultiTrackRecursiveTests {
         #expect(videoTracks.count == 2)
     }
 
+    @Test func transitionsInChainAlongsideMultiTrackPreRenders() async throws {
+        // v0.7 Tier 1 — chain has a transition AND multi-track parallel content is
+        // present. Previously this combination threw KadrError.notYetImplemented.
+        // Now it pre-renders the chain (mirroring the Track-with-transitions pattern)
+        // and inserts the result as a single piece on the main video track.
+        let videoURL = try loadTestVideoURL()
+        let result = try await CompositionBuilder.build(
+            from: [
+                VideoClip(url: videoURL).trimmed(to: 0...1),         // chain
+                Kadr.Transition.dissolve(duration: 0.3),
+                VideoClip(url: videoURL).trimmed(to: 1...2),
+                VideoClip(url: videoURL).trimmed(to: 0...1).at(time: 4.0),  // free-floater
+            ],
+            audioTracks: [],
+            preset: preset
+        )
+        // Two parallel video tracks: chain (pre-rendered → 1 piece) + free-floater.
+        let videoTracks = result.composition.tracks(withMediaType: .video)
+        #expect(videoTracks.count == 2)
+        // Total duration spans through the floater's tail (t=4s + 1s = 5s).
+        let inst = result.videoComposition?.instructions.first as? AVMutableVideoCompositionInstruction
+        #expect(inst != nil)
+        let totalSec = CMTimeGetSeconds(inst!.timeRange.duration)
+        #expect(totalSec >= 4.99 && totalSec <= 5.01)
+    }
+
     @Test func nestedTrackPreRendersAndComposes() async throws {
         // Nested Track — outer Track contains an inner Track. The outer triggers
         // pre-rendering because its clips contain another Track.

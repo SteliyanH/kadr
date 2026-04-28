@@ -42,13 +42,11 @@ internal enum CompositionBuilder {
     // counterpart (Video.multiInputCompositor) is not yet engaged in 4a; that requires
     // a custom AVVideoCompositing implementation and ships in Tier 4b.
     //
-    // Restrictions surfaced as KadrError.notYetImplemented so users see a clear error
-    // instead of silently-wrong output:
-    //   - Transitions in the implicit chain when multi-track is active (the chain
-    //     would need the alternating-tracks transition machinery, which is non-trivial
-    //     to merge with multi-track parallel tracks).
-    //   - Transitions inside a Track { } block.
-    //   - Nested Track { }.
+    // Remaining restrictions (none as of v0.7 — chain-with-transitions and Tracks-with-
+    // transitions / nested Tracks all work via recursive pre-render to a temp .mp4):
+    //   (closed) Transitions in the implicit chain when multi-track is active.
+    //   (closed) Transitions inside a Track { } block.
+    //   (closed) Nested Track { }.
 
     private static func buildMultiTrack(
         clips: [any Clip],
@@ -72,13 +70,6 @@ internal enum CompositionBuilder {
         // 1. Implicit-chain clips → main video track at t=0
         let chained = clips.filter { $0.startTime == nil && !($0 is Track) }
         if !chained.isEmpty {
-            // 4a restriction: no transitions in the chain alongside multi-track
-            if chained.contains(where: { $0 is Transition }) {
-                throw KadrError.notYetImplemented(
-                    "Transitions in the implicit chain alongside multi-track parallel clips. " +
-                    "Workaround: place the chain inside a Track {} block — Tracks support transitions internally as of v0.6."
-                )
-            }
             guard let mainTrack = composition.addMutableTrack(
                 withMediaType: .video,
                 preferredTrackID: kCMPersistentTrackID_Invalid
@@ -87,17 +78,39 @@ internal enum CompositionBuilder {
             }
             videoTracks.append(mainTrack)
             var insertion: CMTime = .zero
-            for clip in chained {
+
+            if chained.contains(where: { $0 is Transition }) {
+                // v0.7: chain has transitions. Pre-render the full chain to a temp .mp4
+                // (mirroring the v0.6 tier-4c Tracks-with-transitions pattern), then
+                // insert that single piece on the main track at t=0. The pre-render
+                // captures both video and audio; clipAudioRanges spans the whole piece
+                // so background-music ducking still applies for the chain's duration.
+                let preRenderedURL = try await preRenderClipsToTempFile(
+                    clips: chained,
+                    preset: preset
+                )
                 let beforeIP = insertion
-                let contributesAudio = try await insertChainClip(
-                    clip,
+                _ = try await insertChainClip(
+                    VideoClip(url: preRenderedURL),
                     videoTrack: mainTrack,
                     audioTrack: compositionAudioTrack,
                     at: &insertion,
                     preset: preset
                 )
-                if contributesAudio {
-                    clipAudioRanges.append(CMTimeRange(start: beforeIP, duration: CMTimeSubtract(insertion, beforeIP)))
+                clipAudioRanges.append(CMTimeRange(start: beforeIP, duration: CMTimeSubtract(insertion, beforeIP)))
+            } else {
+                for clip in chained {
+                    let beforeIP = insertion
+                    let contributesAudio = try await insertChainClip(
+                        clip,
+                        videoTrack: mainTrack,
+                        audioTrack: compositionAudioTrack,
+                        at: &insertion,
+                        preset: preset
+                    )
+                    if contributesAudio {
+                        clipAudioRanges.append(CMTimeRange(start: beforeIP, duration: CMTimeSubtract(insertion, beforeIP)))
+                    }
                 }
             }
             totalDuration = CMTimeMaximum(totalDuration, insertion)
@@ -228,11 +241,23 @@ internal enum CompositionBuilder {
         _ track: Track,
         preset: Preset
     ) async throws -> URL {
-        // Recursively build the Track's content. Tracks have no background-audio of
-        // their own and don't carry a crop or multi-input compositor — those are the
-        // parent Video's concerns. Pass empty / nil for those.
+        try await preRenderClipsToTempFile(clips: track.clips, preset: preset)
+    }
+
+    /// Generalized recursive pre-render: render an arbitrary `[any Clip]` sub-timeline
+    /// (chain or Track contents) to a temp `.mp4` and return its URL. Used both for
+    /// Tracks-with-transitions/nested-Tracks (v0.6 tier 4c) and for chain-with-transitions
+    /// in multi-track mode (v0.7).
+    ///
+    /// Like the Track variant, the sub-timeline doesn't carry background audio, a crop,
+    /// or a multi-input compositor — those are the parent `Video`'s concerns. Pass
+    /// empty / nil for those.
+    private static func preRenderClipsToTempFile(
+        clips: [any Clip],
+        preset: Preset
+    ) async throws -> URL {
         let trackResult = try await build(
-            from: track.clips,
+            from: clips,
             audioTracks: [],
             preset: preset,
             cropRect: nil,
@@ -263,7 +288,7 @@ internal enum CompositionBuilder {
         ) else {
             throw KadrError.exportFailed(underlying: NSError(
                 domain: "Kadr", code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to create Track pre-render export session"]
+                userInfo: [NSLocalizedDescriptionKey: "Failed to create sub-composition pre-render export session"]
             ))
         }
         session.outputURL = outputURL
@@ -281,7 +306,7 @@ internal enum CompositionBuilder {
         }
         throw KadrError.exportFailed(underlying: session.error ?? NSError(
             domain: "Kadr", code: -1,
-            userInfo: [NSLocalizedDescriptionKey: "Track pre-render failed: \(session.status.rawValue)"]
+            userInfo: [NSLocalizedDescriptionKey: "Sub-composition pre-render failed: \(session.status.rawValue)"]
         ))
     }
 
