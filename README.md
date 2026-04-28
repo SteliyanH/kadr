@@ -49,7 +49,14 @@ FFmpegKit retired in January 2025. Pixel SDK sunset in February 2025. AVFoundati
 
 ## Features
 
-### v0.7.0 (current — `0.7.0`)
+### v0.8.0 (current — `0.8.0`)
+
+- **Per-clip Transform.** `Transform(center:rotation:scale:anchor:)` on `VideoClip` / `ImageClip` / `TitleSequence`. Reuses `Position` + `Anchor` from v0.3 overlays so the coordinate space is one consumers already know. Picture-in-picture, scaled cutaways, rotated clips.
+- **Keyframe animations.** `Animation<T>` generic + `Animatable` protocol on `Transform` and `Double`. `TimingFunction` covers linear / easeIn / easeOut / easeInOut / cubicBezier / custom-closure. **Clip-relative timing** (a `.at(0.0, ...)` keyframe maps to the clip's first frame, not composition t=0). Drives both export and `makePlayerItem()` preview.
+- **Animated `TextOverlay`.** `TextAnimation` protocol + built-in recipes (`.fadeIn`, `.slideIn`, `.scaleUp`). CALayer-backed export render via `AVVideoCompositionCoreAnimationTool`.
+- **Audio cross-fades.** `AudioTrack.crossfade(_:)` with declaration-order pairing. Engine emits matching volume ramps when adjacent tracks overlap and overrides user fades at the boundary.
+
+### v0.7.0 (`0.7.0`)
 
 - **Track names.** Optional `name:` parameter on `Track(...)` for downstream tooling. kadr-ui's `TimelineView` consumes it for lane labels.
 - **Transitions in the implicit chain alongside multi-track parallel clips** — closes the v0.6 deferral. The engine pre-renders the chain to a temp `.mp4` (mirroring v0.6's Tracks-with-transitions pattern), then inserts it as a single piece on the main video track. No more `KadrError.notYetImplemented` for that combination.
