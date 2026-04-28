@@ -49,6 +49,18 @@ public struct TitleSequence: Clip, Sendable {
     /// ``transform(_:)``. Added in v0.8.
     public let transform: Transform?
 
+    /// Optional keyframe animation driving ``transform`` over the clip's lifetime.
+    /// Set via ``transform(_:animation:)``. Added in v0.8.
+    public let transformAnimation: Animation<Transform>?
+
+    /// Optional per-clip opacity in `0...1`. `nil` (default) means fully opaque.
+    /// Set via ``opacity(_:)``. Added in v0.8.
+    public let opacity: Double?
+
+    /// Optional keyframe animation driving ``opacity`` over the clip's lifetime.
+    /// Set via ``opacity(_:animation:)``. Added in v0.8.
+    public let opacityAnimation: Animation<Double>?
+
     public var duration: CMTime { _duration }
 
     /// Title with a `TimeInterval` duration.
@@ -80,6 +92,9 @@ public struct TitleSequence: Clip, Sendable {
         self.clipID = nil
         self.startTime = nil
         self.transform = nil
+        self.transformAnimation = nil
+        self.opacity = nil
+        self.opacityAnimation = nil
     }
 
     internal init(
@@ -89,7 +104,10 @@ public struct TitleSequence: Clip, Sendable {
         backgroundColor: PlatformColor,
         clipID: ClipID?,
         startTime: CMTime? = nil,
-        transform: Transform? = nil
+        transform: Transform? = nil,
+        transformAnimation: Animation<Transform>? = nil,
+        opacity: Double? = nil,
+        opacityAnimation: Animation<Double>? = nil
     ) {
         self.text = text
         self.style = style
@@ -98,18 +116,21 @@ public struct TitleSequence: Clip, Sendable {
         self.clipID = clipID
         self.startTime = startTime
         self.transform = transform
+        self.transformAnimation = transformAnimation
+        self.opacity = opacity
+        self.opacityAnimation = opacityAnimation
     }
 
     /// Assign a stable identifier so callers can address this clip by ID across reorders
     /// or trims. See ``ClipID`` for guidelines on choosing IDs.
     public func id(_ id: ClipID) -> TitleSequence {
-        TitleSequence(text: text, duration: _duration, style: style, backgroundColor: backgroundColor, clipID: id, startTime: startTime, transform: transform)
+        TitleSequence(text: text, duration: _duration, style: style, backgroundColor: backgroundColor, clipID: id, startTime: startTime, transform: transform, transformAnimation: transformAnimation, opacity: opacity, opacityAnimation: opacityAnimation)
     }
 
     /// Pin this clip to an explicit composition start time. See ``Clip/startTime`` for
     /// the contract.
     public func at(time: CMTime) -> TitleSequence {
-        TitleSequence(text: text, duration: _duration, style: style, backgroundColor: backgroundColor, clipID: clipID, startTime: time, transform: transform)
+        TitleSequence(text: text, duration: _duration, style: style, backgroundColor: backgroundColor, clipID: clipID, startTime: time, transform: transform, transformAnimation: transformAnimation, opacity: opacity, opacityAnimation: opacityAnimation)
     }
 
     /// Pin this clip to an explicit composition start time, in seconds.
@@ -121,7 +142,22 @@ public struct TitleSequence: Clip, Sendable {
     /// ``Kadr/Transform`` and ``Kadr/VideoClip/transform(_:)`` for the contract.
     /// Added in v0.8.
     public func transform(_ transform: Transform) -> TitleSequence {
-        TitleSequence(text: text, duration: _duration, style: style, backgroundColor: backgroundColor, clipID: clipID, startTime: startTime, transform: transform)
+        TitleSequence(text: text, duration: _duration, style: style, backgroundColor: backgroundColor, clipID: clipID, startTime: startTime, transform: transform, transformAnimation: transformAnimation, opacity: opacity, opacityAnimation: opacityAnimation)
+    }
+
+    /// Apply a per-clip transform with a clip-relative keyframe animation. Added in v0.8.
+    public func transform(_ base: Transform, animation: Animation<Transform>) -> TitleSequence {
+        TitleSequence(text: text, duration: _duration, style: style, backgroundColor: backgroundColor, clipID: clipID, startTime: startTime, transform: base, transformAnimation: animation, opacity: opacity, opacityAnimation: opacityAnimation)
+    }
+
+    /// Set this clip's opacity in `0...1`. Added in v0.8.
+    public func opacity(_ opacity: Double) -> TitleSequence {
+        TitleSequence(text: text, duration: _duration, style: style, backgroundColor: backgroundColor, clipID: clipID, startTime: startTime, transform: transform, transformAnimation: transformAnimation, opacity: opacity, opacityAnimation: opacityAnimation)
+    }
+
+    /// Animate this clip's opacity over its lifetime. Added in v0.8.
+    public func opacity(_ base: Double, animation: Animation<Double>) -> TitleSequence {
+        TitleSequence(text: text, duration: _duration, style: style, backgroundColor: backgroundColor, clipID: clipID, startTime: startTime, transform: transform, transformAnimation: transformAnimation, opacity: base, opacityAnimation: animation)
     }
 
     /// Render the title to a `PlatformImage` at the given render size.
