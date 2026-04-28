@@ -166,11 +166,14 @@ The last feature cycle before v1.0. Foundational additions that would be breakin
 - **Animated `TextOverlay`** — `CALayer`-backed render path with optional `[CAAnimation]` for kinetic typography (fade-by-letter, slide-in, kerning). Static text continues to work unchanged.
 - **Audio cross-fades** — `AudioTrack.crossfade(_ duration:)` (or implicit when adjacent `.at(time:)` audio tracks overlap). Engine emits matching volume ramps so one track fades out as the next fades in.
 
-## v0.8.x — Polish patches
+## v0.8.x — Patches before v0.9
 
-- `AudioTrack.volumeRamp(start:end:during:)` — granular volume automation curves between two points.
-- More `Filter` presets: `gaussianBlur`, `vignette`, `sharpen`, `zoomBlur`, `glow`. Closes the parity gap with IMG.LY (60+ filters) and VideoLab.
-- Bug fixes from v0.8.0 surface.
+Real user needs that don't have to ship in the v0.8.0 headline but should land before v0.9 starts. All additive, none breaking. Each ships as its own minor release.
+
+- **v0.8.1** — `Position` / `Size` as `Animatable` + `.position(_:animation:)` / `.size(_:animation:)` on `ImageOverlay` / `StickerOverlay` / `Watermark`. Unlocks animated image/sticker overlays (sliding watermarks, drifting stickers, animated logo placements).
+- **v0.8.2** — Filter intensity animation: `VideoClip.filter(_:animation:)` taking a single `Filter` + `Animation<Double>`. Animated blur sweeps, gradual sepia fades, intensity-ramped vignette.
+- **v0.8.3** — `AudioTrack.volumeRamp(start:end:during:)` — granular volume automation between two points.
+- **v0.8.4** — More `Filter` presets: `gaussianBlur`, `vignette`, `sharpen`, `zoomBlur`, `glow`. Closes the parity gap with IMG.LY (60+ filters) and VideoLab.
 
 ## v0.9.0 — Advanced timing
 
@@ -246,7 +249,9 @@ Premium features under a commercial license in the separate `kadr-pro` repositor
 
 ## Explicit non-goals
 
-Captured here to keep scope focused — these are *not* on any roadmap unless community demand changes:
+Captured here to keep scope focused — these are *not* on any roadmap unless community demand changes.
+
+**Hard non-goals (architectural)**
 
 - AR / face tracking effects (Banuba's lane)
 - Multiplexed compositor chains — keyframe animations on a single compositor cover this
@@ -254,6 +259,15 @@ Captured here to keep scope focused — these are *not* on any roadmap unless co
 - Real-time DSP audio nodes (reverb, EQ, compression) — users wanting that should reach for AudioKit
 - After-Effects-style pre-compose / `RenderLayerGroup` — `Track {}` already covers the use case
 - Templates engine in the OSS core — application-level concern; kadr-pro covers SDK-consumer templates
+
+**Wishlist (may never ship — additive if they do)**
+
+These were considered for v0.8 / v0.9 and intentionally left off. They're not breaking to add later, but the user need is thin enough that we may never implement them. Captured so the analysis isn't redone every cycle.
+
+- Per-keyframe timing functions (different ease per `Animation<T>` segment) — global timing + `.custom` closure covers 95%
+- Equal-power / S-curve audio cross-fades — linear is perceptually fine; pro-audio apps can build via `.volumeRamp(...)`
+- `Animation<T>` on `Compositor` parameters — compositor authors hold their own animation state
+- `CropRegion` keyframes (composition-level animated crop) — clip-level `Transform` animation covers Ken Burns
 
 ---
 

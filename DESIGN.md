@@ -379,6 +379,7 @@ Video { ... }
 | Audio cross-fades | `AudioTrack.crossfade(_ duration: CMTime/TimeInterval)` modifier — declares "fade out over `duration` from the end of *this* track, fade in over `duration` to the start of the *next* track in declaration order"  | Symmetric ramps on both sides of the boundary. Doesn't require pairing tracks explicitly; declaration order + `.at(time:)` overlaps determine which is "next". Engine emits matching volume ramps via `AVMutableAudioMixInputParameters`. |
 | Animation evaluation | Engine evaluates animations at composition time, not at frame time. `KadrVideoCompositor.process` reads the current request's `compositionTime` and asks each animatable for its interpolated value. | Frame-accurate without a per-frame allocation pass. Same pattern as v0.7's time-windowed compositor selection. |
 | `Transform.identity` constant | Yes — a public static for "no transform" so callers can pass `.identity` when they want only animation, no static base | Avoids the "what if I want animation only" awkwardness. Identity == `Transform(center: .normalized(x: 0.5, y: 0.5), rotation: 0, scale: 1, anchor: .center)`. |
+| **Animation timing semantics** | **Clip-relative.** A `Keyframe.at(0.0, value: ...)` on a clip's animation means "the clip's first visible frame," not "composition t=0." Engine maps to absolute time at evaluation: `absoluteTime = clip.absoluteStart + keyframe.time`. Same rule applies to chain clips, `.at(time:)` free-floaters, and clips inside `Track {}` blocks. | Foundational decision — **must be locked in v0.8.0 because flipping later is breaking.** Matches CAAnimation's contract (timing relative to layer's lifetime). Reads naturally: `.keyframes([.at(0.0, ...), .at(2.0, ...)])` describes "what happens during this clip's first 2 seconds," regardless of where the clip lands on the composition timeline. |
 
 **Public surface sketch**
 
@@ -466,13 +467,24 @@ public extension AudioTrack {
 - **Tier 4** — Audio cross-fades. `AudioTrack.crossfade(_:)` modifier + engine ramp generation in `buildBackgroundAudioMixParameters`. ~120 LOC + tests.
 - **Tier 5** — Release prep: ROADMAP / CHANGELOG / README / V080Showcase / develop → main / tag.
 
-**Out of scope for v0.8**
+**v0.8.x patches — staged after v0.8.0, before v0.9.0**
 
-- **Animations on free-floater `.at(time:)` clips inside Tracks** — keyframes evaluate against composition time, not Track-relative time. Track-internal animation timing is a v0.8.x patch decision.
-- **Per-keyframe timing functions** (different ease per segment) — global timing function per `Animation<T>` only. Per-segment timing can land later without API breakage.
-- **Animation curves on `Filter.intensity`** — listed as a goal but defer to v0.8.x. Each `Filter` preset would need an `Animatable` intensity field, and that ripples through every preset's storage. Real engineering, not a free add.
-- **`Position` / `Size` as `Animatable`** — overlays already animate via TextAnimation recipes; arbitrary position/size keyframes on overlays come post-v0.8.
-- **Advanced audio cross-fade curves** — linear ramps only in v0.8. Equal-power and S-curve crossfades land in v0.8.x if anyone asks.
+These are real user needs that don't have to ship in the headline cycle but should land before v0.9 starts. All additive, none breaking.
+
+- **v0.8.1 — `Position` / `Size` as `Animatable`** + `.position(_:animation:)` / `.size(_:animation:)` modifiers on `ImageOverlay` / `StickerOverlay` / `Watermark`. The v0.8.0 `Animatable` protocol covers `Transform` and `Double`; extending it to coordinate types is a small, mechanical addition (interpolate is straightforward arithmetic) that unlocks animated image/sticker overlays — sliding watermarks, animated logo placements, drifting stickers.
+- **v0.8.2 — Filter intensity animation.** `VideoClip.filter(_:animation:)` taking a single `Filter` + `Animation<Double>`. Engine composes the animated intensity scalar with the static filter at evaluation time. Real use cases: animated blur sweeps, gradual sepia fades, intensity-ramped vignette.
+- **v0.8.3 — `AudioTrack.volumeRamp(start:end:during:)`.** Granular volume automation between two points. Sister API to `.fadeIn` / `.fadeOut` for arbitrary ramps mid-track.
+- **v0.8.4 — More `Filter` presets.** `gaussianBlur`, `vignette`, `sharpen`, `zoomBlur`, `glow`. Closes the parity gap with IMG.LY (60+ filters) and VideoLab.
+
+**Truly deferred — wishlist (may never ship)**
+
+These were considered and intentionally left off the roadmap. They're additive — adding them later is non-breaking — but the user need is thin enough that we may never implement them. Captured here so future maintainers don't redo the analysis.
+
+- **Per-segment timing functions** (different ease per keyframe segment) — global `TimingFunction` per `Animation<T>` plus `.custom((Double) -> Double)` covers ~95% of cases. The remaining 5% can write their own piecewise curve in the `.custom` closure. Likely never adds enough value to justify the API expansion.
+- **Equal-power / S-curve audio cross-fades** — niche audio-engineering polish. Linear ramps in v0.8.0 are perceptually fine for most music swaps; pro-audio apps that care can build their own ramps via `.volumeRamp(...)`. Probably stays a nice-to-have forever.
+- **`Animation<T>` on `Compositor` parameters** — custom compositors are stateless `Sendable`; animated compositor parameters (e.g., a chroma-key threshold that animates) belong on the calling site, not as a kadr-managed surface. Compositor authors handle their own animation state if they need it.
+- **`CropRegion` keyframes** (composition-level animated crop) — clip-level `Transform` animation already covers the common Ken Burns use case (apply to an `ImageClip` or `VideoClip`). Composition-level animated crop is genuinely rare. Defer indefinitely.
+- **Real-time DSP audio nodes** (reverb, EQ, compression on `AudioTrack`) — already explicit non-goal. AudioKit is the right answer for DSP-heavy audio work; kadr's audio surface stays declarative + `AVMutableAudioMix`-shaped.
 
 **Engineering notes**
 
