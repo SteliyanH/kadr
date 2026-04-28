@@ -841,36 +841,52 @@ internal enum CompositionBuilder {
             let sourceTracks = try await audioAsset.loadTracks(withMediaType: .audio)
             guard let sourceAudioTrack = sourceTracks.first else { continue }
 
+            // v0.7: respect AudioTrack.startTime (default .zero) and .explicitDuration
+            // (default = play to natural end). Insertion is in absolute composition time.
+            let insertionStart = audioTrack.startTime ?? .zero
+            // Skip tracks that start at or after the composition's end — they wouldn't
+            // produce any audible output.
+            guard CMTimeCompare(insertionStart, totalDuration) < 0 else { continue }
+
             guard let bgAudioTrack = composition.addMutableTrack(
                 withMediaType: .audio,
                 preferredTrackID: kCMPersistentTrackID_Invalid
             ) else { continue }
 
             let audioDuration = try await audioAsset.load(.duration)
-            let insertDuration = CMTimeMinimum(audioDuration, totalDuration)
+            // Available window from insertionStart to totalDuration.
+            let availableWindow = CMTimeSubtract(totalDuration, insertionStart)
+            // Clip the asset's natural duration to the available window first.
+            var insertDuration = CMTimeMinimum(audioDuration, availableWindow)
+            // Then apply the optional explicit cap.
+            if let cap = audioTrack.explicitDuration {
+                insertDuration = CMTimeMinimum(insertDuration, cap)
+            }
 
             try bgAudioTrack.insertTimeRange(
                 CMTimeRange(start: .zero, duration: insertDuration),
                 of: sourceAudioTrack,
-                at: .zero
+                at: insertionStart
             )
 
             let params = AVMutableAudioMixInputParameters(track: bgAudioTrack)
+            // End of the inserted segment in absolute composition time.
+            let insertEnd = CMTimeAdd(insertionStart, insertDuration)
 
             if audioTrack.volumeLevel != 1.0 {
-                params.setVolume(Float(audioTrack.volumeLevel), at: .zero)
+                params.setVolume(Float(audioTrack.volumeLevel), at: insertionStart)
             }
 
             if CMTimeCompare(audioTrack.fadeInDuration, .zero) > 0 {
                 params.setVolumeRamp(
                     fromStartVolume: 0,
                     toEndVolume: Float(audioTrack.volumeLevel),
-                    timeRange: CMTimeRange(start: .zero, duration: audioTrack.fadeInDuration)
+                    timeRange: CMTimeRange(start: insertionStart, duration: audioTrack.fadeInDuration)
                 )
             }
 
             if CMTimeCompare(audioTrack.fadeOutDuration, .zero) > 0 {
-                let fadeStart = CMTimeSubtract(insertDuration, audioTrack.fadeOutDuration)
+                let fadeStart = CMTimeSubtract(insertEnd, audioTrack.fadeOutDuration)
                 params.setVolumeRamp(
                     fromStartVolume: Float(audioTrack.volumeLevel),
                     toEndVolume: 0,
@@ -882,15 +898,15 @@ internal enum CompositionBuilder {
                 guard duckLevel >= 0 && duckLevel <= 1 else {
                     throw KadrError.invalidDuckingLevel(duckLevel)
                 }
-                // Compute the time ranges already occupied by fade ramps so we can skip
-                // overlapping ducking ramps. AVMutableScheduledAudioParameters throws
-                // an exception if two ramps overlap, so explicit avoidance is required.
+                // Compute the time ranges already occupied by fade ramps (in absolute
+                // composition time) so we can skip overlapping ducking ramps.
+                // AVMutableScheduledAudioParameters throws on overlapping ramps.
                 var fadeRanges: [CMTimeRange] = []
                 if CMTimeCompare(audioTrack.fadeInDuration, .zero) > 0 {
-                    fadeRanges.append(CMTimeRange(start: .zero, duration: audioTrack.fadeInDuration))
+                    fadeRanges.append(CMTimeRange(start: insertionStart, duration: audioTrack.fadeInDuration))
                 }
                 if CMTimeCompare(audioTrack.fadeOutDuration, .zero) > 0 {
-                    let fadeStart = CMTimeSubtract(insertDuration, audioTrack.fadeOutDuration)
+                    let fadeStart = CMTimeSubtract(insertEnd, audioTrack.fadeOutDuration)
                     fadeRanges.append(CMTimeRange(start: fadeStart, duration: audioTrack.fadeOutDuration))
                 }
                 applyDucking(

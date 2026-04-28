@@ -38,13 +38,26 @@ public struct AudioTrack: Sendable {
     /// plays. Set via ``ducking(_:)``.
     public let duckingLevel: Double?
 
-    /// Build a track at full volume with no fades or ducking.
+    /// Composition time at which this audio track starts. `nil` (default) means t=0.
+    /// Set via ``at(time:)-(CMTime)`` / ``at(time:)-(TimeInterval)``. Added in v0.7 —
+    /// enables sound effects pinned to a moment.
+    public let startTime: CMTime?
+
+    /// Optional explicit cap on how long this track plays from `startTime`. `nil`
+    /// (default) means "play the asset from `startTime` to its natural end, clamped to
+    /// the composition's end". Set via ``duration(_:)-(CMTime)`` /
+    /// ``duration(_:)-(TimeInterval)``. Added in v0.7.
+    public let explicitDuration: CMTime?
+
+    /// Build a track at full volume with no fades or ducking, starting at t=0.
     public init(url: URL) {
         self.url = url
         self.volumeLevel = 1.0
         self.fadeInDuration = .zero
         self.fadeOutDuration = .zero
         self.duckingLevel = nil
+        self.startTime = nil
+        self.explicitDuration = nil
     }
 
     internal init(
@@ -52,24 +65,28 @@ public struct AudioTrack: Sendable {
         volumeLevel: Double,
         fadeInDuration: CMTime,
         fadeOutDuration: CMTime,
-        duckingLevel: Double? = nil
+        duckingLevel: Double? = nil,
+        startTime: CMTime? = nil,
+        explicitDuration: CMTime? = nil
     ) {
         self.url = url
         self.volumeLevel = volumeLevel
         self.fadeInDuration = fadeInDuration
         self.fadeOutDuration = fadeOutDuration
         self.duckingLevel = duckingLevel
+        self.startTime = startTime
+        self.explicitDuration = explicitDuration
     }
 
     /// Set the track's overall volume. `1.0` is full source volume; `0.5` is half;
     /// `0.0` is silence. Values outside `0.0...` are clamped by AVFoundation.
     public func volume(_ level: Double) -> AudioTrack {
-        AudioTrack(url: url, volumeLevel: level, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel)
+        AudioTrack(url: url, volumeLevel: level, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel, startTime: startTime, explicitDuration: explicitDuration)
     }
 
     /// Fade in over a `CMTime` duration for frame-accurate precision.
     public func fadeIn(_ duration: CMTime) -> AudioTrack {
-        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: duration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel)
+        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: duration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel, startTime: startTime, explicitDuration: explicitDuration)
     }
 
     /// Fade in over a `TimeInterval`. Convenience overload.
@@ -79,7 +96,7 @@ public struct AudioTrack: Sendable {
 
     /// Fade out over a `CMTime` duration for frame-accurate precision.
     public func fadeOut(_ duration: CMTime) -> AudioTrack {
-        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: duration, duckingLevel: duckingLevel)
+        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: duration, duckingLevel: duckingLevel, startTime: startTime, explicitDuration: explicitDuration)
     }
 
     /// Fade out over a `TimeInterval`. Convenience overload.
@@ -91,6 +108,31 @@ public struct AudioTrack: Sendable {
     /// `targetVolume` is the absolute level during ducking (0.0 = silent, 1.0 = no ducking).
     /// Out-of-range values throw `KadrError.invalidDuckingLevel` at export time.
     public func ducking(_ targetVolume: Double) -> AudioTrack {
-        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: targetVolume)
+        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: targetVolume, startTime: startTime, explicitDuration: explicitDuration)
+    }
+
+    /// Pin this audio track to start at the given composition time. Sound effects and
+    /// time-anchored music use this. CMTime form for frame-accurate placement.
+    /// Added in v0.7.
+    public func at(time: CMTime) -> AudioTrack {
+        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel, startTime: time, explicitDuration: explicitDuration)
+    }
+
+    /// Pin this audio track to start at the given composition time. TimeInterval
+    /// convenience overload. Added in v0.7.
+    public func at(time: TimeInterval) -> AudioTrack {
+        at(time: CMTime(seconds: time, preferredTimescale: 600))
+    }
+
+    /// Cap how long this track plays from `startTime` (or t=0 if unpinned). When `nil`
+    /// (the default), the track plays the asset from start to its natural end, clamped
+    /// to the composition's end. CMTime form. Added in v0.7.
+    public func duration(_ duration: CMTime) -> AudioTrack {
+        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel, startTime: startTime, explicitDuration: duration)
+    }
+
+    /// Cap how long this track plays. TimeInterval convenience overload. Added in v0.7.
+    public func duration(_ duration: TimeInterval) -> AudioTrack {
+        self.duration(CMTime(seconds: duration, preferredTimescale: 600))
     }
 }
