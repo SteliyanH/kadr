@@ -4,6 +4,31 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.8.1] - 2026-04-28
+
+First v0.8.x patch. Adds public `Animatable` conformance on `Position` and `Size`, plus animated `.position(_:animation:)` / `.size(_:animation:)` modifiers on `ImageOverlay` and `StickerOverlay`. Pure additive — every v0.8.0 composition compiles and behaves identically.
+
+### Added
+
+- `Position: Animatable` — public conformance promoting the v0.8.0 internal helper. Mixed-type pairs (e.g. `.normalized` ↔ `.pixels`) resolve at a unit canvas and lerp into a `.normalized` result; matching-type pairs lerp components directly.
+- `Size: Animatable` — same shape. `.aspectFit` / `.aspectFill` cases use the unit-canvas resolution path; authors that care about preserving the aspect constraint mid-animation should switch to `.normalized` / `.pixels` / `.percent` keyframe values.
+- `Overlay` protocol gains optional `positionAnimation: Animation<Position>?` and `sizeAnimation: Animation<Size>?` requirements (default nil). `TextOverlay` and `Watermark` keep defaults; `ImageOverlay` and `StickerOverlay` override with storage.
+- `ImageOverlay.position(_:animation:)` and `.size(_:animation:)` modifiers
+- `StickerOverlay.position(_:animation:)` and `.size(_:animation:)` modifiers
+- Animation timing on overlays is **composition-relative** (not clip-relative) — overlays don't have a "clip lifetime" frame of reference. A keyframe `.at(0.0, ...)` maps to composition t=0.
+
+### Engine
+
+- `OverlayRenderer.applyOverlayLayoutAnimation` samples animations at 30 fps over the composition's duration and emits `CAKeyframeAnimation` for `position` (always when any layout animation is active — size animation also shifts the resolved frame's center) and `bounds.size` (only when size animation is active).
+
+### Tests
+
+- 14 new tests across `OverlayLayoutAnimationTests` covering `Animatable` math on `Position` / `Size`, mixed-type fallback, modifier composition on `ImageOverlay` / `StickerOverlay`, `TextOverlay` carrying nil defaults, and `OverlayRenderer` engine smoke. Suite: 420 → 434.
+
+### Known limitation
+
+When size animates with a non-`.center` overlay anchor, the layer's `anchorPoint` stays at `(0.5, 0.5)`, so size growth visually centers on the layer rather than preserving the anchor's render-space target. Workaround: pin overlays with size animations to `.center` anchor. Will be polished in a future patch if anyone hits it in practice.
+
 ## [0.8.0] - 2026-04-28
 
 The "Animation & Transform" release. Last feature cycle before v1.0. Locks in foundational surface that would be breaking to add after semver — per-clip Transform, keyframe animations, animated TextOverlay, audio cross-fades. Built across an RFC + 4 implementation tiers ([#72](https://github.com/SteliyanH/kadr/pull/72) → [#73](https://github.com/SteliyanH/kadr/pull/73) → [#74](https://github.com/SteliyanH/kadr/pull/74) → [#75](https://github.com/SteliyanH/kadr/pull/75) → [#76](https://github.com/SteliyanH/kadr/pull/76)). Pure additive — every v0.7 composition compiles and behaves identically.
