@@ -238,3 +238,90 @@ public extension Video {
 
 - kadr-ui's multi-lane `TimelineView` — kadr-ui v0.5+, lands after kadr v0.6 ships
 - Automatic time-aware compositor selection (e.g., "use this compositor only between t=2s and t=5s") — could land in v0.6.x if needed; v0.6 keeps the engine attaching one global multi-track blender
+
+## v0.7 design — Multi-track polish & audio timing
+
+Closes the v0.6 deferrals on transitions-in-chain and time-ranged compositors, adds named Tracks for downstream tooling, and introduces the first real audio timing controls. Fully additive — every v0.6 composition continues to compile and behave identically.
+
+**Four shipped items**
+
+```swift
+// 1. Track(name:) — public label for tooling
+Video {
+    VideoClip(url: main).trimmed(to: 0...10)
+    Track(at: 2.0, name: "B-Roll") {
+        VideoClip(url: alt).trimmed(to: 0...3)
+    }
+}
+
+// 2. Transitions in the implicit chain alongside multi-track parallel clips
+//    (closes v0.6 deferral — was rejected with KadrError.notYetImplemented)
+Video {
+    VideoClip(url: a).trimmed(to: 0...5)
+    Transition.dissolve(duration: 0.5)
+    VideoClip(url: b).trimmed(to: 0...5)
+    Track(at: 1.0) { VideoClip(url: pip).trimmed(to: 0...3) }
+}
+
+// 3. Time-ranged compositor selection
+Video { ... }
+    .compositor(MultiplyBlend(), during: 2.0...5.0)   // active only in that window
+
+// 4. AudioTrack timing — sound effects pinned to a moment
+Video { ... }
+    .audio {
+        AudioTrack(url: musicURL)                          // plays full composition
+        AudioTrack(url: sfxURL).at(time: 3.0).duration(1.5) // SFX from t=3s, capped 1.5s
+    }
+```
+
+**Key decisions and rationale**
+
+| Decision | Choice | Why |
+|---|---|---|
+| Chain-with-transitions in multi-track | Pre-render the chain to a temp `.mp4`, insert as a single piece on the main video track | Mirrors the existing v0.6 tier-4c Tracks-with-transitions pre-render. Reuses the single-track-with-transitions builder path that already works. Avoids extending the multi-track assembler's cursor model to handle alternating transition tracks alongside parallel ones — disproportionate engineering cost for what's a minor convenience over the documented `Track { }` workaround. |
+| Compositor time window | Single `during: CMTimeRange?` parameter on `Video.compositor(_:during:)` | One global compositor with one optional window. No multiplexing-by-time of multiple compositors — keeps the engine simple. Outside the window, default `AlphaCompositeBlender` runs. CMTime + TimeInterval overloads matching the rest of the API. |
+| Audio timing storage | New `startTime: CMTime?` and `explicitDuration: CMTime?` on `AudioTrack` (both optional) | `nil` = current behavior (plays full asset, starts at t=0). `.at(time:)` and `.duration(_:)` modifiers populate them. `nil` defaults preserve every v0.6 audio call site. |
+| Audio insertion in engine | `audio.startTime ?? .zero` for insertion time; `min(explicitDuration ?? compositionEnd, compositionEnd - startTime)` for length | Single helper threads through both the standard chain path and `buildMultiTrack`'s audio path. Volume / fade / ducking automation timing shifts to the new window. |
+| Named Tracks | Stored `name: String?` (default nil), three new init overloads | kadr-ui v0.5.x already auto-generates "Track 1" / "Track 2"; named Tracks let consumers pass through real labels. Source-compatible. |
+
+**Public surface sketch**
+
+```swift
+public struct Track: Clip, Sendable {
+    public let name: String?
+    public init(name: String?, @VideoBuilder _ content: () -> [any Clip])
+    public init(at time: CMTime, name: String? = nil, @VideoBuilder _ content: () -> [any Clip])
+    public init(at time: TimeInterval, name: String? = nil, @VideoBuilder _ content: () -> [any Clip])
+}
+
+public struct AudioTrack: Sendable {
+    public let startTime: CMTime?
+    public let explicitDuration: CMTime?
+    public func at(time: CMTime) -> AudioTrack
+    public func at(time: TimeInterval) -> AudioTrack
+    public func duration(_ duration: CMTime) -> AudioTrack
+    public func duration(_ duration: TimeInterval) -> AudioTrack
+}
+
+public extension Video {
+    func compositor(_ compositor: any MultiInputCompositor, during range: CMTimeRange) -> Video
+    func compositor(_ compositor: any MultiInputCompositor, during range: ClosedRange<TimeInterval>) -> Video
+    // The existing `compositor(_:)` (no range) keeps working — equivalent to "active for the full composition".
+}
+```
+
+**Tier breakdown**
+
+- **Tier 0** *(this RFC)* — design doc only.
+- **Tier 1** — `Track(name:)` + close transitions-in-chain deferral. Generalize `preRenderTrackToTempFile` → `preRenderClipsToTempFile`. Lift the rejection in `buildMultiTrack`. Bundled because both are small and engine-localized.
+- **Tier 2** — Time-ranged compositor selection. Engine work in `Video` storage and `KadrVideoCompositor.startRequest`.
+- **Tier 3** — AudioTrack timing. Modifiers + storage + engine assembly + edge-case tests. Largest tier.
+- **Tier 4** — Release prep: ROADMAP, CHANGELOG, develop → main, tag, release.
+
+**Out of scope for v0.7**
+
+- Multiple compositors multiplexed by time window (chain of `(compositor, range)` pairs). One global compositor with one optional window only.
+- Audio cross-fades on `AudioTrack` boundaries (volume + fades exist; cross-fades between two tracks at the same time slot are not v0.7).
+- Audio `.speed(_:)` (clip-side speed exists; audio-track-side speed is bigger work).
+- Per-Track compositor overrides — global only.
