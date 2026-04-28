@@ -38,7 +38,9 @@ internal enum PlaybackComposer {
             from: video.clips,
             audioTracks: video.audioTracks,
             preset: video.preset,
-            cropRect: cropRect
+            cropRect: cropRect,
+            multiInputCompositor: video.multiInputCompositor,
+            compositorWindow: video.compositorWindow
         )
 
         // Simple path: CompositionBuilder doesn't build a videoComposition when there are

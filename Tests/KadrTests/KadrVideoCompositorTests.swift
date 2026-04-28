@@ -108,6 +108,70 @@ struct KadrVideoCompositorTests {
         #expect(inst.passthroughTrackID == kCMPersistentTrackID_Invalid)
     }
 
+    // MARK: - Time-windowed compositor (v0.7)
+
+    @Test func instructionCarriesCompositorWindowWhenSet() async throws {
+        let img = try loadTestImage()
+        let window = CMTimeRange(
+            start: CMTime(seconds: 1, preferredTimescale: 600),
+            end: CMTime(seconds: 3, preferredTimescale: 600)
+        )
+        let result = try await CompositionBuilder.build(
+            from: [
+                ImageClip(img, duration: 5.0),
+                ImageClip(img, duration: 1.0).at(time: 0.5),
+            ],
+            audioTracks: [],
+            preset: preset,
+            multiInputCompositor: PassThrough(),
+            compositorWindow: window
+        )
+        let inst = try #require(result.videoComposition?.instructions.first as? KadrVideoCompositionInstruction)
+        #expect(inst.compositorWindow == window)
+    }
+
+    @Test func instructionWindowDefaultsToNil() async throws {
+        let img = try loadTestImage()
+        let result = try await CompositionBuilder.build(
+            from: [
+                ImageClip(img, duration: 2.0),
+                ImageClip(img, duration: 1.0).at(time: 0.5),
+            ],
+            audioTracks: [],
+            preset: preset,
+            multiInputCompositor: PassThrough()
+        )
+        let inst = try #require(result.videoComposition?.instructions.first as? KadrVideoCompositionInstruction)
+        #expect(inst.compositorWindow == nil)
+    }
+
+    @Test func videoCompositorDuringCMTimeRangeStoresWindow() {
+        let img = PlatformImage()
+        let range = CMTimeRange(
+            start: CMTime(seconds: 2, preferredTimescale: 600),
+            end: CMTime(seconds: 5, preferredTimescale: 600)
+        )
+        let video = Video {
+            ImageClip(img, duration: 1.0)
+            ImageClip(img, duration: 1.0).at(time: 0)
+        }
+        .compositor(PassThrough(), during: range)
+        #expect(video.compositorWindow == range)
+        #expect(video.multiInputCompositor is PassThrough)
+    }
+
+    @Test func videoCompositorDuringClosedRangeConvertsToCMTimeRange() {
+        let img = PlatformImage()
+        let video = Video {
+            ImageClip(img, duration: 1.0)
+            ImageClip(img, duration: 1.0).at(time: 0)
+        }
+        .compositor(PassThrough(), during: 1.0...4.0)
+        let window = try? #require(video.compositorWindow)
+        #expect(CMTimeGetSeconds(window!.start) == 1.0)
+        #expect(CMTimeGetSeconds(window!.end) == 4.0)
+    }
+
     @Test func videoExportThreadsCompositorThroughBuild() async throws {
         // Sanity: Video.exporter(to:) creates an Exporter with multiInputCompositor set
         // when Video.compositor(_:) was called. We can't drive a full export here without

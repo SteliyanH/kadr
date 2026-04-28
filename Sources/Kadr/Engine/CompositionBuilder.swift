@@ -14,7 +14,8 @@ internal enum CompositionBuilder {
         audioTracks: [AudioTrack],
         preset: Preset,
         cropRect: CGRect? = nil,
-        multiInputCompositor: (any MultiInputCompositor)? = nil
+        multiInputCompositor: (any MultiInputCompositor)? = nil,
+        compositorWindow: CMTimeRange? = nil
     ) async throws -> CompositionResult {
         // Multi-track path engages whenever any clip has an explicit startTime or is a Track —
         // both shapes of the v0.6 hybrid DSL produce parallel sub-timelines.
@@ -25,7 +26,8 @@ internal enum CompositionBuilder {
                 audioTracks: audioTracks,
                 preset: preset,
                 cropRect: cropRect,
-                multiInputCompositor: multiInputCompositor
+                multiInputCompositor: multiInputCompositor,
+                compositorWindow: compositorWindow
             )
         }
         if clips.contains(where: { $0 is Transition }) {
@@ -53,7 +55,8 @@ internal enum CompositionBuilder {
         audioTracks: [AudioTrack],
         preset: Preset,
         cropRect: CGRect? = nil,
-        multiInputCompositor: (any MultiInputCompositor)? = nil
+        multiInputCompositor: (any MultiInputCompositor)? = nil,
+        compositorWindow: CMTimeRange? = nil
     ) async throws -> CompositionResult {
         let composition = AVMutableComposition()
         let compositionAudioTrack = composition.addMutableTrack(
@@ -203,6 +206,7 @@ internal enum CompositionBuilder {
         if multiInputCompositor != nil {
             let kadrInstruction = KadrVideoCompositionInstruction()
             kadrInstruction.multiInputCompositor = multiInputCompositor
+            kadrInstruction.compositorWindow = compositorWindow
             // Custom compositor needs to know which track IDs to pull source frames from.
             kadrInstruction.setRequiredSourceTrackIDs(videoTracks.map { $0.trackID })
             instruction = kadrInstruction
