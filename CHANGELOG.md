@@ -4,6 +4,68 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] - 2026-04-28
+
+The "Animation & Transform" release. Last feature cycle before v1.0. Locks in foundational surface that would be breaking to add after semver — per-clip Transform, keyframe animations, animated TextOverlay, audio cross-fades. Built across an RFC + 4 implementation tiers ([#72](https://github.com/SteliyanH/kadr/pull/72) → [#73](https://github.com/SteliyanH/kadr/pull/73) → [#74](https://github.com/SteliyanH/kadr/pull/74) → [#75](https://github.com/SteliyanH/kadr/pull/75) → [#76](https://github.com/SteliyanH/kadr/pull/76)). Pure additive — every v0.7 composition compiles and behaves identically.
+
+### Added — Per-clip Transform ([#73](https://github.com/SteliyanH/kadr/pull/73))
+
+- New `Transform(center:rotation:scale:anchor:)` value type. Reuses existing `Position` / `Anchor` from v0.3 overlays so the coordinate space is one consumers already know. `Transform.identity` constant for "no transform".
+- `Clip` protocol gains optional `transform: Transform?` requirement (default nil); `Transition` and `Track` keep the default.
+- `.transform(_:)` modifier on `VideoClip`, `ImageClip`, `TitleSequence`. Calling twice replaces (transforms don't accumulate).
+- Engine: `build()` routing now promotes transform-bearing single-track compositions through `buildMultiTrack` so `setTransform(_:at:)` calls have a videoComposition + layer instructions to live in. `makeLayerInstruction` accepts per-clip transforms and composes `base × userTransform.resolved(in: renderSize) × cropTransform` at each clip's start time.
+- Inner-Track clip transforms are deferred to v0.8.2 (engine ignores; round-trips at value level).
+
+### Added — Keyframe animation system ([#74](https://github.com/SteliyanH/kadr/pull/74))
+
+- New `Animation<Value: Animatable>` generic + `Keyframe` nested type. `.keyframes(_:timing:)` factory sorts on construction.
+- New `Animatable` protocol — single `interpolate(_:_:t:)` requirement. Built-in conformances on `Double` (linear lerp) and `Transform` (per-component lerp; anchor enum snaps at midpoint). `Position` interpolation is internal in v0.8.0; public conformance lands in v0.8.1 alongside overlay position/size animation.
+- New `TimingFunction` — `linear` / `easeIn` / `easeOut` / `easeInOut` / `cubicBezier(p1, p2)` / `custom` closure. Newton-Raphson cubic-bezier solver matches CSS / `CAMediaTimingFunction`.
+- `Clip` protocol gains optional `transformAnimation`, `opacity`, `opacityAnimation` requirements (default nil).
+- New modifiers on each media clip type:
+  - `.transform(_:animation:)` — base transform + clip-relative keyframes
+  - `.opacity(_:)` — static opacity in `0...1`
+  - `.opacity(_:animation:)` — base opacity + animation
+- **Animation timing is clip-relative.** A keyframe `.at(0.0, value:)` maps to the clip's first frame, not composition t=0. Foundational contract — flipping later would be breaking.
+- Engine: samples animations at the preset's frame rate within each clip's window; emits one `setTransform` / `setOpacity` call per sample. AVFoundation interpolates linearly between samples — sampling at frame rate gives the user's eased timing without further engine work.
+
+### Added — Animated TextOverlay ([#75](https://github.com/SteliyanH/kadr/pull/75))
+
+- New `TextAnimation` protocol — `func makeAnimations(for layer: CALayer) -> [CAAnimation]`. Custom conformers can drive any Core-Animation effect on the overlay's `CATextLayer`.
+- Three built-in recipes:
+  - `FadeIn(duration:from:beginTime:)` — opacity ramps from `from` (default 0) to the layer's base opacity
+  - `SlideIn(from:duration:beginTime:)` — animates `position.x` or `position.y` from off-screen with default easeOut timing
+  - `ScaleUp(from:duration:beginTime:)` — animates `transform.scale` from `from` (default 0) to 1.0
+- Convenience factories: `.fadeIn(duration:)`, `.slideIn(from:duration:)`, `.scaleUp(duration:)`
+- New `TextOverlay.animation(_:)` modifier
+- Engine: `OverlayRenderer` attaches recipe animations to the text layer with stable keys (`kadr.textAnimation.<index>`) so they don't collide with the existing visibility-timing animation
+- `FadeByLetter` (per-letter staggered reveal) staged for v0.8.x — char-level CATextLayer layout is its own focused work; `TextAnimation` accommodates it without breaking changes
+
+### Added — Audio cross-fades ([#76](https://github.com/SteliyanH/kadr/pull/76))
+
+- New `AudioTrack.crossfade(_:)` modifier (CMTime + TimeInterval overloads) and `crossfadeDuration: CMTime?` stored field
+- Engine: when set and the next `AudioTrack` in declaration order overlaps this one's end, emits matching volume ramps — fade out on this track, fade in on the next — over `min(crossfadeDuration, overlap)`. Overrides user `fadeIn` / `fadeOut` at the boundary so AVFoundation never sees overlapping ramps. Ducking exclusions use the effective fades (not raw user values).
+- `buildBackgroundAudioMixParameters` refactored into two phases (insertion ranges first, then ramps with crossfade-aware overrides) for O(1) neighbor lookups
+- Equal-power / S-curve crossfades remain wishlist (linear ramps are perceptually fine for music swaps; pro-audio apps can build their own via the v0.8.3 `volumeRamp` API)
+
+### Tests
+
+- 63 new tests across the cycle:
+  - 15 `Transform` value-type math + modifier composition + engine routing
+  - 24 `Animation<T>` / `Animatable` / `TimingFunction` math + modifier composition + engine routing
+  - 15 `TextAnimation` modifier composition + recipe correctness + engine smoke
+  - 9 `AudioTrack.crossfade` modifier + engine integration on overlap / non-overlap / last-track edge cases
+- Suite: 357 → 420.
+
+### v0.8.x patches (planned, in order)
+
+Per the [RFC](DESIGN.md#v08-design--animation--transform) and [ROADMAP](ROADMAP.md#v08x--patches-before-v09):
+
+- **v0.8.1** — `Position` / `Size` as `Animatable`; animated `.position(_:animation:)` / `.size(_:animation:)` on `ImageOverlay` / `StickerOverlay` / `Watermark`
+- **v0.8.2** — Filter intensity animation: `VideoClip.filter(_:animation:)` taking a single Filter + `Animation<Double>`. Also lifts the inner-Track clip-Transform deferral.
+- **v0.8.3** — `AudioTrack.volumeRamp(start:end:during:)` for granular volume automation
+- **v0.8.4** — More `Filter` presets: `gaussianBlur`, `vignette`, `sharpen`, `zoomBlur`, `glow`
+
 ## [0.7.0] - 2026-04-28
 
 Multi-track polish + audio timing. Closes the two v0.6 deferrals (transitions-in-chain alongside multi-track, time-ranged compositor selection), adds named `Track` blocks for downstream tooling, and introduces real audio timing controls. Built across an RFC + 3 implementation tiers ([#65](https://github.com/SteliyanH/kadr/pull/65) → [#66](https://github.com/SteliyanH/kadr/pull/66) → [#67](https://github.com/SteliyanH/kadr/pull/67) → [#68](https://github.com/SteliyanH/kadr/pull/68)). Pure additive — every v0.6 composition compiles and behaves identically.

@@ -157,14 +157,14 @@ Closes the v0.6 deferrals on transitions-in-chain and time-ranged compositors, a
 - ✓ `AudioTrack.duration(_:)` — explicit cap on playback length from `startTime`. Engine inserts at `min(asset duration, available window, explicit cap)`.
 - ✓ All volume / fade-in / fade-out / ducking automation re-anchored to absolute composition time so timing-aware tracks layer correctly with chain audio and other background tracks.
 
-## v0.8.0 — Animation & Transform
+## v0.8.0 — Animation & Transform ✓ shipped
 
-The last feature cycle before v1.0. Foundational additions that would be breaking if they landed after semver lock — per-clip transform, keyframe animations on every animatable property, animated text overlays. Plus audio cross-fades on `AudioTrack` boundaries to round out the audio surface.
+The last feature cycle before v1.0. Foundational additions locked in before semver — per-clip transform, keyframe animations, animated text overlays, audio cross-fades. Pure additive — every v0.7 composition compiles and behaves identically. See [CHANGELOG.md](CHANGELOG.md#080---2026-04-28).
 
-- **Per-clip Transform** — `Transform(center:rotation:scale:anchor:)` on `VideoClip` / `ImageClip` / `TitleSequence`. Wires to `AVMutableVideoCompositionLayerInstruction.transform` for the static case and feeds into the keyframe pipeline for animated cases.
-- **Keyframe animations** — `Animation<T>` value type, `Animatable` protocol conformance on `Transform` / `Opacity` / `Filter` intensity, timing functions (linear, easeIn, easeOut, easeInOut, custom Bézier). Drives both export and `makePlayerItem()` preview.
-- **Animated `TextOverlay`** — `CALayer`-backed render path with optional `[CAAnimation]` for kinetic typography (fade-by-letter, slide-in, kerning). Static text continues to work unchanged.
-- **Audio cross-fades** — `AudioTrack.crossfade(_ duration:)` (or implicit when adjacent `.at(time:)` audio tracks overlap). Engine emits matching volume ramps so one track fades out as the next fades in.
+- ✓ **Per-clip Transform** — `Transform(center:rotation:scale:anchor:)` on `VideoClip` / `ImageClip` / `TitleSequence`. Static case wires to `AVMutableVideoCompositionLayerInstruction.transform`; animation feeds into the keyframe pipeline.
+- ✓ **Keyframe animations** — `Animation<T>` generic + `Animatable` protocol conformances on `Transform` and `Double`. `TimingFunction` (linear, easeIn, easeOut, easeInOut, cubicBezier, custom). Clip-relative timing semantics. Drives both export and `makePlayerItem()` preview.
+- ✓ **Animated `TextOverlay`** — `TextAnimation` protocol + built-in recipes (`FadeIn`, `SlideIn`, `ScaleUp`). CALayer-backed export render via `AVVideoCompositionCoreAnimationTool`.
+- ✓ **Audio cross-fades** — `AudioTrack.crossfade(_:)` modifier with declaration-order pairing. Engine emits matching volume ramps over `min(crossfadeDuration, overlap)` and overrides user fades at overlap boundaries so AVFoundation doesn't see overlapping ramps.
 
 ## v0.8.x — Patches before v0.9
 
