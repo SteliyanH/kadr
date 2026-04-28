@@ -322,6 +322,180 @@ public extension Video {
 **Out of scope for v0.7**
 
 - Multiple compositors multiplexed by time window (chain of `(compositor, range)` pairs). One global compositor with one optional window only.
-- Audio cross-fades on `AudioTrack` boundaries (volume + fades exist; cross-fades between two tracks at the same time slot are not v0.7).
-- Audio `.speed(_:)` (clip-side speed exists; audio-track-side speed is bigger work).
+- Audio cross-fades on `AudioTrack` boundaries (volume + fades exist; cross-fades between two tracks at the same time slot are not v0.7). *(closed in v0.8 — see below)*
+- Audio `.speed(_:)` (clip-side speed exists; audio-track-side speed is bigger work). *(staged for v0.9)*
 - Per-Track compositor overrides — global only.
+
+## v0.8 design — Animation & Transform
+
+The last feature cycle before v1.0. Foundational additions that would be breaking if they landed after semver lock — per-clip transform, keyframe animations on every animatable property, animated text overlays. Plus audio cross-fades on `AudioTrack` boundaries to round out the audio surface.
+
+**Hybrid surface — declarative on top of result-builder DSL**
+
+```swift
+// 1. Per-clip Transform (static — apply uniformly across the clip's duration)
+Video {
+    VideoClip(url: a)
+        .trimmed(to: 0...5)
+        .transform(Transform(scale: 0.5, anchor: .topRight))   // PiP in the corner
+}
+
+// 2. Keyframe-animated Transform — Ken Burns zoom-pan
+Video {
+    ImageClip(photo, duration: 5.0)
+        .transform(.identity, animation:
+            .keyframes([
+                .at(0.0, value: Transform(scale: 1.0, center: .normalized(x: 0.5, y: 0.5))),
+                .at(5.0, value: Transform(scale: 1.3, center: .normalized(x: 0.6, y: 0.4))),
+            ], timing: .easeInOut)
+        )
+}
+
+// 3. Animated TextOverlay — fade-by-letter title reveal
+Video { ... }
+    .overlay(
+        TextOverlay("MY MOVIE", style: titleStyle)
+            .position(.center)
+            .animation(.fadeByLetter(duration: 1.5))   // pre-built reveal recipe
+    )
+
+// 4. Audio cross-fade on AudioTrack boundaries
+Video { ... }
+    .audio {
+        AudioTrack(url: musicA).at(time: 0).duration(8.0)
+        AudioTrack(url: musicB).at(time: 7.0).crossfade(1.0)  // 1s overlap fades A→B
+    }
+```
+
+**Key decisions and rationale**
+
+| Decision | Choice | Why |
+|---|---|---|
+| Transform shape | `Transform(center: Position, rotation: Double, scale: Double, anchor: Anchor)` value type | Reuses existing `Position` / `Anchor` from v0.3's overlay surface. Same coordinate space (normalized + pixel + percent + named anchors) so consumers don't relearn. Single value type covers static and animated cases. |
+| Keyframe API | `Animation<T>` value type + `Animatable` protocol on conforming types | Generic on the animated property type (`Transform`, `Double` for opacity, `Filter.intensity`). User-supplied keyframe arrays + timing functions. Engine evaluates per-frame in the existing `KadrVideoCompositor` path. |
+| Timing functions | Built-in `.linear` / `.easeIn` / `.easeOut` / `.easeInOut` / `.cubicBezier(p1, p2)` / `.custom((Double) -> Double)` | Mirrors CAMediaTimingFunction's surface; covers the 90% case. Custom closure form is the escape hatch. |
+| Animated text | `TextOverlay.animation(any TextAnimation)` + built-in recipes (`.fadeByLetter`, `.slideIn`, `.scaleUp`) | CALayer-backed render path under the hood (the recipe builds a `CATextLayer` + `[CAAnimation]`). Static `TextOverlay`s without animation continue to use the existing fast path. |
+| Engine — text rendering | Use `AVVideoCompositionCoreAnimationTool(postProcessingAsVideoLayer:in:)` for the export path (animated text); `AVSynchronizedLayer` for preview consumers (kadr-ui). | Apple's intended path for animated text. Export-only at the engine level (matches what overlays already do — kadr-ui handles preview overlay rendering separately). |
+| Audio cross-fades | `AudioTrack.crossfade(_ duration: CMTime/TimeInterval)` modifier — declares "fade out over `duration` from the end of *this* track, fade in over `duration` to the start of the *next* track in declaration order"  | Symmetric ramps on both sides of the boundary. Doesn't require pairing tracks explicitly; declaration order + `.at(time:)` overlaps determine which is "next". Engine emits matching volume ramps via `AVMutableAudioMixInputParameters`. |
+| Animation evaluation | Engine evaluates animations at composition time, not at frame time. `KadrVideoCompositor.process` reads the current request's `compositionTime` and asks each animatable for its interpolated value. | Frame-accurate without a per-frame allocation pass. Same pattern as v0.7's time-windowed compositor selection. |
+| `Transform.identity` constant | Yes — a public static for "no transform" so callers can pass `.identity` when they want only animation, no static base | Avoids the "what if I want animation only" awkwardness. Identity == `Transform(center: .normalized(x: 0.5, y: 0.5), rotation: 0, scale: 1, anchor: .center)`. |
+| **Animation timing semantics** | **Clip-relative.** A `Keyframe.at(0.0, value: ...)` on a clip's animation means "the clip's first visible frame," not "composition t=0." Engine maps to absolute time at evaluation: `absoluteTime = clip.absoluteStart + keyframe.time`. Same rule applies to chain clips, `.at(time:)` free-floaters, and clips inside `Track {}` blocks. | Foundational decision — **must be locked in v0.8.0 because flipping later is breaking.** Matches CAAnimation's contract (timing relative to layer's lifetime). Reads naturally: `.keyframes([.at(0.0, ...), .at(2.0, ...)])` describes "what happens during this clip's first 2 seconds," regardless of where the clip lands on the composition timeline. |
+
+**Public surface sketch**
+
+```swift
+public struct Transform: Sendable, Equatable {
+    public var center: Position
+    public var rotation: Double      // radians; positive = CCW
+    public var scale: Double         // uniform; 1.0 = unchanged
+    public var anchor: Anchor        // pivot for rotation + scale
+
+    public init(center: Position = .normalized(x: 0.5, y: 0.5),
+                rotation: Double = 0,
+                scale: Double = 1,
+                anchor: Anchor = .center)
+
+    public static let identity: Transform
+}
+
+public struct Animation<Value: Animatable>: Sendable {
+    public let keyframes: [Keyframe<Value>]
+    public let timing: TimingFunction
+
+    public struct Keyframe<V: Animatable>: Sendable {
+        public let time: CMTime
+        public let value: V
+        public static func at(_ seconds: TimeInterval, value: V) -> Keyframe<V>
+        public static func at(_ time: CMTime, value: V) -> Keyframe<V>
+    }
+
+    public static func keyframes(_ keyframes: [Keyframe<Value>], timing: TimingFunction = .linear) -> Animation<Value>
+}
+
+public protocol Animatable: Sendable {
+    /// Interpolate between two values at fraction `t` in 0...1. Engine drives this
+    /// per-frame from the current composition time mapped through the timing function.
+    static func interpolate(_ a: Self, _ b: Self, t: Double) -> Self
+}
+extension Transform: Animatable
+extension Double: Animatable    // for opacity / filter intensity
+
+public enum TimingFunction: Sendable {
+    case linear, easeIn, easeOut, easeInOut
+    case cubicBezier(_ p1: CGPoint, _ p2: CGPoint)
+    case custom(@Sendable (Double) -> Double)
+}
+
+public extension VideoClip {
+    func transform(_ transform: Transform) -> VideoClip
+    func transform(_ base: Transform, animation: Animation<Transform>) -> VideoClip
+    func opacity(_ opacity: Double) -> VideoClip
+    func opacity(_ base: Double, animation: Animation<Double>) -> VideoClip
+}
+public extension ImageClip { /* same surface */ }
+public extension TitleSequence { /* same surface */ }
+
+public extension TextOverlay {
+    func animation(_ animation: any TextAnimation) -> TextOverlay
+}
+
+public protocol TextAnimation: Sendable {
+    /// Returns a CAAnimation tree (or layer-tree fragment) for the engine's
+    /// CALayer-backed text render. Engine-internal — consumers use the public
+    /// recipes below.
+    func makeAnimations(in layer: CALayer, duration: CMTime) -> [CAAnimation]
+}
+
+public extension TextAnimation where Self == FadeByLetter {
+    static func fadeByLetter(duration: CMTime) -> FadeByLetter
+    static func fadeByLetter(duration: TimeInterval) -> FadeByLetter
+}
+// + SlideIn, ScaleUp, …
+
+public extension AudioTrack {
+    func crossfade(_ duration: CMTime) -> AudioTrack
+    func crossfade(_ duration: TimeInterval) -> AudioTrack
+}
+```
+
+**Tier breakdown**
+
+- **Tier 0** *(this RFC)* — design doc only.
+- **Tier 1** — Per-clip Transform. `Transform` value type + modifiers + engine wiring through `AVMutableVideoCompositionLayerInstruction.transform`. Static case only — no animations yet. ~250 LOC + tests.
+- **Tier 2** — Keyframe system. `Animation<T>`, `Animatable`, `TimingFunction`, animated `transform(_:animation:)` and `opacity(_:animation:)` modifiers. Engine evaluates animations per-frame in `KadrVideoCompositor` and the simple-path layer instruction. ~400 LOC + tests.
+- **Tier 3** — Animated `TextOverlay`. CALayer-backed render path for the export pipeline via `AVVideoCompositionCoreAnimationTool`. Built-in recipes (`fadeByLetter`, `slideIn`, `scaleUp`). ~350 LOC + tests.
+- **Tier 4** — Audio cross-fades. `AudioTrack.crossfade(_:)` modifier + engine ramp generation in `buildBackgroundAudioMixParameters`. ~120 LOC + tests.
+- **Tier 5** — Release prep: ROADMAP / CHANGELOG / README / V080Showcase / develop → main / tag.
+
+**v0.8.x patches — staged after v0.8.0, before v0.9.0**
+
+These are real user needs that don't have to ship in the headline cycle but should land before v0.9 starts. All additive, none breaking.
+
+- **v0.8.1 — `Position` / `Size` as `Animatable`** + `.position(_:animation:)` / `.size(_:animation:)` modifiers on `ImageOverlay` / `StickerOverlay` / `Watermark`. The v0.8.0 `Animatable` protocol covers `Transform` and `Double`; extending it to coordinate types is a small, mechanical addition (interpolate is straightforward arithmetic) that unlocks animated image/sticker overlays — sliding watermarks, animated logo placements, drifting stickers.
+- **v0.8.2 — Filter intensity animation.** `VideoClip.filter(_:animation:)` taking a single `Filter` + `Animation<Double>`. Engine composes the animated intensity scalar with the static filter at evaluation time. Real use cases: animated blur sweeps, gradual sepia fades, intensity-ramped vignette.
+- **v0.8.3 — `AudioTrack.volumeRamp(start:end:during:)`.** Granular volume automation between two points. Sister API to `.fadeIn` / `.fadeOut` for arbitrary ramps mid-track.
+- **v0.8.4 — More `Filter` presets.** `gaussianBlur`, `vignette`, `sharpen`, `zoomBlur`, `glow`. Closes the parity gap with IMG.LY (60+ filters) and VideoLab.
+
+**Truly deferred — wishlist (may never ship)**
+
+These were considered and intentionally left off the roadmap. They're additive — adding them later is non-breaking — but the user need is thin enough that we may never implement them. Captured here so future maintainers don't redo the analysis.
+
+- **Per-segment timing functions** (different ease per keyframe segment) — global `TimingFunction` per `Animation<T>` plus `.custom((Double) -> Double)` covers ~95% of cases. The remaining 5% can write their own piecewise curve in the `.custom` closure. Likely never adds enough value to justify the API expansion.
+- **Equal-power / S-curve audio cross-fades** — niche audio-engineering polish. Linear ramps in v0.8.0 are perceptually fine for most music swaps; pro-audio apps that care can build their own ramps via `.volumeRamp(...)`. Probably stays a nice-to-have forever.
+- **`Animation<T>` on `Compositor` parameters** — custom compositors are stateless `Sendable`; animated compositor parameters (e.g., a chroma-key threshold that animates) belong on the calling site, not as a kadr-managed surface. Compositor authors handle their own animation state if they need it.
+- **`CropRegion` keyframes** (composition-level animated crop) — clip-level `Transform` animation already covers the common Ken Burns use case (apply to an `ImageClip` or `VideoClip`). Composition-level animated crop is genuinely rare. Defer indefinitely.
+- **Real-time DSP audio nodes** (reverb, EQ, compression on `AudioTrack`) — already explicit non-goal. AudioKit is the right answer for DSP-heavy audio work; kadr's audio surface stays declarative + `AVMutableAudioMix`-shaped.
+
+**Engineering notes**
+
+- **Animation eval cost.** `KadrVideoCompositor.process` is called per frame; computing interpolated values per frame is fine for tens of animatable properties but could matter for compositions with hundreds. Decision: cache the resolved keyframe segments at instruction-build time (one-time CPU work) so per-frame eval is one binary search + one `interpolate(_:_:t:)` call. Validated once we benchmark in v1.0.
+- **Existing animation-free fast path stays.** Compositions without animations skip the per-frame eval entirely — the existing `AVMutableVideoCompositionLayerInstruction` static-transform path is faster and we keep it.
+- **`AVVideoCompositionCoreAnimationTool` export-only constraint.** Already documented in the v0.4 architectural note. Animated text follows the same constraint — engine bakes it into the export, kadr-ui v0.6 will provide the preview surface via `AVSynchronizedLayer`.
+
+**Migration**
+
+Pure additive. Every v0.7 composition compiles unchanged. New surface is opt-in:
+- No `.transform(_:)` call → no transform applied (engine sees `nil`)
+- No `.animation` argument → static value, existing layer-instruction path
+- No `TextOverlay.animation(_:)` → existing fast text render
+- No `AudioTrack.crossfade(_:)` → existing audio behavior
