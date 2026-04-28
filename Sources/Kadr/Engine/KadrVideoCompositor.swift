@@ -81,7 +81,17 @@ internal final class KadrVideoCompositor: NSObject, AVVideoCompositing, @uncheck
 
         // Pull our custom instruction; fall back to the default blender if it's missing.
         let instruction = request.videoCompositionInstruction as? KadrVideoCompositionInstruction
-        let compositor: any MultiInputCompositor = instruction?.multiInputCompositor ?? AlphaCompositeBlender()
+        // Time-windowed compositor selection (v0.7): when the instruction declares a
+        // window and the request's composition time falls outside it, run the default
+        // alpha-composite blender instead of the user's compositor for this frame.
+        let useUserCompositor: Bool = {
+            guard instruction?.multiInputCompositor != nil else { return false }
+            guard let window = instruction?.compositorWindow else { return true }
+            return window.containsTime(request.compositionTime)
+        }()
+        let compositor: any MultiInputCompositor = useUserCompositor
+            ? (instruction!.multiInputCompositor!)
+            : AlphaCompositeBlender()
 
         // Pull each track's source frame in instruction declaration order. AVFoundation
         // returns the buffer in the format we requested via `sourcePixelBufferAttributes`.
@@ -127,6 +137,12 @@ internal final class KadrVideoCompositor: NSObject, AVVideoCompositing, @uncheck
 internal final class KadrVideoCompositionInstruction: AVMutableVideoCompositionInstruction, @unchecked Sendable {
 
     var multiInputCompositor: (any MultiInputCompositor)?
+
+    /// Optional time window (in composition time) during which the user-supplied
+    /// compositor is active. When `nil`, the compositor runs for the full composition.
+    /// When set, frames whose `compositionTime` falls outside the window are rendered
+    /// via the default `AlphaCompositeBlender` instead. Added in v0.7.
+    var compositorWindow: CMTimeRange?
 
     /// Track IDs whose source frames the custom compositor needs at request time.
     /// Backing storage for the read-only base-class `requiredSourceTrackIDs` property;

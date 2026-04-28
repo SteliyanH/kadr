@@ -54,6 +54,14 @@ public struct Video: Sendable {
     /// > time — single-track compositions continue to bypass this surface entirely.
     public let multiInputCompositor: (any MultiInputCompositor)?
 
+    /// Optional time window during which the ``multiInputCompositor`` is active. When
+    /// `nil` (default), the compositor runs for the entire composition. When set, the
+    /// engine consults each frame's composition time — inside the window the user's
+    /// compositor runs; outside it, the default alpha-composite blender runs. Set via
+    /// ``compositor(_:during:)-(CMTimeRange)`` / ``compositor(_:during:)-(closedrange)``.
+    /// Added in v0.7.
+    public let compositorWindow: CMTimeRange?
+
     /// Build a `Video` from a result-builder block of clips.
     public init(@VideoBuilder _ content: () -> [any Clip]) {
         self.clips = content()
@@ -62,6 +70,7 @@ public struct Video: Sendable {
         self.overlays = []
         self.crop = nil
         self.multiInputCompositor = nil
+        self.compositorWindow = nil
     }
 
     internal init(
@@ -70,7 +79,8 @@ public struct Video: Sendable {
         preset: Preset,
         overlays: [any Overlay] = [],
         crop: CropRegion? = nil,
-        multiInputCompositor: (any MultiInputCompositor)? = nil
+        multiInputCompositor: (any MultiInputCompositor)? = nil,
+        compositorWindow: CMTimeRange? = nil
     ) {
         self.clips = clips
         self.audioTracks = audioTracks
@@ -78,31 +88,32 @@ public struct Video: Sendable {
         self.overlays = overlays
         self.crop = crop
         self.multiInputCompositor = multiInputCompositor
+        self.compositorWindow = compositorWindow
     }
 
     /// Add one or more background audio tracks via the ``AudioBuilder`` DSL.
     /// Useful for chained modifiers like `.volume(_:)`, `.fadeIn(_:)`, `.ducking(_:)`.
     public func audio(@AudioBuilder _ tracks: () -> [AudioTrack]) -> Video {
-        Video(clips: clips, audioTracks: audioTracks + tracks(), preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor)
+        Video(clips: clips, audioTracks: audioTracks + tracks(), preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor, compositorWindow: compositorWindow)
     }
 
     /// Convenience: add a single background audio track from `url`. Equivalent to
     /// `.audio { AudioTrack(url: url) }` with default volume and no fades.
     public func audio(url: URL) -> Video {
-        Video(clips: clips, audioTracks: audioTracks + [AudioTrack(url: url)], preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor)
+        Video(clips: clips, audioTracks: audioTracks + [AudioTrack(url: url)], preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor, compositorWindow: compositorWindow)
     }
 
     /// Apply an export preset (resolution, frame rate, codec). Defaults to ``Preset/auto`` if
     /// unset. See ``Preset`` for the built-in choices and ``Preset/custom(width:height:frameRate:codec:)``.
     public func preset(_ preset: Preset) -> Video {
-        Video(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor)
+        Video(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor, compositorWindow: compositorWindow)
     }
 
     /// Add an overlay drawn on top of the composition for its full duration.
     /// Accepts any ``Overlay`` conformer — currently ``ImageOverlay`` and ``TextOverlay``.
     /// Each overlay is drawn above the previous one in declaration order.
     public func overlay<O: Overlay>(_ overlay: O) -> Video {
-        Video(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays + [overlay], crop: crop, multiInputCompositor: multiInputCompositor)
+        Video(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays + [overlay], crop: crop, multiInputCompositor: multiInputCompositor, compositorWindow: compositorWindow)
     }
 
     /// Crop the composition to a rectangular region of the render canvas. The export's
@@ -139,7 +150,8 @@ public struct Video: Sendable {
             preset: preset,
             overlays: overlays,
             crop: CropRegion(position: position, size: size, anchor: anchor),
-            multiInputCompositor: multiInputCompositor
+            multiInputCompositor: multiInputCompositor,
+            compositorWindow: compositorWindow
         )
     }
 
@@ -164,7 +176,8 @@ public struct Video: Sendable {
             preset: preset,
             overlays: overlays,
             crop: crop,
-            multiInputCompositor: compositor
+            multiInputCompositor: compositor,
+            compositorWindow: compositorWindow
         )
     }
 
@@ -179,6 +192,44 @@ public struct Video: Sendable {
     /// ```
     public func compositor(_ body: @Sendable @escaping ([CIImage], CompositorContext) -> CIImage) -> Video {
         compositor(ClosureMultiInputCompositor(body: body))
+    }
+
+    /// Attach a multi-track blender that runs **only during** `range`. Outside the
+    /// window the engine falls back to its built-in alpha-composite later-over-earlier
+    /// blender. Frame-accurate — the active compositor is selected per frame at the
+    /// composition-time level. Added in v0.7.
+    ///
+    /// ```swift
+    /// Video { ... }
+    ///     .compositor(MultiplyBlend(), during: CMTimeRange(start: t1, end: t2))
+    /// ```
+    public func compositor(_ compositor: any MultiInputCompositor, during range: CMTimeRange) -> Video {
+        Video(
+            clips: clips,
+            audioTracks: audioTracks,
+            preset: preset,
+            overlays: overlays,
+            crop: crop,
+            multiInputCompositor: compositor,
+            compositorWindow: range
+        )
+    }
+
+    /// Convenience overload accepting a `ClosedRange<TimeInterval>`. Added in v0.7.
+    public func compositor(_ compositor: any MultiInputCompositor, during range: ClosedRange<TimeInterval>) -> Video {
+        let start = CMTime(seconds: range.lowerBound, preferredTimescale: 600)
+        let end = CMTime(seconds: range.upperBound, preferredTimescale: 600)
+        return self.compositor(compositor, during: CMTimeRange(start: start, end: end))
+    }
+
+    /// Closure form of ``compositor(_:during:)-(CMTimeRange)``. Added in v0.7.
+    public func compositor(during range: CMTimeRange, _ body: @Sendable @escaping ([CIImage], CompositorContext) -> CIImage) -> Video {
+        compositor(ClosureMultiInputCompositor(body: body), during: range)
+    }
+
+    /// Closure form of ``compositor(_:during:)-(closedrange)``. Added in v0.7.
+    public func compositor(during range: ClosedRange<TimeInterval>, _ body: @Sendable @escaping ([CIImage], CompositorContext) -> CIImage) -> Video {
+        compositor(ClosureMultiInputCompositor(body: body), during: range)
     }
 
     /// The total media-timeline duration of the composition.
@@ -221,7 +272,8 @@ public struct Video: Sendable {
             audioTracks: audioTracks,
             preset: preset,
             cropRect: crop?.resolved(in: preset.resolution),
-            multiInputCompositor: multiInputCompositor
+            multiInputCompositor: multiInputCompositor,
+            compositorWindow: compositorWindow
         )
 
         let stream = ExportEngine.export(
@@ -244,7 +296,7 @@ public struct Video: Sendable {
     /// progress reporting via `AsyncThrowingStream<ExportProgress, Error>`,
     /// estimated time remaining, or cancellation. Otherwise prefer ``export(to:)``.
     public func exporter(to url: URL) -> Exporter {
-        Exporter(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor, outputURL: url)
+        Exporter(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor, compositorWindow: compositorWindow, outputURL: url)
     }
 
     // MARK: - Preview
