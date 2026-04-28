@@ -36,17 +36,12 @@ extension Transform: Animatable {
     }
 }
 
-// `Position` is interpolated internally so `Transform`'s `center` keyframes work,
-// but `Position` itself isn't *publicly* `Animatable` until v0.8.1 (where overlays
-// gain `.position(_:animation:)`). We keep the conformance internal here to avoid
-// committing to the public contract early.
-extension Position {
-    /// Internal interpolation for `Transform.center` keyframes. The public
-    /// `Animatable` conformance on `Position` arrives in v0.8.1.
-    static func interpolate(_ a: Position, _ b: Position, t: Double) -> Position {
-        // For mixed cases (e.g., normalized → pixels), we resolve both at a unit
-        // canvas (1×1) and lerp the resolved points back into a normalized form.
-        // For matching cases we lerp the components directly.
+/// `Position` is `Animatable` so it can drive `Transform.center` keyframes and (as
+/// of v0.8.1) overlay `.position(_:animation:)` modifiers. Mixed-type pairs
+/// (e.g. `.normalized` → `.pixels`) resolve at a unit canvas and lerp the resolved
+/// points; matching-type pairs lerp components directly.
+extension Position: Animatable {
+    public static func interpolate(_ a: Position, _ b: Position, t: Double) -> Position {
         switch (a, b) {
         case (.normalized(let ax, let ay), .normalized(let bx, let by)):
             return .normalized(x: Double.interpolate(ax, bx, t: t), y: Double.interpolate(ay, by, t: t))
@@ -55,14 +50,46 @@ extension Position {
         case (.percent(let ax, let ay), .percent(let bx, let by)):
             return .percent(x: Double.interpolate(ax, bx, t: t), y: Double.interpolate(ay, by, t: t))
         default:
-            // Mixed types: resolve both at a unit canvas and interpolate. Returns a
-            // .normalized result (the canonical interchange form).
+            // Mixed types: resolve both at a unit canvas (1×1) and interpolate. Returns
+            // a `.normalized` result (the canonical interchange form).
             let unitSize = CGSize(width: 1, height: 1)
             let resolvedA = a.resolved(in: unitSize)
             let resolvedB = b.resolved(in: unitSize)
             return .normalized(
                 x: Double.interpolate(Double(resolvedA.x), Double(resolvedB.x), t: t),
                 y: Double.interpolate(Double(resolvedA.y), Double(resolvedB.y), t: t)
+            )
+        }
+    }
+}
+
+/// `Size` is `Animatable` for overlay `.size(_:animation:)` modifiers.
+///
+/// Like `Position`, matching-type pairs lerp components directly; mixed-type pairs
+/// (and the `.aspectFit` / `.aspectFill` cases, which are computed from a bounding
+/// size at render time) resolve at a unit canvas and lerp into a `.normalized` form.
+/// The unit-canvas approach means animated `aspectFit` / `aspectFill` interpolation
+/// produces visually-reasonable in-between sizes but doesn't preserve the aspect
+/// constraint mid-animation. Authors that care should switch to `.normalized` /
+/// `.pixels` / `.percent` for the keyframe values.
+extension Size: Animatable {
+    public static func interpolate(_ a: Size, _ b: Size, t: Double) -> Size {
+        switch (a, b) {
+        case (.normalized(let aw, let ah), .normalized(let bw, let bh)):
+            return .normalized(width: Double.interpolate(aw, bw, t: t), height: Double.interpolate(ah, bh, t: t))
+        case (.pixels(let aw, let ah), .pixels(let bw, let bh)):
+            return .pixels(width: Double.interpolate(aw, bw, t: t), height: Double.interpolate(ah, bh, t: t))
+        case (.percent(let aw, let ah), .percent(let bw, let bh)):
+            return .percent(width: Double.interpolate(aw, bw, t: t), height: Double.interpolate(ah, bh, t: t))
+        default:
+            // Mixed types or aspect cases: resolve at a unit canvas and lerp into
+            // a `.normalized` result.
+            let unitSize = CGSize(width: 1, height: 1)
+            let resolvedA = a.resolved(in: unitSize)
+            let resolvedB = b.resolved(in: unitSize)
+            return .normalized(
+                width: Double.interpolate(Double(resolvedA.width), Double(resolvedB.width), t: t),
+                height: Double.interpolate(Double(resolvedA.height), Double(resolvedB.height), t: t)
             )
         }
     }

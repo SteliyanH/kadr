@@ -70,10 +70,105 @@ internal enum OverlayRenderer {
                     sublayer.add(anim, forKey: "kadr.textAnimation.\(i)")
                 }
             }
+            // v0.8.1: position / size animation on image / sticker overlays. Sample at
+            // 30fps within the composition duration; emit position + bounds.size
+            // CAKeyframeAnimations. Composition-relative timing.
+            if overlay.positionAnimation != nil || overlay.sizeAnimation != nil {
+                applyOverlayLayoutAnimation(
+                    to: sublayer,
+                    overlay: overlay,
+                    renderSize: renderSize,
+                    compositionDuration: compositionDuration
+                )
+            }
             parent.addSublayer(sublayer)
         }
 
         return LayerTree(parent: parent, videoLayer: videoLayer)
+    }
+
+    /// Apply position / size keyframe animations to an overlay's CALayer. Samples the
+    /// animation(s) at 30 fps over the composition's duration and emits CAKeyframeAnimation
+    /// for `position` (always when either animation is active — size animation also
+    /// shifts the resolved frame's center) and `bounds.size` (only when size animation
+    /// is active). Each animation uses composition-relative timing.
+    ///
+    /// Visual constraint: when size animates with a non-`.center` overlay anchor, the
+    /// layer's anchorPoint stays at (0.5, 0.5), so size growth visually centers on the
+    /// layer rather than preserving the anchor's render-space target. Workaround:
+    /// pin overlays with size animations to `.center` anchor.
+    private static func applyOverlayLayoutAnimation(
+        to layer: CALayer,
+        overlay: any Overlay,
+        renderSize: CGSize,
+        compositionDuration: CMTime
+    ) {
+        let total = CMTimeGetSeconds(compositionDuration)
+        guard total > 0 else { return }
+
+        // Sample at 30fps — matches typical preset frame rates and keeps keyframe count
+        // bounded for any composition length. Higher rates would buy little fidelity
+        // for layout animations.
+        let sampleHz: Double = 30
+        let step = 1.0 / sampleHz
+
+        var keyTimes: [NSNumber] = []
+        var positionValues: [CGPoint] = []
+        var sizeValues: [CGSize] = []
+
+        var t = 0.0
+        let posAnim = overlay.positionAnimation
+        let sizAnim = overlay.sizeAnimation
+        let resolvedFrameAt: (Double) -> CGRect = { time in
+            let cm = CMTime(seconds: time, preferredTimescale: 600)
+            let pos = posAnim?.value(at: cm) ?? overlay.position
+            let resolvedSize: Size
+            if let s = sizAnim?.value(at: cm) {
+                resolvedSize = s
+            } else if let s = overlay.size {
+                resolvedSize = s
+            } else {
+                // Fallback to FrameResolver's default for unknown sizes.
+                resolvedSize = .normalized(width: 0.25, height: 0.25)
+            }
+            return FrameResolver.resolve(
+                position: pos,
+                size: resolvedSize,
+                anchor: overlay.anchor,
+                in: renderSize
+            )
+        }
+
+        while t <= total {
+            keyTimes.append(NSNumber(value: t / total))
+            let frame = resolvedFrameAt(t)
+            positionValues.append(CGPoint(x: frame.midX, y: frame.midY))
+            if sizAnim != nil {
+                sizeValues.append(frame.size)
+            }
+            t += step
+        }
+
+        // Position animation — always emitted when any layout animation is active.
+        let positionKeyframes = CAKeyframeAnimation(keyPath: "position")
+        positionKeyframes.keyTimes = keyTimes
+        positionKeyframes.values = positionValues
+        positionKeyframes.duration = total
+        positionKeyframes.beginTime = AVCoreAnimationBeginTimeAtZero
+        positionKeyframes.fillMode = .both
+        positionKeyframes.isRemovedOnCompletion = false
+        layer.add(positionKeyframes, forKey: "kadr.positionAnimation")
+
+        if sizAnim != nil {
+            let sizeKeyframes = CAKeyframeAnimation(keyPath: "bounds.size")
+            sizeKeyframes.keyTimes = keyTimes
+            sizeKeyframes.values = sizeValues
+            sizeKeyframes.duration = total
+            sizeKeyframes.beginTime = AVCoreAnimationBeginTimeAtZero
+            sizeKeyframes.fillMode = .both
+            sizeKeyframes.isRemovedOnCompletion = false
+            layer.add(sizeKeyframes, forKey: "kadr.sizeAnimation")
+        }
     }
 
     /// Drive a layer's `opacity` so it renders only during `range`.

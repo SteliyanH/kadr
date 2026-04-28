@@ -34,9 +34,24 @@ public protocol Overlay: Sendable {
     /// Outside the range the overlay's CALayer renders at zero opacity (transition is
     /// instant, not faded). Range is clamped to `[0, composition.duration]` at render time.
     var visibilityRange: CMTimeRange? { get }
+
+    /// Optional keyframe animation driving ``position``. Composition-relative timing
+    /// (a `.at(0.0, ...)` keyframe maps to composition t=0). Added in v0.8.1.
+    var positionAnimation: Animation<Position>? { get }
+
+    /// Optional keyframe animation driving ``size``. Composition-relative timing.
+    /// Added in v0.8.1.
+    var sizeAnimation: Animation<Size>? { get }
 }
 
 public extension Overlay {
     /// Default: overlays are visible for the entire composition unless overridden.
     var visibilityRange: CMTimeRange? { nil }
+
+    /// Default: nil. ``ImageOverlay`` and ``StickerOverlay`` override with storage;
+    /// ``TextOverlay`` and ``Watermark`` keep the default in v0.8.1.
+    var positionAnimation: Animation<Position>? { nil }
+
+    /// Default: nil. See ``positionAnimation`` for the contract.
+    var sizeAnimation: Animation<Size>? { nil }
 }
