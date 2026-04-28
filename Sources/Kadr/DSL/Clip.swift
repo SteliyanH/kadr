@@ -32,6 +32,13 @@ public protocol Clip: Sendable {
     /// > effect yet — the clip still participates in the chain. Final behavior arrives
     /// > with the multi-track engine PR.
     var startTime: CMTime? { get }
+
+    /// Optional per-clip affine transform applied in the engine's render space. `nil`
+    /// (the default) leaves the clip's natural aspect-fill layout unchanged. Media clip
+    /// types (``VideoClip``, ``ImageClip``, ``TitleSequence``) expose a `.transform(_:)`
+    /// modifier for setting it; ``Transition`` and ``Track`` keep the default.
+    /// Added in v0.8.
+    var transform: Transform? { get }
 }
 
 public extension Clip {
@@ -44,4 +51,9 @@ public extension Clip {
     /// Media-clip types override this with storage and expose `.at(time:)`; ``Transition``
     /// keeps the default since transitions don't make sense as free-floating tracks.
     var startTime: CMTime? { nil }
+
+    /// Default: clips without an explicit transform return `nil`, signaling the engine to
+    /// leave layout unchanged. Media-clip types override this with storage; ``Transition``
+    /// and ``Track`` keep the default.
+    var transform: Transform? { nil }
 }

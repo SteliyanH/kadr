@@ -18,8 +18,11 @@ internal enum CompositionBuilder {
         compositorWindow: CMTimeRange? = nil
     ) async throws -> CompositionResult {
         // Multi-track path engages whenever any clip has an explicit startTime or is a Track —
-        // both shapes of the v0.6 hybrid DSL produce parallel sub-timelines.
-        let isMultiTrack = clips.contains { $0.startTime != nil || $0 is Track }
+        // both shapes of the v0.6 hybrid DSL produce parallel sub-timelines. v0.8 also routes
+        // transform-bearing single-track compositions through this path, since the multi-track
+        // builder is the only one that produces a videoComposition with per-clip layer
+        // instructions (which is where setTransform(_:at:) lives).
+        let isMultiTrack = clips.contains { $0.startTime != nil || $0 is Track || $0.transform != nil }
         if isMultiTrack {
             return try await buildMultiTrack(
                 clips: clips,
@@ -70,6 +73,12 @@ internal enum CompositionBuilder {
         var clipAudioRanges: [CMTimeRange] = []
         var totalDuration: CMTime = .zero
 
+        // Per-track transform info, indexed parallel to `videoTracks`. Each entry is a
+        // list of `(time, transform)` pairs to apply via setTransform(_:at:) on that
+        // track's layer instruction. Empty list = no per-clip transforms (engine still
+        // applies the base aspect-fill + crop transform at .zero). Added in v0.8.
+        var trackTransforms: [[(time: CMTime, transform: Transform)]] = []
+
         // 1. Implicit-chain clips → main video track at t=0
         let chained = clips.filter { $0.startTime == nil && !($0 is Track) }
         if !chained.isEmpty {
@@ -81,6 +90,7 @@ internal enum CompositionBuilder {
             }
             videoTracks.append(mainTrack)
             var insertion: CMTime = .zero
+            var chainTransforms: [(time: CMTime, transform: Transform)] = []
 
             if chained.contains(where: { $0 is Transition }) {
                 // v0.7: chain has transitions. Pre-render the full chain to a temp .mp4
@@ -114,8 +124,12 @@ internal enum CompositionBuilder {
                     if contributesAudio {
                         clipAudioRanges.append(CMTimeRange(start: beforeIP, duration: CMTimeSubtract(insertion, beforeIP)))
                     }
+                    if let transform = clip.transform {
+                        chainTransforms.append((time: beforeIP, transform: transform))
+                    }
                 }
             }
+            trackTransforms.append(chainTransforms)
             totalDuration = CMTimeMaximum(totalDuration, insertion)
         }
 
@@ -183,6 +197,18 @@ internal enum CompositionBuilder {
                 }
             }
 
+            // Per-parallel-track transform: applies for the full clip's lifetime in this
+            // track. For free-floater clips with a `.transform(...)`, set it at the
+            // clip's `startTime` (composition time). For Tracks themselves we ignore
+            // transform — Track has no `.transform(_:)` modifier in v0.8 (`Track` doesn't
+            // inherit it; see Clip default). Inner-Track clip transforms are deferred
+            // to v0.8.2.
+            var parallelTransforms: [(time: CMTime, transform: Transform)] = []
+            if let transform = clip.transform {
+                parallelTransforms.append((time: clip.startTime ?? .zero, transform: transform))
+            }
+            trackTransforms.append(parallelTransforms)
+
             totalDuration = CMTimeMaximum(totalDuration, insertion)
         }
 
@@ -215,8 +241,14 @@ internal enum CompositionBuilder {
             instruction = AVMutableVideoCompositionInstruction()
         }
         instruction.timeRange = CMTimeRange(start: .zero, duration: totalDuration)
-        instruction.layerInstructions = videoTracks.map { track in
-            makeLayerInstruction(for: track, preset: preset, cropTransform: cropTransform)
+        instruction.layerInstructions = videoTracks.enumerated().map { (index, track) in
+            let transforms = trackTransforms.indices.contains(index) ? trackTransforms[index] : []
+            return makeLayerInstruction(
+                for: track,
+                preset: preset,
+                cropTransform: cropTransform,
+                userTransforms: transforms
+            )
         }
         videoComposition.instructions = [instruction]
 
@@ -733,14 +765,44 @@ internal enum CompositionBuilder {
     private static func makeLayerInstruction(
         for track: AVMutableCompositionTrack,
         preset: Preset,
-        cropTransform: CGAffineTransform = .identity
+        cropTransform: CGAffineTransform = .identity,
+        userTransforms: [(time: CMTime, transform: Transform)] = []
     ) -> AVMutableVideoCompositionLayerInstruction {
         let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
-        if let base = baseTransform(for: track, preset: preset) {
-            layer.setTransform(base.concatenating(cropTransform), at: .zero)
-        } else if cropTransform != .identity {
-            // No base transform but we still need to apply the crop offset
-            layer.setTransform(cropTransform, at: .zero)
+        let base = baseTransform(for: track, preset: preset)
+
+        if userTransforms.isEmpty {
+            // Pre-v0.8 behavior — single transform at .zero composing base + crop.
+            if let base {
+                layer.setTransform(base.concatenating(cropTransform), at: .zero)
+            } else if cropTransform != .identity {
+                layer.setTransform(cropTransform, at: .zero)
+            }
+            return layer
+        }
+
+        // v0.8: per-clip user transforms. Each entry composes
+        // base × userTransform.resolved(in: renderSize) × cropTransform
+        // and is applied at the clip's start time on the layer instruction.
+        // The transforms list is in declaration order — earlier transforms apply
+        // first; later setTransform(_:at:) calls override from their `at` time forward.
+        //
+        // Anchor at .zero with the base+crop only (no user transform) so any chain
+        // segment before the first transform-bearing clip renders normally. Then layer
+        // each user transform at its clip's start time.
+        let renderSize = preset.resolution
+        let baseOrIdentity = base ?? .identity
+        let baseCombined = baseOrIdentity.concatenating(cropTransform)
+        let firstTime = userTransforms.first?.time ?? .zero
+        if CMTimeCompare(firstTime, .zero) > 0 {
+            layer.setTransform(baseCombined, at: .zero)
+        }
+        for entry in userTransforms {
+            let userResolved = entry.transform.resolved(in: renderSize)
+            let combined = baseOrIdentity
+                .concatenating(userResolved)
+                .concatenating(cropTransform)
+            layer.setTransform(combined, at: entry.time)
         }
         return layer
     }
