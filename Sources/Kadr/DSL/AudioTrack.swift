@@ -49,6 +49,15 @@ public struct AudioTrack: Sendable {
     /// ``duration(_:)-(TimeInterval)``. Added in v0.7.
     public let explicitDuration: CMTime?
 
+    /// Optional cross-fade duration to apply when this track's end overlaps with the
+    /// **next** audio track's start (in declaration order). When set and an overlap
+    /// exists, the engine emits matching volume ramps — fade out on this track and
+    /// fade in on the next — over `min(crossfadeDuration, overlapDuration)`. The
+    /// crossfade overrides any explicit `fadeIn` / `fadeOut` at that boundary so
+    /// AVFoundation doesn't see overlapping ramps. Set via ``crossfade(_:)``.
+    /// Added in v0.8.
+    public let crossfadeDuration: CMTime?
+
     /// Build a track at full volume with no fades or ducking, starting at t=0.
     public init(url: URL) {
         self.url = url
@@ -58,6 +67,7 @@ public struct AudioTrack: Sendable {
         self.duckingLevel = nil
         self.startTime = nil
         self.explicitDuration = nil
+        self.crossfadeDuration = nil
     }
 
     internal init(
@@ -67,7 +77,8 @@ public struct AudioTrack: Sendable {
         fadeOutDuration: CMTime,
         duckingLevel: Double? = nil,
         startTime: CMTime? = nil,
-        explicitDuration: CMTime? = nil
+        explicitDuration: CMTime? = nil,
+        crossfadeDuration: CMTime? = nil
     ) {
         self.url = url
         self.volumeLevel = volumeLevel
@@ -76,17 +87,18 @@ public struct AudioTrack: Sendable {
         self.duckingLevel = duckingLevel
         self.startTime = startTime
         self.explicitDuration = explicitDuration
+        self.crossfadeDuration = crossfadeDuration
     }
 
     /// Set the track's overall volume. `1.0` is full source volume; `0.5` is half;
     /// `0.0` is silence. Values outside `0.0...` are clamped by AVFoundation.
     public func volume(_ level: Double) -> AudioTrack {
-        AudioTrack(url: url, volumeLevel: level, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel, startTime: startTime, explicitDuration: explicitDuration)
+        AudioTrack(url: url, volumeLevel: level, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel, startTime: startTime, explicitDuration: explicitDuration, crossfadeDuration: crossfadeDuration)
     }
 
     /// Fade in over a `CMTime` duration for frame-accurate precision.
     public func fadeIn(_ duration: CMTime) -> AudioTrack {
-        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: duration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel, startTime: startTime, explicitDuration: explicitDuration)
+        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: duration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel, startTime: startTime, explicitDuration: explicitDuration, crossfadeDuration: crossfadeDuration)
     }
 
     /// Fade in over a `TimeInterval`. Convenience overload.
@@ -96,7 +108,7 @@ public struct AudioTrack: Sendable {
 
     /// Fade out over a `CMTime` duration for frame-accurate precision.
     public func fadeOut(_ duration: CMTime) -> AudioTrack {
-        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: duration, duckingLevel: duckingLevel, startTime: startTime, explicitDuration: explicitDuration)
+        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: duration, duckingLevel: duckingLevel, startTime: startTime, explicitDuration: explicitDuration, crossfadeDuration: crossfadeDuration)
     }
 
     /// Fade out over a `TimeInterval`. Convenience overload.
@@ -108,14 +120,14 @@ public struct AudioTrack: Sendable {
     /// `targetVolume` is the absolute level during ducking (0.0 = silent, 1.0 = no ducking).
     /// Out-of-range values throw `KadrError.invalidDuckingLevel` at export time.
     public func ducking(_ targetVolume: Double) -> AudioTrack {
-        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: targetVolume, startTime: startTime, explicitDuration: explicitDuration)
+        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: targetVolume, startTime: startTime, explicitDuration: explicitDuration, crossfadeDuration: crossfadeDuration)
     }
 
     /// Pin this audio track to start at the given composition time. Sound effects and
     /// time-anchored music use this. CMTime form for frame-accurate placement.
     /// Added in v0.7.
     public func at(time: CMTime) -> AudioTrack {
-        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel, startTime: time, explicitDuration: explicitDuration)
+        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel, startTime: time, explicitDuration: explicitDuration, crossfadeDuration: crossfadeDuration)
     }
 
     /// Pin this audio track to start at the given composition time. TimeInterval
@@ -128,11 +140,33 @@ public struct AudioTrack: Sendable {
     /// (the default), the track plays the asset from start to its natural end, clamped
     /// to the composition's end. CMTime form. Added in v0.7.
     public func duration(_ duration: CMTime) -> AudioTrack {
-        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel, startTime: startTime, explicitDuration: duration)
+        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel, startTime: startTime, explicitDuration: duration, crossfadeDuration: crossfadeDuration)
     }
 
     /// Cap how long this track plays. TimeInterval convenience overload. Added in v0.7.
     public func duration(_ duration: TimeInterval) -> AudioTrack {
         self.duration(CMTime(seconds: duration, preferredTimescale: 600))
+    }
+
+    /// Cross-fade with the **next** audio track in declaration order. When set and
+    /// the two tracks overlap on the timeline, the engine emits matching volume
+    /// ramps — fade out on this track, fade in on the next — over
+    /// `min(crossfadeDuration, overlapDuration)`. CMTime form for frame-accurate
+    /// boundaries. Added in v0.8.
+    ///
+    /// ```swift
+    /// .audio {
+    ///     AudioTrack(url: musicA).at(time: 0).duration(8.0).crossfade(1.0)
+    ///     AudioTrack(url: musicB).at(time: 7.0)  // 1s overlap fades A→B
+    /// }
+    /// ```
+    public func crossfade(_ duration: CMTime) -> AudioTrack {
+        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel, startTime: startTime, explicitDuration: explicitDuration, crossfadeDuration: duration)
+    }
+
+    /// Cross-fade with the next audio track. TimeInterval convenience overload.
+    /// Added in v0.8.
+    public func crossfade(_ duration: TimeInterval) -> AudioTrack {
+        crossfade(CMTime(seconds: duration, preferredTimescale: 600))
     }
 }
