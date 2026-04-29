@@ -510,31 +510,32 @@ Kadr 0.2 introduced `VideoClip.speed(_:)` as a flat multiplier — the whole cli
 
 `AudioTrack` has fade-in / fade-out / volume ramps / crossfade (v0.7 + v0.8.3) but no speed control. Pitch-preserving audio speed is a v0.7-deferred item that would feel awkward to add post-v1.0.
 
-Captions are the missing piece for a complete "ready to share" video composition. SRT and VTT files cover ~95% of practical caption ingest; AVFoundation supports embedding them as a metadata group at export.
+Captions are the missing piece for a complete "ready to share" video composition. AVFoundation supports embedding them as an `AVMetadataItem` group at export.
 
 ### Scope lock
 
 In scope:
 - **Speed curves** on `VideoClip` — `.speed(curve:)` accepting an `Animation<Double>` whose values are speed multipliers over clip-relative time. Engine integrates the curve into a piecewise-linear time map and applies via repeated `scaleTimeRange(_:toDuration:)` segments.
 - **`AudioTrack.speed(_:)`** — pitch-preserving via `AVMutableCompositionTrack.scaleTimeRange` + `AVAudioMixInputParameters.audioTimePitchAlgorithm = .timeDomain` (good for music) or `.spectral` (good for voice). Default `.spectral` for voice-friendly; opt-in `.timeDomain`.
-- **Captions** — minimal core surface. `Caption` value type (text + timeRange), `Video.captions(_:)` modifier, engine bakes as `AVMetadataItem` group at export. SRT and VTT *file parsers* in core (small, no external deps, pure Swift).
+- **Caption surface in core** — `Caption` value type (text + timeRange), `Video.captions(_:)` modifier, engine bakes as `AVMetadataItem` group at export. The AVFoundation bridge only.
 - Reuses `Animation<Double>` for speed curves — no new keyframe machinery.
 
-Out of scope (deferred to v0.9.x or post-v1.0):
-- **iTT (iTunes Timed Text) parser** — niche; defer to `kadr-captions` adapter when authoring needs grow.
-- **Caption styling / positioning / animation** — `Caption` is plain text + timing; styled / animated captions belong in `kadr-captions` adapter (it can map to `TextOverlay` with `textAnimation` from v0.8).
+Out of scope (moved to `kadr-captions` adapter or deferred):
+- **SRT / VTT / iTT file parsers and writers** — moved to the `kadr-captions` adapter (its v0.1.0 scope). Parsing real-world caption files has more variance than it looks (UTF-8 BOM / Windows-1252 fallback, malformed timestamps, VTT cue settings, inline styles); that's a separate package's job, not core's. Reading and writing the same format are dual operations — splitting them across packages would be incoherent, so both directions live in the adapter.
+- **Caption styling / positioning / animation** — adapter scope; maps onto v0.8 `TextOverlay` + `textAnimation`.
 - **Speed curves on `AudioTrack`** — requires AVAudioEngine for non-linear pitch preservation; current AVAudioMix + `scaleTimeRange` is linear-only. Flat speed multiplier is the v0.9 deliverable; non-linear stays out.
 - **Speed curves on `ImageClip` / `TitleSequence`** — these have synthetic timelines; "speed" doesn't apply. Use animation on the clip's `transform` / `opacity` if you want time-shaping.
 - **`SpeedCurve` as its own value type** — speed curves are `Animation<Double>` semantically; introducing a parallel type would mean two animation systems. Reuse keeps the surface coherent.
 
-### Captions decision: in core, not adapter (locked)
+### Captions decision: AVFoundation bridge in core, parsers in adapter (locked)
 
-The roadmap leaves the SRT/VTT decision open. Locking it: **in core for v0.9**. Reasoning:
+The roadmap left this open. Locking it: **`Caption` + `Video.captions(_:)` + engine writer in core; SRT / VTT / iTT parsers + writers in `kadr-captions`**. Reasoning:
 
-- SRT parser ≈ 150 LOC. VTT parser ≈ 200 LOC. Engine `AVMetadataItem` writer ≈ 100 LOC. Total ~450 LOC — well within "doesn't bloat core" bounds.
-- No external framework deps (unlike `kadr-photos`, which needs `Photos`/`PhotosUI`). Pure Swift + `AVFoundation` (already in core).
-- Keeps the v1.0 story tight: kadr alone can ingest a caption file and export a captioned video. No package matrix for the common case.
-- `kadr-captions` *adapter* still has room — for authoring (SRT/VTT writer, styled-caption builder, `TextOverlay`-mapped animated captions). Drawing the line at *parsers + ingest* in core, *authoring + styling* in the adapter. Decision recorded in `_kadr-planning/repos/03-kadr-captions.md` post-merge.
+- The `AVMetadataItem` writer (~100 LOC) is the only piece that genuinely belongs in core — it's the AVFoundation bridge, and AVFoundation is already a core dependency. Plus the `Caption` value type (~30 LOC) and `Video.captions(_:)` modifier (~20 LOC). Total core surface: ~150 LOC.
+- File parsers (~400 LOC across SRT + VTT + iTT, plus their writers) don't earn the core slot. They have real-world variance (encodings, malformed-timestamp recovery, cue settings) that warrants its own package's release cadence and test surface.
+- "Parsers in core, writers in adapter" would be incoherent — reading and writing the same format are dual operations. Both go in the adapter.
+- Keeps core's binary-size and surface-area cost down for users who never touch captions.
+- Adapter consumers do `import Kadr; import KadrCaptions; let caps = try Caption.load(srt: url); video.captions(caps)`. The parser produces core's `Caption` values; the modifier comes from core. Clean handoff.
 
 ### API examples
 
@@ -556,14 +557,7 @@ AudioTrack(url: vo)
     .speed(1.25)               // default .spectral, voice-friendly
     .speed(1.25, algorithm: .timeDomain)  // music-friendly opt-in
 
-// 3. Captions — load from SRT, attach
-let captions = try Caption.load(srt: srtURL)
-Video {
-    VideoClip(url: clipURL)
-}
-.captions(captions)
-
-// 4. Captions — handcrafted in DSL
+// 3. Captions — handcrafted in DSL
 Video {
     VideoClip(url: clipURL)
 }
@@ -571,6 +565,11 @@ Video {
     Caption(text: "Hello world", timeRange: CMTimeRange(start: .zero, duration: CMTime(seconds: 2, preferredTimescale: 600))),
     Caption(text: "Welcome back", timeRange: CMTimeRange(start: CMTime(seconds: 2, preferredTimescale: 600), duration: CMTime(seconds: 3, preferredTimescale: 600))),
 ])
+
+// 4. Captions — load from SRT (kadr-captions adapter)
+import KadrCaptions  // separate package
+let captions = try Caption.load(srt: srtURL)  // adapter extension on Caption
+video.captions(captions)
 ```
 
 ### Public surface sketch
@@ -604,25 +603,15 @@ public struct Caption: Sendable, Equatable {
     public init(text: String, timeRange: CMTimeRange)
 }
 
-public extension Caption {
-    /// Parse an SRT (SubRip) file from a URL. Throws on malformed timestamps or
-    /// unreadable file. UTF-8 default; falls back to ASCII.
-    static func load(srt url: URL) throws -> [Caption]
-
-    /// Parse a VTT (WebVTT) file from a URL. Strips style/cue settings to plain text.
-    static func load(vtt url: URL) throws -> [Caption]
-
-    /// Parse from raw SRT / VTT string content.
-    static func parseSRT(_ content: String) throws -> [Caption]
-    static func parseVTT(_ content: String) throws -> [Caption]
-}
-
 public extension Video {
     /// Attach a caption track. Engine bakes as an `AVMetadataItem` group with
     /// `.subtitle` identifier at export. Multiple calls accumulate (later wins on
     /// timing overlap).
     func captions(_ captions: [Caption]) -> Video
 }
+
+// SRT / VTT / iTT parsers and writers live in the `kadr-captions` adapter package,
+// not in core. They produce / consume the `Caption` value type defined here.
 ```
 
 ### Engine notes
@@ -637,22 +626,19 @@ public extension Video {
 Mirrors the established RFC-then-tiers staging.
 
 - **Tier 0** *(this PR)* — design doc only. Locks the surface and the captions decision. No code.
-- **Tier 1** — `VideoClip.speed(curve:)`. The biggest tier — engine work for piecewise scaleTimeRange + per-segment audio handling. ~500 LOC + tests. Deliverable: ships as **v0.9.0**.
+- **Tier 1** — `VideoClip.speed(curve:)`. The biggest tier — engine work for piecewise scaleTimeRange + per-segment audio handling. ~500 LOC + tests. Ships as **v0.9.0**.
 - **Tier 2** — `AudioTrack.speed(_:)`. Surface + engine wiring. ~150 LOC + tests. Ships as **v0.9.1**.
-- **Tier 3** — `Caption` type + SRT parser + engine `AVMetadataItem` writer. ~300 LOC + tests. Ships as **v0.9.2**.
-- **Tier 4** — VTT parser. Reuses Tier 3 output type. ~200 LOC + tests. Ships as **v0.9.3**.
-- **Tier 5** — Release prep for v0.9 cycle: ROADMAP, README polish, develop → main flow. (Minor versions ship continuously; no separate "tier 5" PR.)
+- **Tier 3** — `Caption` type + `Video.captions(_:)` modifier + engine `AVMetadataItem` writer. The AVFoundation bridge only. ~150 LOC + tests. Ships as **v0.9.2**.
 
-Each tier ships as its own minor — no big-bang v0.9.0. Tier 1 ships as v0.9.0 because speed curves are the headline. Captions land as v0.9.2 / v0.9.3.
+SRT / VTT / iTT parsers and writers — formerly Tier 4 — moved out of the v0.9 cycle to `kadr-captions` v0.1.0. Each in-cycle tier still ships as its own minor; no big-bang.
 
 ### Test strategy
 
 - **Speed curves.** Pure helpers: `discretizedSegments(curve:duration:rate:)` (returns `[(sourceRange, targetDuration)]`), `integratedDuration(curve:over:)`. Engine smoke tests: a clip + speed curve exports without error, output duration matches integrated curve. Comparison test: linear curve `.keyframes([(0,1),(d,1)])` produces identical output to no curve at all.
 - **AudioTrack.speed.** Pure: rounding behavior at `1.0`, integer-multiple ratios. Engine smoke test: track inserts with the correct pitch algorithm.
-- **Captions parsers.** Pure: well-formed SRT / VTT round-trip; malformed input throws expected error; UTF-8 BOM handling; CRLF / LF line endings; multi-line captions.
-- **Caption metadata writer.** Engine test: an exported video with `.captions([...])` has a non-empty metadata array with the expected count.
+- **Caption metadata writer.** Engine test: an exported video with `.captions([...])` has a non-empty metadata array with the expected count, items have the correct time/duration. `Caption` value-type equality.
 
-Target coverage: ~60 new tests across the cycle. Suite floor: 320 → 380.
+Target coverage: ~35 new tests across the cycle. Suite floor: 320 → 355. (Down from earlier 380 estimate after parsers moved to `kadr-captions`.)
 
 ### Compatibility
 
@@ -670,5 +656,4 @@ None required. New surface is opt-in:
 ### Open questions (track in PRs, not blocking RFC merge)
 
 - **Speed-curve sampling rate.** 30 Hz is the obvious starting point (matches preview); benchmark whether 60 Hz produces visibly smoother slow-mo at the cost of 2× scaleTimeRange calls. Decision in tier 1.
-- **VTT styling extensions.** WebVTT supports cue settings (`align:start`, `position:50%`) and inline styles (`<c.classname>text</c>`). Stripping them to plain text in v0.9.3 is the lowest-friction default; revisit if anyone asks for styled captions before kadr-captions ships.
 - **Speed-curve serialization.** Should a speed curve survive a `Video` round-trip through some future serialization format? Tracked under v1.0 stability work; deferred from v0.9.
