@@ -4,6 +4,30 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.9.1] - 2026-04-29
+
+Pitch-preserving speed on `AudioTrack`. Closes the v0.7-deferred audio-side speed and is Tier 2 of the v0.9 cycle.
+
+### Added
+
+- **`AudioTrack.speed(_:algorithm:)`** — pitch-preserving speed multiplier in `0.25...4.0`. `1.5` plays the audio 1.5× faster; the configured algorithm keeps the pitch unchanged. Composes with all v0.7 / v0.8.3 audio surface — fades, ramps, ducking, and crossfades operate on the **scaled** (timeline) duration.
+- **`AudioTimePitchAlgorithm`** public enum — `.spectral` (voice, default), `.timeDomain` (music at small ratios), `.varispeed` (no pitch correction; use for sound-design pitch shifts).
+- **`speedRate: Double`** + **`pitchAlgorithm: AudioTimePitchAlgorithm`** fields on `AudioTrack` (additive — `1.0` / `.spectral` for v0.8 compositions).
+
+### Engine
+
+- Per-track `scaleTimeRange` on each `AVMutableCompositionTrack` + matching `audioTimePitchAlgorithm` on the mix input parameters.
+- `insertEnd` accounts for the scaled duration so v0.8 cross-fade detection between adjacent tracks still works correctly under speed scaling.
+
+### Behavior
+
+- Out-of-range `speedRate` throws `KadrError.invalidSpeed` at export.
+- All existing modifiers (volume, fadeIn/Out, ducking, crossfade, volumeRamp, at, duration) preserve `speedRate` / `pitchAlgorithm` — no latent field-loss.
+
+### Tests
+
+- 12 new tests covering surface (default speed, modifier storage, explicit algorithm, varispeed exposure), field preservation across all 8 existing modifiers, and the AVFoundation algorithm bridge. Suite: 484 → 496.
+
 ## [0.9.0] - 2026-04-29
 
 Speed curves on `VideoClip` — non-linear playback rate over clip-relative time. The headline CapCut feature, and the first tier of the v0.9 cycle (advanced timing).
