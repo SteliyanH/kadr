@@ -175,13 +175,13 @@ Real user needs that don't have to ship in the v0.8.0 headline but should land b
 - **v0.8.3** ✓ shipped — `AudioTrack.volumeRamp(start:end:during:)` — granular volume automation between two points. Engine drops user ramps that overlap implicit fadeIn / fadeOut / crossfade / ducking ranges to avoid AVFoundation's overlapping-ramp exception.
 - **v0.8.4** ✓ shipped — More `Filter` presets: `gaussianBlur`, `vignette`, `sharpen`, `zoomBlur`, `glow`. Each animatable via `Filter.withScalar(_:)`. Closes the parity gap with IMG.LY and VideoLab. **v0.8 cycle complete.**
 
-## v0.9.0 — Advanced timing
+## v0.9.x — Advanced timing
 
-The pre-v1.0 cleanup of timing-related deferrals.
+The pre-v1.0 cleanup of timing-related deferrals. Each tier ships as its own minor.
 
-- **Speed curves** on `VideoClip` — non-linear speed (ease in/out, custom Bézier, hold), beyond v0.2's flat speed multiplier. The signature CapCut feature.
-- **`AudioTrack.speed(_:)`** — pitch-preserving via `audioTimePitchAlgorithm`. Closes the v0.7-deferred audio-side speed.
-- **Caption authoring / ingest** (SRT, VTT) — read existing caption files, attach to `Video` as `AVMetadataItem` group, write into the export. Alternative landing spot: the `kadr-captions` adapter package below.
+- **v0.9.0** ✓ shipped — Speed curves on `VideoClip` via `.speed(curve: Animation<Double>)`. Non-linear speed (ease in/out, custom Bézier, hold), beyond v0.2's flat speed multiplier. The signature CapCut feature.
+- **v0.9.1** *(planned)* — `AudioTrack.speed(_:)` — pitch-preserving via `audioTimePitchAlgorithm`. Closes the v0.7-deferred audio-side speed.
+- **v0.9.2** *(planned)* — `Caption` value type + `Video.captions(_:)` modifier + engine `AVMetadataItem` writer. The AVFoundation bridge only — SRT / VTT / iTT parsers live in the [`kadr-captions`](#kadr-captions) adapter package.
 
 ## v1.0.0 — Production Ready
 
