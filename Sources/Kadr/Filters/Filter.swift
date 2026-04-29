@@ -55,15 +55,43 @@ public enum Filter: Sendable, Equatable {
     /// with a programmatically-built cube.
     case chromaKey(ChromaKey)
 
+    /// Gaussian blur. `radius` in pixels; default `10`. Maps to `CIGaussianBlur.inputRadius`.
+    /// Animatable scalar: `radius`. Added in v0.8.4.
+    case gaussianBlur(radius: Double = 10)
+
+    /// Vignette darkening from the edges inward. `intensity` in `0...1`; default `1.0`.
+    /// Maps to `CIVignetteEffect.inputIntensity` (with a fixed `inputRadius` of 1.5).
+    /// Animatable scalar: `intensity`. Added in v0.8.4.
+    case vignette(intensity: Double = 1.0)
+
+    /// Luminance sharpening. `amount` in `0...2`; default `0.4`. Maps to
+    /// `CISharpenLuminance.inputSharpness`. Animatable scalar: `amount`. Added in v0.8.4.
+    case sharpen(amount: Double = 0.4)
+
+    /// Radial zoom blur centered on the image. `amount` in pixels; default `20`. Maps
+    /// to `CIZoomBlur.inputAmount` (center fixed at the image's natural center).
+    /// Animatable scalar: `amount`. Added in v0.8.4.
+    case zoomBlur(amount: Double = 20)
+
+    /// Bloom / glow around bright areas. `intensity` in `0...1`; default `1.0`. Maps
+    /// to `CIBloom.inputIntensity` (with a fixed `inputRadius` of 10). Animatable
+    /// scalar: `intensity`. Added in v0.8.4.
+    case glow(intensity: Double = 1.0)
+
     /// The underlying CIFilter name. Internal — used by ``FilterProcessor``.
     internal var ciFilterName: String {
         switch self {
         case .brightness, .contrast, .saturation: return "CIColorControls"
-        case .exposure:  return "CIExposureAdjust"
-        case .sepia:     return "CISepiaTone"
-        case .mono:      return "CIPhotoEffectMono"
-        case .lut:       return "CIColorCube"
-        case .chromaKey: return "CIColorCube"
+        case .exposure:    return "CIExposureAdjust"
+        case .sepia:       return "CISepiaTone"
+        case .mono:        return "CIPhotoEffectMono"
+        case .lut:         return "CIColorCube"
+        case .chromaKey:   return "CIColorCube"
+        case .gaussianBlur:return "CIGaussianBlur"
+        case .vignette:    return "CIVignetteEffect"
+        case .sharpen:     return "CISharpenLuminance"
+        case .zoomBlur:    return "CIZoomBlur"
+        case .glow:        return "CIBloom"
         }
     }
 
@@ -79,6 +107,11 @@ public enum Filter: Sendable, Equatable {
         case .saturation:  return .saturation(scalar)
         case .exposure:    return .exposure(scalar)
         case .sepia:       return .sepia(intensity: scalar)
+        case .gaussianBlur:return .gaussianBlur(radius: scalar)
+        case .vignette:    return .vignette(intensity: scalar)
+        case .sharpen:     return .sharpen(amount: scalar)
+        case .zoomBlur:    return .zoomBlur(amount: scalar)
+        case .glow:        return .glow(intensity: scalar)
         case .mono, .lut, .chromaKey: return self
         }
     }
@@ -106,6 +139,22 @@ public enum Filter: Sendable, Equatable {
         case .chromaKey(let key):
             filter?.setValue(ChromaKey.cubeDimension, forKey: "inputCubeDimension")
             filter?.setValue(key.cubeData, forKey: "inputCubeData")
+        case .gaussianBlur(let radius):
+            filter?.setValue(radius, forKey: kCIInputRadiusKey)
+        case .vignette(let intensity):
+            filter?.setValue(intensity, forKey: kCIInputIntensityKey)
+            filter?.setValue(1.5, forKey: kCIInputRadiusKey)
+        case .sharpen(let amount):
+            filter?.setValue(amount, forKey: kCIInputSharpnessKey)
+        case .zoomBlur(let amount):
+            filter?.setValue(amount, forKey: "inputAmount")
+            // Default center: image's natural center. CIZoomBlur expects a CIVector.
+            let extent = image.extent
+            let center = CIVector(x: extent.midX, y: extent.midY)
+            filter?.setValue(center, forKey: kCIInputCenterKey)
+        case .glow(let intensity):
+            filter?.setValue(intensity, forKey: kCIInputIntensityKey)
+            filter?.setValue(10.0, forKey: kCIInputRadiusKey)
         }
         return filter?.outputImage ?? image
     }
