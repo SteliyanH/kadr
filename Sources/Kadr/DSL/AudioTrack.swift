@@ -69,6 +69,18 @@ public struct AudioTrack: Sendable {
     /// crossfade-driven ramps win.
     public let volumeRamps: [VolumeRamp]
 
+    /// Pitch-preserving speed multiplier in `0.25...4.0`; `1.0` is real-time.
+    /// `1.5` plays the audio 1.5× faster (durations scale proportionally on the
+    /// timeline), and the configured ``pitchAlgorithm`` keeps the pitch unchanged.
+    /// Out-of-range values throw ``KadrError/invalidSpeed(_:)`` at export time.
+    /// Set via ``speed(_:algorithm:)``. Added in v0.9.1.
+    public let speedRate: Double
+
+    /// Algorithm AVFoundation uses to time-stretch this track without changing pitch.
+    /// Default ``AudioTimePitchAlgorithm/spectral`` (voice-friendly). Set via
+    /// ``speed(_:algorithm:)``. Added in v0.9.1.
+    public let pitchAlgorithm: AudioTimePitchAlgorithm
+
     /// A volume automation curve between two points in track-relative time.
     public struct VolumeRamp: Sendable, Equatable {
 
@@ -100,6 +112,8 @@ public struct AudioTrack: Sendable {
         self.explicitDuration = nil
         self.crossfadeDuration = nil
         self.volumeRamps = []
+        self.speedRate = 1.0
+        self.pitchAlgorithm = .spectral
     }
 
     internal init(
@@ -111,7 +125,9 @@ public struct AudioTrack: Sendable {
         startTime: CMTime? = nil,
         explicitDuration: CMTime? = nil,
         crossfadeDuration: CMTime? = nil,
-        volumeRamps: [VolumeRamp] = []
+        volumeRamps: [VolumeRamp] = [],
+        speedRate: Double = 1.0,
+        pitchAlgorithm: AudioTimePitchAlgorithm = .spectral
     ) {
         self.url = url
         self.volumeLevel = volumeLevel
@@ -122,17 +138,52 @@ public struct AudioTrack: Sendable {
         self.explicitDuration = explicitDuration
         self.crossfadeDuration = crossfadeDuration
         self.volumeRamps = volumeRamps
+        self.speedRate = speedRate
+        self.pitchAlgorithm = pitchAlgorithm
+    }
+
+    /// Apply a pitch-preserving speed multiplier in `0.25...4.0`. `1.5` plays the audio
+    /// 1.5× faster (its timeline contribution scales proportionally), preserving pitch
+    /// via the configured `algorithm`. `1.0` (default) is real-time. Out-of-range values
+    /// throw ``KadrError/invalidSpeed(_:)`` at export time.
+    ///
+    /// Composes with all v0.7 / v0.8.3 audio surface — fades, ramps, ducking, and
+    /// cross-fades operate on the **scaled** (timeline) duration. So `.fadeIn(1.0)`
+    /// means a 1-second fade in real time after speed scaling.
+    ///
+    /// ```swift
+    /// AudioTrack(url: vo)
+    ///     .speed(1.25)                        // default .spectral, voice-friendly
+    ///     .speed(1.25, algorithm: .timeDomain)  // music-friendly opt-in
+    ///     .speed(2.0,  algorithm: .varispeed)   // pitch-shift / chipmunk
+    /// ```
+    ///
+    /// Added in v0.9.1.
+    public func speed(_ rate: Double, algorithm: AudioTimePitchAlgorithm = .spectral) -> AudioTrack {
+        AudioTrack(
+            url: url,
+            volumeLevel: volumeLevel,
+            fadeInDuration: fadeInDuration,
+            fadeOutDuration: fadeOutDuration,
+            duckingLevel: duckingLevel,
+            startTime: startTime,
+            explicitDuration: explicitDuration,
+            crossfadeDuration: crossfadeDuration,
+            volumeRamps: volumeRamps,
+            speedRate: rate,
+            pitchAlgorithm: algorithm
+        )
     }
 
     /// Set the track's overall volume. `1.0` is full source volume; `0.5` is half;
     /// `0.0` is silence. Values outside `0.0...` are clamped by AVFoundation.
     public func volume(_ level: Double) -> AudioTrack {
-        AudioTrack(url: url, volumeLevel: level, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel, startTime: startTime, explicitDuration: explicitDuration, crossfadeDuration: crossfadeDuration, volumeRamps: volumeRamps)
+        AudioTrack(url: url, volumeLevel: level, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel, startTime: startTime, explicitDuration: explicitDuration, crossfadeDuration: crossfadeDuration, volumeRamps: volumeRamps, speedRate: speedRate, pitchAlgorithm: pitchAlgorithm)
     }
 
     /// Fade in over a `CMTime` duration for frame-accurate precision.
     public func fadeIn(_ duration: CMTime) -> AudioTrack {
-        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: duration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel, startTime: startTime, explicitDuration: explicitDuration, crossfadeDuration: crossfadeDuration, volumeRamps: volumeRamps)
+        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: duration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel, startTime: startTime, explicitDuration: explicitDuration, crossfadeDuration: crossfadeDuration, volumeRamps: volumeRamps, speedRate: speedRate, pitchAlgorithm: pitchAlgorithm)
     }
 
     /// Fade in over a `TimeInterval`. Convenience overload.
@@ -142,7 +193,7 @@ public struct AudioTrack: Sendable {
 
     /// Fade out over a `CMTime` duration for frame-accurate precision.
     public func fadeOut(_ duration: CMTime) -> AudioTrack {
-        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: duration, duckingLevel: duckingLevel, startTime: startTime, explicitDuration: explicitDuration, crossfadeDuration: crossfadeDuration, volumeRamps: volumeRamps)
+        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: duration, duckingLevel: duckingLevel, startTime: startTime, explicitDuration: explicitDuration, crossfadeDuration: crossfadeDuration, volumeRamps: volumeRamps, speedRate: speedRate, pitchAlgorithm: pitchAlgorithm)
     }
 
     /// Fade out over a `TimeInterval`. Convenience overload.
@@ -154,14 +205,14 @@ public struct AudioTrack: Sendable {
     /// `targetVolume` is the absolute level during ducking (0.0 = silent, 1.0 = no ducking).
     /// Out-of-range values throw `KadrError.invalidDuckingLevel` at export time.
     public func ducking(_ targetVolume: Double) -> AudioTrack {
-        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: targetVolume, startTime: startTime, explicitDuration: explicitDuration, crossfadeDuration: crossfadeDuration, volumeRamps: volumeRamps)
+        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: targetVolume, startTime: startTime, explicitDuration: explicitDuration, crossfadeDuration: crossfadeDuration, volumeRamps: volumeRamps, speedRate: speedRate, pitchAlgorithm: pitchAlgorithm)
     }
 
     /// Pin this audio track to start at the given composition time. Sound effects and
     /// time-anchored music use this. CMTime form for frame-accurate placement.
     /// Added in v0.7.
     public func at(time: CMTime) -> AudioTrack {
-        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel, startTime: time, explicitDuration: explicitDuration, crossfadeDuration: crossfadeDuration, volumeRamps: volumeRamps)
+        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel, startTime: time, explicitDuration: explicitDuration, crossfadeDuration: crossfadeDuration, volumeRamps: volumeRamps, speedRate: speedRate, pitchAlgorithm: pitchAlgorithm)
     }
 
     /// Pin this audio track to start at the given composition time. TimeInterval
@@ -174,7 +225,7 @@ public struct AudioTrack: Sendable {
     /// (the default), the track plays the asset from start to its natural end, clamped
     /// to the composition's end. CMTime form. Added in v0.7.
     public func duration(_ duration: CMTime) -> AudioTrack {
-        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel, startTime: startTime, explicitDuration: duration, crossfadeDuration: crossfadeDuration, volumeRamps: volumeRamps)
+        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel, startTime: startTime, explicitDuration: duration, crossfadeDuration: crossfadeDuration, volumeRamps: volumeRamps, speedRate: speedRate, pitchAlgorithm: pitchAlgorithm)
     }
 
     /// Cap how long this track plays. TimeInterval convenience overload. Added in v0.7.
@@ -195,7 +246,7 @@ public struct AudioTrack: Sendable {
     /// }
     /// ```
     public func crossfade(_ duration: CMTime) -> AudioTrack {
-        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel, startTime: startTime, explicitDuration: explicitDuration, crossfadeDuration: duration, volumeRamps: volumeRamps)
+        AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel, startTime: startTime, explicitDuration: explicitDuration, crossfadeDuration: duration, volumeRamps: volumeRamps, speedRate: speedRate, pitchAlgorithm: pitchAlgorithm)
     }
 
     /// Cross-fade with the next audio track. TimeInterval convenience overload.
@@ -221,7 +272,7 @@ public struct AudioTrack: Sendable {
     /// volumeRamps with a console warning rather than throwing.
     public func volumeRamp(start: Double, end: Double, during range: CMTimeRange) -> AudioTrack {
         let ramp = VolumeRamp(startVolume: start, endVolume: end, range: range)
-        return AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel, startTime: startTime, explicitDuration: explicitDuration, crossfadeDuration: crossfadeDuration, volumeRamps: volumeRamps + [ramp])
+        return AudioTrack(url: url, volumeLevel: volumeLevel, fadeInDuration: fadeInDuration, fadeOutDuration: fadeOutDuration, duckingLevel: duckingLevel, startTime: startTime, explicitDuration: explicitDuration, crossfadeDuration: crossfadeDuration, volumeRamps: volumeRamps + [ramp], speedRate: speedRate, pitchAlgorithm: pitchAlgorithm)
     }
 
     /// Add a volume automation ramp using a `ClosedRange<TimeInterval>` for the time
