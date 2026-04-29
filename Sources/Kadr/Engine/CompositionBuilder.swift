@@ -1041,11 +1041,26 @@ internal enum CompositionBuilder {
                 of: sourceAudioTrack,
                 at: insertionStart
             )
+
+            // v0.9.1 — pitch-preserving speed. Validate range, then scale the just-
+            // inserted range to its target duration. The pitch algorithm is set per-mix
+            // below in phase 2 (audioTimePitchAlgorithm lives on the input parameters,
+            // not the composition track).
+            var scaledDuration = insertDuration
+            if audioTrack.speedRate != 1.0 {
+                if audioTrack.speedRate < 0.25 || audioTrack.speedRate > 4.0 {
+                    throw KadrError.invalidSpeed(audioTrack.speedRate)
+                }
+                scaledDuration = CMTimeMultiplyByFloat64(insertDuration, multiplier: 1.0 / audioTrack.speedRate)
+                let insertedRange = CMTimeRange(start: insertionStart, duration: insertDuration)
+                bgAudioTrack.scaleTimeRange(insertedRange, toDuration: scaledDuration)
+            }
+
             insertions.append(Insertion(
                 track: audioTrack,
                 bgAudioTrack: bgAudioTrack,
                 insertionStart: insertionStart,
-                insertEnd: CMTimeAdd(insertionStart, insertDuration)
+                insertEnd: CMTimeAdd(insertionStart, scaledDuration)
             ))
         }
 
@@ -1080,6 +1095,11 @@ internal enum CompositionBuilder {
             }
 
             let params = AVMutableAudioMixInputParameters(track: ins.bgAudioTrack)
+
+            // v0.9.1 — pitch-preserving speed. Always set the algorithm (defaults to
+            // .spectral); AVFoundation only honors it when scaleTimeRange has been
+            // applied to the track, so the no-speed case is a harmless no-op.
+            params.audioTimePitchAlgorithm = audioTrack.pitchAlgorithm.avAlgorithm
 
             if audioTrack.volumeLevel != 1.0 {
                 params.setVolume(Float(audioTrack.volumeLevel), at: insertionStart)
