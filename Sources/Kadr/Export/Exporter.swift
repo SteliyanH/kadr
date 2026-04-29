@@ -20,6 +20,7 @@ public final class Exporter: @unchecked Sendable {
     internal let crop: CropRegion?
     internal let multiInputCompositor: (any MultiInputCompositor)?
     internal let compositorWindow: CMTimeRange?
+    internal let captions: [Caption]
     internal let outputURL: URL
     private let cancellationToken = CancellationToken()
 
@@ -31,6 +32,7 @@ public final class Exporter: @unchecked Sendable {
         crop: CropRegion? = nil,
         multiInputCompositor: (any MultiInputCompositor)? = nil,
         compositorWindow: CMTimeRange? = nil,
+        captions: [Caption] = [],
         outputURL: URL
     ) {
         self.clips = clips
@@ -40,6 +42,7 @@ public final class Exporter: @unchecked Sendable {
         self.crop = crop
         self.multiInputCompositor = multiInputCompositor
         self.compositorWindow = compositorWindow
+        self.captions = captions
         self.outputURL = outputURL
     }
 
@@ -50,7 +53,7 @@ public final class Exporter: @unchecked Sendable {
         let token = cancellationToken
 
         return AsyncThrowingStream { continuation in
-            Task { [clips, audioTracks, preset, overlays, crop, multiInputCompositor, compositorWindow, outputURL] in
+            Task { [clips, audioTracks, preset, overlays, crop, multiInputCompositor, compositorWindow, captions, outputURL] in
                 do {
                     guard !clips.isEmpty else {
                         throw KadrError.noClipsProvided
@@ -95,6 +98,7 @@ public final class Exporter: @unchecked Sendable {
                         overlays: overlays,
                         crop: crop,
                         preset: preset,
+                        captions: captions,
                         to: outputURL,
                         cancellationToken: token
                     )
