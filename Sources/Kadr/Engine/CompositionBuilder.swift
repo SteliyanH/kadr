@@ -1300,9 +1300,25 @@ internal enum CompositionBuilder {
         // Apply speed: scale the just-inserted segment to its target duration.
         // scaleTimeRange on a track preserves the inserted media but changes its playback rate.
         let advance: CMTime
-        if clip.speedRate != 1.0 {
-            // Scale by 1/rate. Speed is a Double ratio so this single CMTime → Float64 multiply
-            // is unavoidable; everything around it stays exact.
+        if let curve = clip.speedCurve {
+            // Speed curve takes precedence over flat speedRate. Discretize the curve into
+            // piecewise-linear segments and emit one scaleTimeRange per segment. Each
+            // segment's source range is in the inserted-media coordinate space (same as
+            // sourceRange before scaling), shifted by the insertionPoint.
+            let segments = SpeedCurveSampler.discretize(
+                curve: curve,
+                sourceDuration: sourceRange.duration
+            )
+            var segmentCursor = insertionPoint
+            for segment in segments {
+                let segInsertedRange = CMTimeRange(start: segmentCursor, duration: segment.sourceRange.duration)
+                videoTrack.scaleTimeRange(segInsertedRange, toDuration: segment.targetDuration)
+                audioTrack?.scaleTimeRange(segInsertedRange, toDuration: segment.targetDuration)
+                segmentCursor = CMTimeAdd(segmentCursor, segment.targetDuration)
+            }
+            advance = CMTimeSubtract(segmentCursor, insertionPoint)
+        } else if clip.speedRate != 1.0 {
+            // Flat speed: scale by 1/rate. Single CMTime → Float64 multiply is unavoidable.
             let targetDuration = CMTimeMultiplyByFloat64(sourceRange.duration, multiplier: 1.0 / clip.speedRate)
             let insertedRange = CMTimeRange(start: insertionPoint, duration: sourceRange.duration)
             videoTrack.scaleTimeRange(insertedRange, toDuration: targetDuration)
