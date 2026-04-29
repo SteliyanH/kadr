@@ -4,6 +4,34 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.8.4] - 2026-04-29
+
+Five new `Filter` presets — `gaussianBlur`, `vignette`, `sharpen`, `zoomBlur`, `glow`. Closes the parity gap with IMG.LY and VideoLab. Final v0.8.x patch — v0.8 cycle is complete. Pure additive.
+
+### Added
+
+- **`Filter.gaussianBlur(radius:)`** — Maps to `CIGaussianBlur.inputRadius`. Default `10`. Animatable scalar: `radius`.
+- **`Filter.vignette(intensity:)`** — Maps to `CIVignetteEffect.inputIntensity` (with fixed `inputRadius` of 1.5). Default `1.0`. Animatable scalar: `intensity`.
+- **`Filter.sharpen(amount:)`** — Maps to `CISharpenLuminance.inputSharpness`. Default `0.4`. Animatable scalar: `amount`.
+- **`Filter.zoomBlur(amount:)`** — Maps to `CIZoomBlur.inputAmount` (center fixed at the image's natural center). Default `20`. Animatable scalar: `amount`.
+- **`Filter.glow(intensity:)`** — Maps to `CIBloom.inputIntensity` (with fixed `inputRadius` of 10). Default `1.0`. Animatable scalar: `intensity`.
+
+Each new preset participates fully in the v0.8.2 filter intensity animation surface — the `withScalar(_:)` helper rebuilds with a substituted scalar so `.filter(_:animation:)` works on every new preset.
+
+### Tests
+
+- 14 new tests covering: default constructors, `withScalar` rebuild for each preset, CIFilter name mapping, application smoke (CIImage → CIImage no-throw), modifier chain participation in static + animated forms. Suite: 453 → 467.
+
+### Why these five
+
+The choices match what IMG.LY's 60-filter library covers as "essentials" and what VideoLab's `LookupFilter` / `ZoomBlur` / `Bloom` ship. Multi-parameter filters (with center positions, secondary radii, blend modes) are deferred — a future minor release can expose secondary parameters if there's demand.
+
+### v0.8 cycle complete
+
+This is the last v0.8.x patch. Counting v0.8.0 + v0.8.1 + v0.8.2 + v0.8.3 + v0.8.4: 110 new tests across the cycle (357 → 467).
+
+Next cycle: **v0.9.0** — Advanced timing (speed curves on `VideoClip`, pitch-preserving `AudioTrack.speed(_:)`, caption authoring/ingest).
+
 ## [0.8.3] - 2026-04-29
 
 `AudioTrack.volumeRamp(start:end:during:)` — granular volume automation curves between two points in track-relative time. Pure additive — every v0.8.2 composition compiles and behaves identically.
