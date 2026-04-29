@@ -17,22 +17,44 @@ internal enum FilterProcessor {
 
     static func apply(
         filters: [Filter],
+        filterAnimations: [Animation<Double>?] = [],
+        trimStart: CMTime = .zero,
         compositors: [any Compositor] = [],
         to url: URL
     ) async throws -> URL {
         guard !filters.isEmpty || !compositors.isEmpty else { return url }
+
+        // Pad / truncate filterAnimations to match filters length defensively (callers
+        // should already match, but the engine doesn't crash if they're off).
+        var animations = filterAnimations
+        while animations.count < filters.count { animations.append(nil) }
+        if animations.count > filters.count {
+            animations = Array(animations.prefix(filters.count))
+        }
+        let hasAnyAnimation = animations.contains(where: { $0 != nil })
 
         let asset = AVURLAsset(url: url)
 
         // AVMutableVideoComposition.videoComposition(withAsset:applyingCIFiltersWithHandler:)
         // is the Apple-blessed CIFilter-per-frame path. The handler runs for each
         // composition request; we apply each Kadr Filter in order, then each Compositor.
+        // For v0.8.2 filter intensity animations, we sample each animated filter's
+        // scalar at clip-relative time (request.compositionTime - trimStart) and
+        // rebuild the filter via Filter.withScalar(_:) before applying.
         let videoComposition = try await AVMutableVideoComposition.videoComposition(
             with: asset,
             applyingCIFiltersWithHandler: { request in
                 var image = request.sourceImage
-                for filter in filters {
-                    image = filter.apply(to: image)
+                let clipRelativeTime = hasAnyAnimation
+                    ? CMTimeSubtract(request.compositionTime, trimStart)
+                    : request.compositionTime
+                for (i, filter) in filters.enumerated() {
+                    if let anim = animations[i],
+                       let scalar = anim.value(at: clipRelativeTime) {
+                        image = filter.withScalar(scalar).apply(to: image)
+                    } else {
+                        image = filter.apply(to: image)
+                    }
                 }
                 if !compositors.isEmpty {
                     let context = CompositorContext(
