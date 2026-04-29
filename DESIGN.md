@@ -499,3 +499,176 @@ Pure additive. Every v0.7 composition compiles unchanged. New surface is opt-in:
 - No `.animation` argument → static value, existing layer-instruction path
 - No `TextOverlay.animation(_:)` → existing fast text render
 - No `AudioTrack.crossfade(_:)` → existing audio behavior
+
+## v0.9 design — Advanced timing
+
+The pre-v1.0 timing cleanup. Three additions that finish kadr's timing story before semver lock: non-linear playback speed on `VideoClip`, pitch-preserving speed on `AudioTrack`, and caption authoring / ingest. All additive — every v0.8 composition compiles unchanged.
+
+### Problem
+
+Kadr 0.2 introduced `VideoClip.speed(_:)` as a flat multiplier — the whole clip plays at 0.5× or 2×. The signature CapCut feature is a *speed curve*: ease into slow-motion at a specific moment, hold, ease back to normal. v0.9 closes that.
+
+`AudioTrack` has fade-in / fade-out / volume ramps / crossfade (v0.7 + v0.8.3) but no speed control. Pitch-preserving audio speed is a v0.7-deferred item that would feel awkward to add post-v1.0.
+
+Captions are the missing piece for a complete "ready to share" video composition. SRT and VTT files cover ~95% of practical caption ingest; AVFoundation supports embedding them as a metadata group at export.
+
+### Scope lock
+
+In scope:
+- **Speed curves** on `VideoClip` — `.speed(curve:)` accepting an `Animation<Double>` whose values are speed multipliers over clip-relative time. Engine integrates the curve into a piecewise-linear time map and applies via repeated `scaleTimeRange(_:toDuration:)` segments.
+- **`AudioTrack.speed(_:)`** — pitch-preserving via `AVMutableCompositionTrack.scaleTimeRange` + `AVAudioMixInputParameters.audioTimePitchAlgorithm = .timeDomain` (good for music) or `.spectral` (good for voice). Default `.spectral` for voice-friendly; opt-in `.timeDomain`.
+- **Captions** — minimal core surface. `Caption` value type (text + timeRange), `Video.captions(_:)` modifier, engine bakes as `AVMetadataItem` group at export. SRT and VTT *file parsers* in core (small, no external deps, pure Swift).
+- Reuses `Animation<Double>` for speed curves — no new keyframe machinery.
+
+Out of scope (deferred to v0.9.x or post-v1.0):
+- **iTT (iTunes Timed Text) parser** — niche; defer to `kadr-captions` adapter when authoring needs grow.
+- **Caption styling / positioning / animation** — `Caption` is plain text + timing; styled / animated captions belong in `kadr-captions` adapter (it can map to `TextOverlay` with `textAnimation` from v0.8).
+- **Speed curves on `AudioTrack`** — requires AVAudioEngine for non-linear pitch preservation; current AVAudioMix + `scaleTimeRange` is linear-only. Flat speed multiplier is the v0.9 deliverable; non-linear stays out.
+- **Speed curves on `ImageClip` / `TitleSequence`** — these have synthetic timelines; "speed" doesn't apply. Use animation on the clip's `transform` / `opacity` if you want time-shaping.
+- **`SpeedCurve` as its own value type** — speed curves are `Animation<Double>` semantically; introducing a parallel type would mean two animation systems. Reuse keeps the surface coherent.
+
+### Captions decision: in core, not adapter (locked)
+
+The roadmap leaves the SRT/VTT decision open. Locking it: **in core for v0.9**. Reasoning:
+
+- SRT parser ≈ 150 LOC. VTT parser ≈ 200 LOC. Engine `AVMetadataItem` writer ≈ 100 LOC. Total ~450 LOC — well within "doesn't bloat core" bounds.
+- No external framework deps (unlike `kadr-photos`, which needs `Photos`/`PhotosUI`). Pure Swift + `AVFoundation` (already in core).
+- Keeps the v1.0 story tight: kadr alone can ingest a caption file and export a captioned video. No package matrix for the common case.
+- `kadr-captions` *adapter* still has room — for authoring (SRT/VTT writer, styled-caption builder, `TextOverlay`-mapped animated captions). Drawing the line at *parsers + ingest* in core, *authoring + styling* in the adapter. Decision recorded in `_kadr-planning/repos/03-kadr-captions.md` post-merge.
+
+### API examples
+
+```swift
+import Kadr
+
+// 1. Speed curve — slow-mo dip then ease back to normal
+VideoClip(url: clipURL)
+    .trimmed(to: 0...4)
+    .speed(curve: .keyframes([
+        .at(0.0, value: 1.0),
+        .at(1.5, value: 0.25),
+        .at(2.5, value: 0.25),
+        .at(4.0, value: 1.0),
+    ], timing: .easeInOut))
+
+// 2. Audio speed — pitch-preserving 1.25× narration
+AudioTrack(url: vo)
+    .speed(1.25)               // default .spectral, voice-friendly
+    .speed(1.25, algorithm: .timeDomain)  // music-friendly opt-in
+
+// 3. Captions — load from SRT, attach
+let captions = try Caption.load(srt: srtURL)
+Video {
+    VideoClip(url: clipURL)
+}
+.captions(captions)
+
+// 4. Captions — handcrafted in DSL
+Video {
+    VideoClip(url: clipURL)
+}
+.captions([
+    Caption(text: "Hello world", timeRange: CMTimeRange(start: .zero, duration: CMTime(seconds: 2, preferredTimescale: 600))),
+    Caption(text: "Welcome back", timeRange: CMTimeRange(start: CMTime(seconds: 2, preferredTimescale: 600), duration: CMTime(seconds: 3, preferredTimescale: 600))),
+])
+```
+
+### Public surface sketch
+
+```swift
+public extension VideoClip {
+    /// Apply a speed curve — non-linear playback rate over clip-relative time. Values
+    /// in the animation are speed multipliers (1.0 = normal, 0.5 = half-speed, 2.0 = 2×).
+    /// Engine integrates the curve into a piecewise-linear time map. Composes with
+    /// `trimmed(to:)`: trim is applied first (selects the source range), then the
+    /// speed curve maps that range to the timeline.
+    func speed(curve: Animation<Double>) -> VideoClip
+}
+
+public extension AudioTrack {
+    /// Pitch-preserving speed multiplier. `1.0` = normal, `1.25` = 25% faster while
+    /// keeping the original pitch. Default `algorithm` is `.spectral` (voice-friendly).
+    /// Use `.timeDomain` for music-friendly time stretching at small ratios.
+    func speed(_ multiplier: Double, algorithm: AudioTimePitchAlgorithm = .spectral) -> AudioTrack
+}
+
+public enum AudioTimePitchAlgorithm: Sendable {
+    case spectral    // best for voice
+    case timeDomain  // best for music at small ratios (0.75x – 1.5x)
+    case varispeed   // no pitch correction (chipmunk effect)
+}
+
+public struct Caption: Sendable, Equatable {
+    public let text: String
+    public let timeRange: CMTimeRange
+    public init(text: String, timeRange: CMTimeRange)
+}
+
+public extension Caption {
+    /// Parse an SRT (SubRip) file from a URL. Throws on malformed timestamps or
+    /// unreadable file. UTF-8 default; falls back to ASCII.
+    static func load(srt url: URL) throws -> [Caption]
+
+    /// Parse a VTT (WebVTT) file from a URL. Strips style/cue settings to plain text.
+    static func load(vtt url: URL) throws -> [Caption]
+
+    /// Parse from raw SRT / VTT string content.
+    static func parseSRT(_ content: String) throws -> [Caption]
+    static func parseVTT(_ content: String) throws -> [Caption]
+}
+
+public extension Video {
+    /// Attach a caption track. Engine bakes as an `AVMetadataItem` group with
+    /// `.subtitle` identifier at export. Multiple calls accumulate (later wins on
+    /// timing overlap).
+    func captions(_ captions: [Caption]) -> Video
+}
+```
+
+### Engine notes
+
+- **Speed curves.** Discretize the `Animation<Double>` into N piecewise-linear segments at a fixed sampling rate (suggest 30 Hz to match preview frame rate). For each segment compute source-range and target-duration, then call `AVMutableCompositionTrack.scaleTimeRange(_:toDuration:)` per segment. AVFoundation handles the per-segment time mapping; we trade resolution for AVFoundation's fast path. Higher-frequency sampling improves smoothness at the cost of more `scaleTimeRange` calls; benchmark in tier 1.
+- **Speed curves and audio.** When a `VideoClip` carries a speed curve, the clip's audio (if not muted, no replacement audio) follows the same time map. We piggyback on the same per-segment scaleTimeRange. Pitch correction defaults to `.spectral` for parity with v0.9's `AudioTrack.speed`.
+- **AudioTrack.speed.** Apply `scaleTimeRange(_:toDuration:)` on the audio composition track at insert time, set `audioTimePitchAlgorithm` on the corresponding `AVMutableAudioMixInputParameters`. Composes with all v0.7 / v0.8.3 audio surface (fades, ramps, ducking, crossfade) — those operate on the *target* duration after scaling.
+- **Captions.** Build `[AVMetadataItem]` with key `commonKey: .commonKeyDescription` and key space `.common`, plus `time`/`duration` set per caption. Attach to the export's `metadata` array. Compatible with QuickTime / iOS Photos but does not produce a styled subtitle track; for real subtitle tracks (visible in YouTube / Final Cut), the post-v1.0 `kadr-captions` adapter will offer an `AVAssetWriter`-based path.
+
+### Tier breakdown
+
+Mirrors the established RFC-then-tiers staging.
+
+- **Tier 0** *(this PR)* — design doc only. Locks the surface and the captions decision. No code.
+- **Tier 1** — `VideoClip.speed(curve:)`. The biggest tier — engine work for piecewise scaleTimeRange + per-segment audio handling. ~500 LOC + tests. Deliverable: ships as **v0.9.0**.
+- **Tier 2** — `AudioTrack.speed(_:)`. Surface + engine wiring. ~150 LOC + tests. Ships as **v0.9.1**.
+- **Tier 3** — `Caption` type + SRT parser + engine `AVMetadataItem` writer. ~300 LOC + tests. Ships as **v0.9.2**.
+- **Tier 4** — VTT parser. Reuses Tier 3 output type. ~200 LOC + tests. Ships as **v0.9.3**.
+- **Tier 5** — Release prep for v0.9 cycle: ROADMAP, README polish, develop → main flow. (Minor versions ship continuously; no separate "tier 5" PR.)
+
+Each tier ships as its own minor — no big-bang v0.9.0. Tier 1 ships as v0.9.0 because speed curves are the headline. Captions land as v0.9.2 / v0.9.3.
+
+### Test strategy
+
+- **Speed curves.** Pure helpers: `discretizedSegments(curve:duration:rate:)` (returns `[(sourceRange, targetDuration)]`), `integratedDuration(curve:over:)`. Engine smoke tests: a clip + speed curve exports without error, output duration matches integrated curve. Comparison test: linear curve `.keyframes([(0,1),(d,1)])` produces identical output to no curve at all.
+- **AudioTrack.speed.** Pure: rounding behavior at `1.0`, integer-multiple ratios. Engine smoke test: track inserts with the correct pitch algorithm.
+- **Captions parsers.** Pure: well-formed SRT / VTT round-trip; malformed input throws expected error; UTF-8 BOM handling; CRLF / LF line endings; multi-line captions.
+- **Caption metadata writer.** Engine test: an exported video with `.captions([...])` has a non-empty metadata array with the expected count.
+
+Target coverage: ~60 new tests across the cycle. Suite floor: 320 → 380.
+
+### Compatibility
+
+- **Pure additive.** Every v0.8 composition compiles unchanged.
+- **Bumps minimum.** None — same platform floor as v0.8 (iOS 16+ / macOS 13+ / tvOS 16+ / visionOS 1+, Swift 6.0).
+- **kadr-ui.** v0.9 surface is engine-side; kadr-ui doesn't need to change to consume it. Speed-curve UI and caption editor land in kadr-ui v0.7 (consuming v0.9), tracked in the kadr-ui roadmap.
+
+### Migration
+
+None required. New surface is opt-in:
+- No `.speed(curve:)` call → existing flat `speed(_:)` (or no speed at all) keeps working.
+- No `AudioTrack.speed(_:)` → existing audio behavior.
+- No `.captions(_:)` → no metadata embedded.
+
+### Open questions (track in PRs, not blocking RFC merge)
+
+- **Speed-curve sampling rate.** 30 Hz is the obvious starting point (matches preview); benchmark whether 60 Hz produces visibly smoother slow-mo at the cost of 2× scaleTimeRange calls. Decision in tier 1.
+- **VTT styling extensions.** WebVTT supports cue settings (`align:start`, `position:50%`) and inline styles (`<c.classname>text</c>`). Stripping them to plain text in v0.9.3 is the lowest-friction default; revisit if anyone asks for styled captions before kadr-captions ships.
+- **Speed-curve serialization.** Should a speed curve survive a `Video` round-trip through some future serialization format? Tracked under v1.0 stability work; deferred from v0.9.
