@@ -10,6 +10,7 @@ private struct ExportConfig: @unchecked Sendable {
     let overlays: [any Overlay]
     let crop: CropRegion?
     let preset: Preset
+    let captions: [Caption]
     let outputURL: URL
     let cancellationToken: CancellationToken
 }
@@ -23,6 +24,7 @@ internal enum ExportEngine {
         overlays: [any Overlay] = [],
         crop: CropRegion? = nil,
         preset: Preset,
+        captions: [Caption] = [],
         to outputURL: URL,
         cancellationToken: CancellationToken = CancellationToken()
     ) -> AsyncThrowingStream<ExportProgress, Error> {
@@ -33,6 +35,7 @@ internal enum ExportEngine {
             overlays: overlays,
             crop: crop,
             preset: preset,
+            captions: captions,
             outputURL: outputURL,
             cancellationToken: cancellationToken
         )
@@ -66,6 +69,11 @@ internal enum ExportEngine {
                     exportSession.audioMix = config.audioMix
                     // Preserve audio pitch when clips are time-scaled by .speed(_:)
                     exportSession.audioTimePitchAlgorithm = .spectral
+
+                    // v0.9.2 — bake captions as AVMetadataItem group.
+                    if !config.captions.isEmpty {
+                        exportSession.metadata = config.captions.map { $0.makeMetadataItem() }
+                    }
 
                     // Apply video composition to enforce preset resolution/frame rate
                     // (only when using a non-passthrough preset that supports re-encoding)
