@@ -1111,25 +1111,54 @@ internal enum CompositionBuilder {
                 )
             }
 
+            // Track which absolute composition-time ranges are already occupied by
+            // engine-emitted ramps so user volumeRamps and ducking ramps don't collide.
+            var occupiedRanges: [CMTimeRange] = []
+            if CMTimeCompare(effectiveFadeIn, .zero) > 0 {
+                occupiedRanges.append(CMTimeRange(start: insertionStart, duration: effectiveFadeIn))
+            }
+            if CMTimeCompare(effectiveFadeOut, .zero) > 0 {
+                let fadeStart = CMTimeSubtract(insertEnd, effectiveFadeOut)
+                occupiedRanges.append(CMTimeRange(start: fadeStart, duration: effectiveFadeOut))
+            }
+
             if let duckLevel = audioTrack.duckingLevel {
                 guard duckLevel >= 0 && duckLevel <= 1 else {
                     throw KadrError.invalidDuckingLevel(duckLevel)
-                }
-                var fadeRanges: [CMTimeRange] = []
-                if CMTimeCompare(effectiveFadeIn, .zero) > 0 {
-                    fadeRanges.append(CMTimeRange(start: insertionStart, duration: effectiveFadeIn))
-                }
-                if CMTimeCompare(effectiveFadeOut, .zero) > 0 {
-                    let fadeStart = CMTimeSubtract(insertEnd, effectiveFadeOut)
-                    fadeRanges.append(CMTimeRange(start: fadeStart, duration: effectiveFadeOut))
                 }
                 applyDucking(
                     on: params,
                     baseVolume: audioTrack.volumeLevel,
                     duckLevel: duckLevel,
                     over: clipAudioRanges,
-                    excluding: fadeRanges
+                    excluding: occupiedRanges
                 )
+                // Ducking adds its own ramps inside clipAudioRanges; record those so
+                // user volumeRamps don't overlap.
+                for clipRange in clipAudioRanges {
+                    occupiedRanges.append(clipRange)
+                }
+            }
+
+            // v0.8.3 — user-defined volume ramps. Track-relative times are offset to
+            // absolute composition time. Skip any ramp that overlaps an
+            // engine-emitted ramp (fadeIn / fadeOut / crossfade / ducking).
+            for ramp in audioTrack.volumeRamps {
+                let absStart = CMTimeAdd(insertionStart, ramp.range.start)
+                let absRange = CMTimeRange(start: absStart, duration: ramp.range.duration)
+                let collides = occupiedRanges.contains { existing in
+                    rangesOverlap(existing, absRange)
+                }
+                if collides {
+                    // Skip silently — overlapping ramps would crash AVFoundation.
+                    continue
+                }
+                params.setVolumeRamp(
+                    fromStartVolume: Float(ramp.startVolume),
+                    toEndVolume: Float(ramp.endVolume),
+                    timeRange: absRange
+                )
+                occupiedRanges.append(absRange)
             }
 
             audioMixParameters.append(params)
@@ -1144,6 +1173,13 @@ internal enum CompositionBuilder {
     ///
     /// Ducking ramps that overlap any range in `excluding` (typically the fade-in/fade-out
     /// ranges) are skipped — AVFoundation's audio mix parameters reject overlapping ramps.
+    /// Whether two `CMTimeRange`s overlap by any positive amount. Adjacency
+    /// (a.end == b.start) is treated as non-overlapping. Internal helper for v0.8.3
+    /// volume-ramp collision detection.
+    private static func rangesOverlap(_ a: CMTimeRange, _ b: CMTimeRange) -> Bool {
+        return CMTimeCompare(a.start, b.end) < 0 && CMTimeCompare(b.start, a.end) < 0
+    }
+
     private static func applyDucking(
         on params: AVMutableAudioMixInputParameters,
         baseVolume: Double,

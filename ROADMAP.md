@@ -172,7 +172,7 @@ Real user needs that don't have to ship in the v0.8.0 headline but should land b
 
 - **v0.8.1** ✓ shipped — `Position` / `Size` as `Animatable` + `.position(_:animation:)` / `.size(_:animation:)` on `ImageOverlay` / `StickerOverlay`. Unlocks animated image/sticker overlays (sliding watermarks, drifting stickers, animated logo placements).
 - **v0.8.2** ✓ shipped — Filter intensity animation: `VideoClip.filter(_:animation:)` taking a single `Filter` + `Animation<Double>`. Animated blur sweeps, gradual sepia fades, intensity-ramped vignette. Also lifts the v0.8 Tier 1 inner-Track clip Transform / animation deferral for the pure-media Track fast path.
-- **v0.8.3** — `AudioTrack.volumeRamp(start:end:during:)` — granular volume automation between two points.
+- **v0.8.3** ✓ shipped — `AudioTrack.volumeRamp(start:end:during:)` — granular volume automation between two points. Engine drops user ramps that overlap implicit fadeIn / fadeOut / crossfade / ducking ranges to avoid AVFoundation's overlapping-ramp exception.
 - **v0.8.4** — More `Filter` presets: `gaussianBlur`, `vignette`, `sharpen`, `zoomBlur`, `glow`. Closes the parity gap with IMG.LY (60+ filters) and VideoLab.
 
 ## v0.9.0 — Advanced timing
