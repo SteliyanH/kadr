@@ -4,6 +4,30 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.9.0] - 2026-04-29
+
+Speed curves on `VideoClip` — non-linear playback rate over clip-relative time. The headline CapCut feature, and the first tier of the v0.9 cycle (advanced timing).
+
+### Added
+
+- **`VideoClip.speed(curve: Animation<Double>)`** — apply a non-linear speed curve. Values in the animation are speed multipliers (1.0 = normal, 0.5 = half-speed, 2.0 = 2×). Engine discretizes the curve at 30 Hz into piecewise-linear segments and emits one `scaleTimeRange` per segment, applying the same time map to audio when present. Composes with `trimmed(to:)`, `filter(_:animation:)`, `transform(_:animation:)`, and `opacity(_:animation:)`.
+- **`speedCurve: Animation<Double>?`** field on `VideoClip` (additive — `nil` for v0.8 compositions, takes precedence over `speedRate` when set).
+- **`SpeedCurveSampler`** internal helper module — pure discretization + integration helpers, fully unit-tested.
+
+### Behavior
+
+- Setting `speed(curve:)` overrides flat `speed(_:)`. Setting flat `speed(_:)` clears any previously-set curve. The two surfaces are mutually exclusive.
+- Per-sample multipliers outside `0.25...4.0` clamp at the boundaries rather than throwing — animated curves may pass through extremes briefly, and clamping preserves the export rather than aborting it.
+- `VideoClip.duration` integrates the curve when set, so synchronous timeline math agrees with the engine's per-segment scaling.
+
+### Fixed
+
+- **Latent v0.8 bug in `.speed(_:)`** — the existing flat-speed modifier silently dropped `transform` / `opacity` / animation / `clipID` / `startTime` fields when called (rebuilt the clip with an incomplete arg list, falling back to defaults). Now preserves them. Same bug-class would have hit the new curve modifier; both go through the full-fidelity rebuild path.
+
+### Tests
+
+- 17 new tests covering `SpeedCurveSampler` discretization (zero / negative / flat / extreme / out-of-range / contiguity), `VideoClip.speed(curve:)` modifier surface (storage, field preservation, mutual exclusion with flat speed), and `VideoClip.duration` math under a curve. Suite: 467 → 484.
+
 ## [0.8.4] - 2026-04-29
 
 Five new `Filter` presets — `gaussianBlur`, `vignette`, `sharpen`, `zoomBlur`, `glow`. Closes the parity gap with IMG.LY and VideoLab. Final v0.8.x patch — v0.8 cycle is complete. Pure additive.
