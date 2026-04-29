@@ -62,6 +62,11 @@ public struct Video: Sendable {
     /// Added in v0.7.
     public let compositorWindow: CMTimeRange?
 
+    /// Caption cues attached to this composition. The engine bakes them as
+    /// `AVMetadataItem` group at export. `nil` / empty (default) means no captions.
+    /// Set via ``captions(_:)``. Added in v0.9.2.
+    public let captions: [Caption]
+
     /// Build a `Video` from a result-builder block of clips.
     public init(@VideoBuilder _ content: () -> [any Clip]) {
         self.clips = content()
@@ -71,6 +76,7 @@ public struct Video: Sendable {
         self.crop = nil
         self.multiInputCompositor = nil
         self.compositorWindow = nil
+        self.captions = []
     }
 
     internal init(
@@ -80,7 +86,8 @@ public struct Video: Sendable {
         overlays: [any Overlay] = [],
         crop: CropRegion? = nil,
         multiInputCompositor: (any MultiInputCompositor)? = nil,
-        compositorWindow: CMTimeRange? = nil
+        compositorWindow: CMTimeRange? = nil,
+        captions: [Caption] = []
     ) {
         self.clips = clips
         self.audioTracks = audioTracks
@@ -89,31 +96,51 @@ public struct Video: Sendable {
         self.crop = crop
         self.multiInputCompositor = multiInputCompositor
         self.compositorWindow = compositorWindow
+        self.captions = captions
+    }
+
+    /// Attach caption cues to this composition. The engine bakes them as `AVMetadataItem`
+    /// group at export. Multiple `.captions(_:)` calls accumulate.
+    ///
+    /// File-format parsing (SRT, VTT, iTT) lives in the
+    /// [`kadr-captions`](https://github.com/SteliyanH/kadr-captions) adapter; this
+    /// modifier only takes pre-built ``Caption`` values. Added in v0.9.2.
+    public func captions(_ captions: [Caption]) -> Video {
+        Video(
+            clips: clips,
+            audioTracks: audioTracks,
+            preset: preset,
+            overlays: overlays,
+            crop: crop,
+            multiInputCompositor: multiInputCompositor,
+            compositorWindow: compositorWindow,
+            captions: self.captions + captions
+        )
     }
 
     /// Add one or more background audio tracks via the ``AudioBuilder`` DSL.
     /// Useful for chained modifiers like `.volume(_:)`, `.fadeIn(_:)`, `.ducking(_:)`.
     public func audio(@AudioBuilder _ tracks: () -> [AudioTrack]) -> Video {
-        Video(clips: clips, audioTracks: audioTracks + tracks(), preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor, compositorWindow: compositorWindow)
+        Video(clips: clips, audioTracks: audioTracks + tracks(), preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor, compositorWindow: compositorWindow, captions: captions)
     }
 
     /// Convenience: add a single background audio track from `url`. Equivalent to
     /// `.audio { AudioTrack(url: url) }` with default volume and no fades.
     public func audio(url: URL) -> Video {
-        Video(clips: clips, audioTracks: audioTracks + [AudioTrack(url: url)], preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor, compositorWindow: compositorWindow)
+        Video(clips: clips, audioTracks: audioTracks + [AudioTrack(url: url)], preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor, compositorWindow: compositorWindow, captions: captions)
     }
 
     /// Apply an export preset (resolution, frame rate, codec). Defaults to ``Preset/auto`` if
     /// unset. See ``Preset`` for the built-in choices and ``Preset/custom(width:height:frameRate:codec:)``.
     public func preset(_ preset: Preset) -> Video {
-        Video(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor, compositorWindow: compositorWindow)
+        Video(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor, compositorWindow: compositorWindow, captions: captions)
     }
 
     /// Add an overlay drawn on top of the composition for its full duration.
     /// Accepts any ``Overlay`` conformer — currently ``ImageOverlay`` and ``TextOverlay``.
     /// Each overlay is drawn above the previous one in declaration order.
     public func overlay<O: Overlay>(_ overlay: O) -> Video {
-        Video(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays + [overlay], crop: crop, multiInputCompositor: multiInputCompositor, compositorWindow: compositorWindow)
+        Video(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays + [overlay], crop: crop, multiInputCompositor: multiInputCompositor, compositorWindow: compositorWindow, captions: captions)
     }
 
     /// Crop the composition to a rectangular region of the render canvas. The export's
@@ -151,7 +178,8 @@ public struct Video: Sendable {
             overlays: overlays,
             crop: CropRegion(position: position, size: size, anchor: anchor),
             multiInputCompositor: multiInputCompositor,
-            compositorWindow: compositorWindow
+            compositorWindow: compositorWindow,
+            captions: captions
         )
     }
 
@@ -177,7 +205,8 @@ public struct Video: Sendable {
             overlays: overlays,
             crop: crop,
             multiInputCompositor: compositor,
-            compositorWindow: compositorWindow
+            compositorWindow: compositorWindow,
+            captions: captions
         )
     }
 
@@ -283,6 +312,7 @@ public struct Video: Sendable {
             overlays: overlays,
             crop: crop,
             preset: preset,
+            captions: captions,
             to: url
         )
 
@@ -296,7 +326,7 @@ public struct Video: Sendable {
     /// progress reporting via `AsyncThrowingStream<ExportProgress, Error>`,
     /// estimated time remaining, or cancellation. Otherwise prefer ``export(to:)``.
     public func exporter(to url: URL) -> Exporter {
-        Exporter(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor, compositorWindow: compositorWindow, outputURL: url)
+        Exporter(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor, compositorWindow: compositorWindow, captions: captions, outputURL: url)
     }
 
     // MARK: - Preview
