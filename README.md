@@ -7,9 +7,13 @@
 
 **SwiftUI for video. Compose, transform, export — in Swift you actually want to write.**
 
-A modern, declarative Swift library for video composition on Apple platforms. Build videos using a result-builder DSL with async/await throughout.
+A modern, declarative Swift library for video composition on Apple platforms. Build videos using a result-builder DSL with async/await throughout. Multi-track timelines, transitions, overlays, filters with keyframe animation, custom per-frame compositors, time-anchored audio with crossfades — all on top of AVFoundation, no third-party dependencies.
+
+> **Companion package:** [`kadr-ui`](https://github.com/SteliyanH/kadr-ui) ships SwiftUI components consuming Kadr's introspection surface — `VideoPreview`, `ThumbnailStrip`, an overlay layer with gesture-routed `LayerID` hit-testing, and a multi-lane `TimelineView` with selection / drag-to-reorder / trim / scrub / optional audio waveforms. Install separately when you need editor-style UI.
 
 ## Quick Start
+
+The simplest possible composition — slideshow with background music:
 
 ```swift
 import Kadr
@@ -18,6 +22,38 @@ let url = try await Video {
     ImageClip(heroImage, duration: 5.0)
 }
 .audio(url: musicURL)
+.export(to: outputURL)
+```
+
+A more representative v0.8 composition — Ken Burns zoom-pan on a still, animated title reveal, picture-in-picture cutaway, and a music swap with a 1s crossfade:
+
+```swift
+let url = try await Video {
+    ImageClip(heroPhoto, duration: 5.0)
+        .transform(.identity, animation: .keyframes([
+            .at(0.0, value: Transform(scale: 1.0)),
+            .at(5.0, value: Transform(scale: 1.3, center: .normalized(x: 0.6, y: 0.4))),
+        ], timing: .easeInOut))
+
+    Transition.dissolve(duration: 0.5)
+    VideoClip(url: clipURL).trimmed(to: 0...10)
+
+    // PiP cutaway pinned at t=6s, 40% scale in the top-right
+    VideoClip(url: cutawayURL).trimmed(to: 0...3)
+        .at(time: 6.0)
+        .transform(Transform(center: .topRight, scale: 0.4, anchor: .topRight))
+}
+.overlay(
+    TextOverlay("MY MOVIE", style: TextStyle(fontSize: 80, alignment: .center, weight: .bold))
+        .position(.center)
+        .visible(during: 0.0...2.0)
+        .animation(.fadeIn(duration: 1.0))
+)
+.audio {
+    AudioTrack(url: musicAURL).at(time: 0).duration(8.0).crossfade(1.0)
+    AudioTrack(url: musicBURL).at(time: 7.0)  // 1s overlap fades A → B
+}
+.preset(.reelsAndShorts)
 .export(to: outputURL)
 ```
 
@@ -49,12 +85,20 @@ FFmpegKit retired in January 2025. Pixel SDK sunset in February 2025. AVFoundati
 
 ## Features
 
-### v0.8.0 (current — `0.8.0`)
+### v0.8 (current — `0.8.4`)
+
+The "Animation & Transform" cycle. v0.8.0 shipped the foundational surface; v0.8.1–v0.8.4 layered on real-user wins. **110 new tests across the cycle** (357 → 467); v0.7 compositions compile unchanged.
 
 - **Per-clip Transform.** `Transform(center:rotation:scale:anchor:)` on `VideoClip` / `ImageClip` / `TitleSequence`. Reuses `Position` + `Anchor` from v0.3 overlays so the coordinate space is one consumers already know. Picture-in-picture, scaled cutaways, rotated clips.
-- **Keyframe animations.** `Animation<T>` generic + `Animatable` protocol on `Transform` and `Double`. `TimingFunction` covers linear / easeIn / easeOut / easeInOut / cubicBezier / custom-closure. **Clip-relative timing** (a `.at(0.0, ...)` keyframe maps to the clip's first frame, not composition t=0). Drives both export and `makePlayerItem()` preview.
+- **Keyframe animations.** `Animation<T>` generic + `Animatable` protocol on `Transform` / `Double` / `Position` / `Size`. `TimingFunction` covers linear / easeIn / easeOut / easeInOut / cubicBezier / custom-closure. **Clip-relative timing** (a `.at(0.0, ...)` keyframe maps to the clip's first frame, not composition t=0). Drives both export and `makePlayerItem()` preview.
 - **Animated `TextOverlay`.** `TextAnimation` protocol + built-in recipes (`.fadeIn`, `.slideIn`, `.scaleUp`). CALayer-backed export render via `AVVideoCompositionCoreAnimationTool`.
+- **Animated overlay layout** *(v0.8.1)*. `.position(_:animation:)` and `.size(_:animation:)` on `ImageOverlay` / `StickerOverlay` — sliding watermarks, drifting stickers, animated logo placements.
+- **Filter intensity animation** *(v0.8.2)*. `VideoClip.filter(_:animation:)` drives the primary scalar of any animatable filter (brightness, contrast, saturation, exposure, sepia, gaussianBlur, vignette, sharpen, zoomBlur, glow). Animated blur sweeps, fade-to-sepia, intensity-ramped vignette. Inner-Track clip Transforms / animations now also work in the pure-media Track fast path.
+- **`AudioTrack.volumeRamp(start:end:during:)`** *(v0.8.3)*. Granular volume automation between two points in track-relative time. Multiple ramps accumulate; engine drops any that overlap implicit `fadeIn` / `fadeOut` / `crossfade` / `ducking` ranges.
+- **More `Filter` presets** *(v0.8.4)*. `.gaussianBlur`, `.vignette`, `.sharpen`, `.zoomBlur`, `.glow` — each animatable.
 - **Audio cross-fades.** `AudioTrack.crossfade(_:)` with declaration-order pairing. Engine emits matching volume ramps when adjacent tracks overlap and overrides user fades at the boundary.
+
+> **Next:** v1.0.0 — semver lock, performance benchmarks, comprehensive DocC tutorials. The v0.8 surface (Transform, animations, animated overlays, filter animation, audio crossfades + ramps) is the last public-API expansion before the lock. See [ROADMAP.md](ROADMAP.md).
 
 ### v0.7.0 (`0.7.0`)
 
@@ -179,6 +223,50 @@ let url = try await Video {
 .backgroundMusic(url: musicURL)  // defaults: 60% volume, fades, ducking
 .export(to: outputURL)
 
+// Multi-track timeline with PiP and a parallel Track block (v0.6)
+let url = try await Video {
+    VideoClip(url: mainURL).trimmed(to: 0...10)
+    VideoClip(url: pipURL).trimmed(to: 0...3).at(time: 2.0)
+    Track(at: 5.0, name: "B-Roll") {
+        VideoClip(url: rollA).trimmed(to: 0...2)
+        Transition.dissolve(duration: 0.3)
+        VideoClip(url: rollB).trimmed(to: 0...2)
+    }
+}
+.export(to: outputURL)
+
+// Time-pinned sound effects + windowed multi-input compositor (v0.7)
+let url = try await Video {
+    VideoClip(url: baseURL).trimmed(to: 0...8)
+    VideoClip(url: overlayURL).trimmed(to: 0...8).at(time: 0)
+}
+.compositor(MultiplyBlend(), during: 2.0...5.0)   // custom blend in window
+.audio {
+    AudioTrack(url: musicURL).volume(0.6).ducking(0.2)
+    AudioTrack(url: stingURL).at(time: 5.0).duration(0.5)  // SFX punches in
+}
+.export(to: outputURL)
+
+// Animated filter sweep + animated text reveal + audio crossfade (v0.8)
+let url = try await Video {
+    VideoClip(url: clipURL).trimmed(to: 0...4)
+        .filter(.gaussianBlur(radius: 0), animation: .keyframes([
+            .at(0.0, value: 20),   // start blurred
+            .at(2.0, value: 0),    // focus pulls in
+        ], timing: .easeOut))
+}
+.overlay(
+    TextOverlay("CHAPTER ONE", style: TextStyle(fontSize: 80, weight: .bold))
+        .position(.center)
+        .visible(during: 0.0...2.0)
+        .animation(.scaleUp(duration: 0.5))
+)
+.audio {
+    AudioTrack(url: musicAURL).at(time: 0).duration(3.0).crossfade(0.5)
+    AudioTrack(url: musicBURL).at(time: 2.5)
+}
+.export(to: outputURL)
+
 // Export with progress tracking
 let exporter = Video {
     VideoClip(url: longVideoURL)
@@ -199,9 +287,11 @@ Add to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/SteliyanH/kadr.git", from: "0.1.0")
+    .package(url: "https://github.com/SteliyanH/kadr.git", from: "0.8.0")
 ]
 ```
+
+`from: "0.8.0"` picks up every minor and patch up to v1.0; bump to `from: "1.0.0"` once that ships for semver lock.
 
 Or in Xcode: File > Add Package Dependencies > enter the repository URL.
 
@@ -220,8 +310,8 @@ Or in Xcode: File > Add Package Dependencies > enter the repository URL.
 
 Kadr separates the public DSL from the internal engine:
 
-- **DSL layer** — `Video`, `ImageClip`, `VideoClip`, `AudioTrack`, `Preset`, `Exporter` (public)
-- **Engine layer** — `ImageEncoder`, `CompositionBuilder`, `ExportEngine` (internal, uses AVFoundation)
+- **DSL layer** *(public, semver-stable)* — `Video`, `Track`, `VideoClip`, `ImageClip`, `TitleSequence`, `Transition`, `AudioTrack`, `Preset`, `Exporter`, `Filter`, `Animation<T>`, `Transform`, plus the overlay / compositor / animation surfaces.
+- **Engine layer** *(internal, uses AVFoundation)* — `CompositionBuilder` (timeline assembly + multi-track routing), `FilterProcessor` (per-frame `CIFilter` pre-render with intensity animation), `KadrVideoCompositor` (custom `AVVideoCompositing` for multi-input compositors), `OverlayRenderer` (CALayer tree for `AVVideoCompositionCoreAnimationTool`), `PlaybackComposer` (`AVPlayerItem` for previews), `ExportEngine` (`AVAssetExportSession` driver), `ImageEncoder` (still-image fast path), `ReverseProcessor`.
 
 The DSL is the stable public API. The engine is the implementation detail that can be refactored without breaking semver.
 
