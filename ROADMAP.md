@@ -181,7 +181,7 @@ The pre-v1.0 cleanup of timing-related deferrals. Each tier ships as its own min
 
 - **v0.9.0** ✓ shipped — Speed curves on `VideoClip` via `.speed(curve: Animation<Double>)`. Non-linear speed (ease in/out, custom Bézier, hold), beyond v0.2's flat speed multiplier. The signature CapCut feature.
 - **v0.9.1** ✓ shipped — `AudioTrack.speed(_:algorithm:)` — pitch-preserving via `audioTimePitchAlgorithm` (.spectral / .timeDomain / .varispeed). Closes the v0.7-deferred audio-side speed.
-- **v0.9.2** *(planned)* — `Caption` value type + `Video.captions(_:)` modifier + engine `AVMetadataItem` writer. The AVFoundation bridge only — SRT / VTT / iTT parsers live in the [`kadr-captions`](#kadr-captions) adapter package.
+- **v0.9.2** ✓ shipped — `Caption` value type + `Video.captions(_:)` modifier + engine `AVMetadataItem` writer. The AVFoundation bridge only — SRT / VTT / iTT parsers live in the [`kadr-captions`](#kadr-captions) adapter package. **v0.9 cycle complete.**
 
 ## v1.0.0 — Production Ready
 
