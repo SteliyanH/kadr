@@ -4,6 +4,29 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.8.3] - 2026-04-29
+
+`AudioTrack.volumeRamp(start:end:during:)` — granular volume automation curves between two points in track-relative time. Pure additive — every v0.8.2 composition compiles and behaves identically.
+
+### Added
+
+- **`AudioTrack.volumeRamp(start:end:during:)`** — accumulating modifier (CMTime + ClosedRange<TimeInterval> overloads). Each ramp linearly interpolates from `startVolume` to `endVolume` across `range`. Multiple calls accumulate.
+- **`AudioTrack.VolumeRamp`** value type — public, `Equatable`. Track-relative time range.
+- **`AudioTrack.volumeRamps: [VolumeRamp]`** — public storage, default empty.
+
+### Engine
+
+- `buildBackgroundAudioMixParameters` collects engine-emitted ramp ranges (effective fadeIn / fadeOut / crossfade / ducking) into an `occupiedRanges` array. User volumeRamps that overlap any occupied range are silently dropped — AVFoundation rejects overlapping ramps with an exception, so the engine takes the safe-by-default path. Non-overlapping user ramps are appended to the input parameters.
+- New internal helper `rangesOverlap(_:_:)` — adjacency (a.end == b.start) treated as non-overlapping.
+
+### Tests
+
+- 8 new (modifier composition: defaults / CMTimeRange / ClosedRange / accumulate / preserved-through-chain; engine integration: emit-mix-params / overlapping-fadeIn-dropped / adjacent-ramps-both-apply). Suite: 445 → 453.
+
+### Known limitation
+
+Volume ramps are linear (matching AVFoundation's `setVolumeRamp` shape). Equal-power / S-curve ramps are still on the v0.8 RFC wishlist — pro-audio apps that need them can compose multiple linear ramps to approximate.
+
 ## [0.8.2] - 2026-04-29
 
 Filter intensity animation + lifts the v0.8 Tier 1 inner-Track Transform / animation deferral. Pure additive — every v0.8.1 composition compiles and behaves identically.
