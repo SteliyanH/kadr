@@ -4,6 +4,30 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.8.2] - 2026-04-29
+
+Filter intensity animation + lifts the v0.8 Tier 1 inner-Track Transform / animation deferral. Pure additive — every v0.8.1 composition compiles and behaves identically.
+
+### Added
+
+- **`VideoClip.filter(_:animation:)`** modifier — apply a single ``Filter`` with a clip-relative keyframe animation driving the filter's primary scalar parameter. The engine samples the animation per frame inside ``FilterProcessor`` and rebuilds the filter with the new scalar via ``Filter/withScalar(_:)``.
+- **`VideoClip.filterAnimations: [Animation<Double>?]`** — public storage parallel to `filters`. Calling `.filter(_:)` (static) appends a `nil`; calling `.filter(_:animation:)` appends the animation. Defensive engine path pads / truncates if the lengths drift.
+- **`Filter.withScalar(_:)`** — internal helper that rebuilds a `Filter` case with a new scalar. Used by `FilterProcessor`. Filters without a primary scalar (`.mono`, `.lut`, `.chromaKey`) ignore the substitution and return self.
+- Animation timing for filters is **clip-relative** (matches the v0.8 Transform / opacity contract): `.at(0.0, ...)` maps to the clip's first frame after trim. The engine offsets `request.compositionTime` by the clip's `trimRange.start` before sampling.
+
+### Fixed — inner-Track clip Transform / animation deferral lifted
+
+- v0.8 Tier 1 deferred per-clip `Transform` and animations on clips inside `Track {}` blocks. v0.8.2 lifts that deferral for the **pure-media Track fast path** (Track with only media clips, no transitions or nested Tracks). Inner-clip `transform`, `opacity`, and animations are now collected into the parallel-track's animations array and emitted as per-clip `setTransform` / `setOpacity` calls on the parallel track's layer instruction.
+- Tracks-with-transitions / nested-Tracks already supported inner-clip transforms / animations via the recursive pre-render path (the inner clips go through `build()` → `buildMultiTrack` recursively, where Tier 1 / Tier 2 surface already applies). v0.8.2 just confirms the contract.
+
+### Tests
+
+- 11 new tests covering `Filter.withScalar` rebuilding, modifier composition (defaults / static-gets-nil-slots / animated-stores-pair / mix / chain preservation), engine integration (filter-animation export round-trip), and inner-Track clip Transform / animation in the fast path. Suite: 434 → 445.
+
+### Known limitation
+
+Filter intensity animation is per-filter scalar only. Filters with multi-parameter shapes (`.chromaKey`'s color + threshold, `.lut`'s data) aren't animatable in v0.8.2. Those would need a different surface (animate threshold separately) — defer until requested.
+
 ## [0.8.1] - 2026-04-28
 
 First v0.8.x patch. Adds public `Animatable` conformance on `Position` and `Size`, plus animated `.position(_:animation:)` / `.size(_:animation:)` modifiers on `ImageOverlay` and `StickerOverlay`. Pure additive — every v0.8.0 composition compiles and behaves identically.

@@ -155,6 +155,11 @@ internal enum CompositionBuilder {
             // single clips also have non-nil startTime here (filtered by the where clause).
             var insertion = clip.startTime ?? .zero
 
+            // v0.8.2: per-track animations array. Lifted up here (was below the if/else)
+            // so inner-Track-clip animations can append during the pure-media Track
+            // fast path. Free-floater single clips append below the if/else block.
+            var parallelAnimations: [ClipAnimationInfo] = []
+
             if let track = clip as? Track {
                 if track.clips.contains(where: { $0 is Transition || $0 is Track }) {
                     // Track contains transitions or nested Tracks — recursive composition.
@@ -176,7 +181,10 @@ internal enum CompositionBuilder {
                     )
                     clipAudioRanges.append(CMTimeRange(start: beforeIP, duration: CMTimeSubtract(insertion, beforeIP)))
                 } else {
-                    // Pure-media Track — the Tier 4a sequential-insert fast path.
+                    // Pure-media Track — the Tier 4a sequential-insert fast path. v0.8.2:
+                    // inner-clip transforms / opacity / animations are now collected
+                    // alongside the parallel-track's animations array so the layer
+                    // instruction gets per-inner-clip setTransform / setOpacity calls.
                     for innerClip in track.clips {
                         let beforeIP = insertion
                         let contributesAudio = try await insertChainClip(
@@ -188,6 +196,16 @@ internal enum CompositionBuilder {
                         )
                         if contributesAudio {
                             clipAudioRanges.append(CMTimeRange(start: beforeIP, duration: CMTimeSubtract(insertion, beforeIP)))
+                        }
+                        if innerClip.hasAnimationOrLayout {
+                            parallelAnimations.append(ClipAnimationInfo(
+                                clipStart: beforeIP,
+                                clipDuration: CMTimeSubtract(insertion, beforeIP),
+                                transform: innerClip.transform,
+                                transformAnimation: innerClip.transformAnimation,
+                                opacity: innerClip.opacity,
+                                opacityAnimation: innerClip.opacityAnimation
+                            ))
                         }
                     }
                 }
@@ -205,13 +223,12 @@ internal enum CompositionBuilder {
                 }
             }
 
-            // Per-parallel-track animation info: applies for the full clip's lifetime in
-            // this track. For free-floater clips with `.transform(...)` / animations, attach
-            // the info at the clip's `startTime` (composition time) with the clip's
-            // duration. Tracks themselves don't carry transform / opacity in v0.8 (they
-            // inherit Clip defaults). Inner-Track clip transforms / animations are
-            // deferred to v0.8.2.
-            var parallelAnimations: [ClipAnimationInfo] = []
+            // Per-parallel-track animation info for free-floater clips: applies for the
+            // full clip's lifetime in this track at the clip's startTime. Tracks
+            // themselves don't carry transform / opacity (they inherit Clip defaults);
+            // inner-Track clip animations were appended already in the pure-media Track
+            // fast path above. Pre-rendered Tracks lose per-inner-clip animations into
+            // the temp .mp4 — they're baked in by the recursive build.
             if clip.hasAnimationOrLayout {
                 parallelAnimations.append(ClipAnimationInfo(
                     clipStart: clip.startTime ?? .zero,
@@ -1196,6 +1213,8 @@ internal enum CompositionBuilder {
         if !clip.filters.isEmpty || !clip.compositors.isEmpty {
             assetURL = try await FilterProcessor.apply(
                 filters: clip.filters,
+                filterAnimations: clip.filterAnimations,
+                trimStart: clip.trimRange?.start ?? .zero,
                 compositors: clip.compositors,
                 to: assetURL
             )

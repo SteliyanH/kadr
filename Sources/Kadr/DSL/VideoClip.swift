@@ -56,6 +56,14 @@ public struct VideoClip: Clip, Sendable {
     /// Filters applied to this clip in declaration order. Set via ``filter(_:)``.
     public let filters: [Filter]
 
+    /// Optional clip-relative keyframe animations driving the primary scalar parameter
+    /// of each filter. Parallel to ``filters`` — `filterAnimations[i]` (when non-nil)
+    /// animates `filters[i]`'s primary scalar (brightness / contrast / saturation /
+    /// exposure / sepia intensity). Filters without a primary scalar (.mono, .lut,
+    /// .chromaKey) ignore the animation. Set via ``filter(_:animation:)``. Added in
+    /// v0.8.2.
+    public let filterAnimations: [Animation<Double>?]
+
     /// User-supplied compositors applied to this clip in declaration order, after
     /// ``filters``. Set via ``compositor(_:)-(any)`` or ``compositor(_:)-(closure)``.
     public let compositors: [any Compositor]
@@ -137,6 +145,7 @@ public struct VideoClip: Clip, Sendable {
         self.replacementAudioURL = nil
         self.speedRate = 1.0
         self.filters = []
+        self.filterAnimations = []
         self.compositors = []
         self.clipID = nil
         self.startTime = nil
@@ -154,6 +163,7 @@ public struct VideoClip: Clip, Sendable {
         replacementAudioURL: URL?,
         speedRate: Double = 1.0,
         filters: [Filter] = [],
+        filterAnimations: [Animation<Double>?] = [],
         compositors: [any Compositor] = [],
         clipID: ClipID? = nil,
         startTime: CMTime? = nil,
@@ -169,6 +179,13 @@ public struct VideoClip: Clip, Sendable {
         self.replacementAudioURL = replacementAudioURL
         self.speedRate = speedRate
         self.filters = filters
+        // Always keep filterAnimations parallel to filters (pad with nils if caller
+        // passed a shorter array — defensive against modifier-call bugs in tests).
+        if filterAnimations.count == filters.count {
+            self.filterAnimations = filterAnimations
+        } else {
+            self.filterAnimations = Array(repeating: nil, count: filters.count)
+        }
         self.compositors = compositors
         self.clipID = clipID
         self.startTime = startTime
@@ -180,7 +197,7 @@ public struct VideoClip: Clip, Sendable {
 
     /// Trim with a `CMTimeRange` for frame-accurate precision.
     public func trimmed(to range: CMTimeRange) -> VideoClip {
-        VideoClip(url: url, trimRange: range, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: clipID, startTime: startTime, transform: transform, transformAnimation: transformAnimation, opacity: opacity, opacityAnimation: opacityAnimation)
+        VideoClip(url: url, trimRange: range, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, filterAnimations: filterAnimations, compositors: compositors, clipID: clipID, startTime: startTime, transform: transform, transformAnimation: transformAnimation, opacity: opacity, opacityAnimation: opacityAnimation)
     }
 
     /// Trim with a `ClosedRange<TimeInterval>`. Convenience overload — converts to `CMTimeRange`
@@ -195,13 +212,13 @@ public struct VideoClip: Clip, Sendable {
     /// Play this clip backwards. The source is pre-processed via a temporary file before
     /// composition; for very long clips this can be memory-intensive.
     public func reversed() -> VideoClip {
-        VideoClip(url: url, trimRange: trimRange, isReversed: true, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: clipID, startTime: startTime, transform: transform, transformAnimation: transformAnimation, opacity: opacity, opacityAnimation: opacityAnimation)
+        VideoClip(url: url, trimRange: trimRange, isReversed: true, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, filterAnimations: filterAnimations, compositors: compositors, clipID: clipID, startTime: startTime, transform: transform, transformAnimation: transformAnimation, opacity: opacity, opacityAnimation: opacityAnimation)
     }
 
     /// Drop the source's audio track from the composition. Use ``withAudio(_:)`` to also
     /// substitute a different audio file.
     public func muted() -> VideoClip {
-        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: true, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: clipID, startTime: startTime, transform: transform, transformAnimation: transformAnimation, opacity: opacity, opacityAnimation: opacityAnimation)
+        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: true, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, filterAnimations: filterAnimations, compositors: compositors, clipID: clipID, startTime: startTime, transform: transform, transformAnimation: transformAnimation, opacity: opacity, opacityAnimation: opacityAnimation)
     }
 
     /// Apply one or more ``Filter``s to this clip. Filters are pre-rendered to a
@@ -226,6 +243,42 @@ public struct VideoClip: Clip, Sendable {
             replacementAudioURL: replacementAudioURL,
             speedRate: speedRate,
             filters: self.filters + filters,
+            filterAnimations: self.filterAnimations + Array(repeating: nil, count: filters.count),
+            compositors: compositors,
+            clipID: clipID,
+            startTime: startTime,
+            transform: transform,
+            transformAnimation: transformAnimation,
+            opacity: opacity,
+            opacityAnimation: opacityAnimation
+        )
+    }
+
+    /// Apply a single ``Filter`` with a clip-relative keyframe animation driving the
+    /// filter's primary scalar parameter. Animation timing is **clip-relative** —
+    /// `.at(0.0, ...)` maps to the clip's first frame (after trim, before speed scaling).
+    /// Filters without a primary scalar (.mono, .lut, .chromaKey) ignore the animation
+    /// at engine evaluation; the static filter applies as if no animation were set.
+    /// Added in v0.8.2.
+    ///
+    /// ```swift
+    /// // Sepia fades in over the first 2 seconds
+    /// VideoClip(url: clipURL).trimmed(to: 0...5)
+    ///     .filter(.sepia(intensity: 0), animation: .keyframes([
+    ///         .at(0.0, value: 0),
+    ///         .at(2.0, value: 1.0),
+    ///     ]))
+    /// ```
+    public func filter(_ filter: Filter, animation: Animation<Double>) -> VideoClip {
+        VideoClip(
+            url: url,
+            trimRange: trimRange,
+            isReversed: isReversed,
+            isMuted: isMuted,
+            replacementAudioURL: replacementAudioURL,
+            speedRate: speedRate,
+            filters: filters + [filter],
+            filterAnimations: filterAnimations + [animation],
             compositors: compositors,
             clipID: clipID,
             startTime: startTime,
@@ -240,13 +293,13 @@ public struct VideoClip: Clip, Sendable {
     /// If the replacement audio is longer than the clip, it is truncated; if shorter, it
     /// is not looped.
     public func withAudio(_ audioURL: URL) -> VideoClip {
-        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: true, replacementAudioURL: audioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: clipID, startTime: startTime, transform: transform, transformAnimation: transformAnimation, opacity: opacity, opacityAnimation: opacityAnimation)
+        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: true, replacementAudioURL: audioURL, speedRate: speedRate, filters: filters, filterAnimations: filterAnimations, compositors: compositors, clipID: clipID, startTime: startTime, transform: transform, transformAnimation: transformAnimation, opacity: opacity, opacityAnimation: opacityAnimation)
     }
 
     /// Assign a stable identifier so callers can address this clip by ID across reorders
     /// or trims. See ``ClipID`` for guidelines on choosing IDs.
     public func id(_ id: ClipID) -> VideoClip {
-        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: id, startTime: startTime, transform: transform, transformAnimation: transformAnimation, opacity: opacity, opacityAnimation: opacityAnimation)
+        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, filterAnimations: filterAnimations, compositors: compositors, clipID: id, startTime: startTime, transform: transform, transformAnimation: transformAnimation, opacity: opacity, opacityAnimation: opacityAnimation)
     }
 
     /// Pin this clip to an explicit composition start time. The clip opts out of the
@@ -264,7 +317,7 @@ public struct VideoClip: Clip, Sendable {
     /// > with the multi-track engine PR. Setting `.at(time:)` in v0.6.0-pre builds has
     /// > no runtime effect yet — the clip still participates in the implicit chain.
     public func at(time: CMTime) -> VideoClip {
-        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: clipID, startTime: time, transform: transform, transformAnimation: transformAnimation, opacity: opacity, opacityAnimation: opacityAnimation)
+        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, filterAnimations: filterAnimations, compositors: compositors, clipID: clipID, startTime: time, transform: transform, transformAnimation: transformAnimation, opacity: opacity, opacityAnimation: opacityAnimation)
     }
 
     /// Pin this clip to an explicit composition start time, in seconds. Convenience
@@ -288,7 +341,7 @@ public struct VideoClip: Clip, Sendable {
     ///     .transform(Transform(center: .topRight, scale: 0.4, anchor: .topRight))
     /// ```
     public func transform(_ transform: Transform) -> VideoClip {
-        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: clipID, startTime: startTime, transform: transform, transformAnimation: transformAnimation, opacity: opacity, opacityAnimation: opacityAnimation)
+        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, filterAnimations: filterAnimations, compositors: compositors, clipID: clipID, startTime: startTime, transform: transform, transformAnimation: transformAnimation, opacity: opacity, opacityAnimation: opacityAnimation)
     }
 
     /// Apply a per-clip transform with an animation that drives it over the clip's
@@ -306,13 +359,13 @@ public struct VideoClip: Clip, Sendable {
     ///     ], timing: .easeInOut))
     /// ```
     public func transform(_ base: Transform, animation: Animation<Transform>) -> VideoClip {
-        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: clipID, startTime: startTime, transform: base, transformAnimation: animation, opacity: opacity, opacityAnimation: opacityAnimation)
+        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, filterAnimations: filterAnimations, compositors: compositors, clipID: clipID, startTime: startTime, transform: base, transformAnimation: animation, opacity: opacity, opacityAnimation: opacityAnimation)
     }
 
     /// Set this clip's opacity in `0...1`. `1.0` (the default when not set) is fully
     /// opaque; `0.0` is fully transparent. Added in v0.8.
     public func opacity(_ opacity: Double) -> VideoClip {
-        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: clipID, startTime: startTime, transform: transform, transformAnimation: transformAnimation, opacity: opacity, opacityAnimation: opacityAnimation)
+        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, filterAnimations: filterAnimations, compositors: compositors, clipID: clipID, startTime: startTime, transform: transform, transformAnimation: transformAnimation, opacity: opacity, opacityAnimation: opacityAnimation)
     }
 
     /// Animate this clip's opacity over its lifetime. `base` is used outside the
@@ -327,14 +380,14 @@ public struct VideoClip: Clip, Sendable {
     ///     ]))
     /// ```
     public func opacity(_ base: Double, animation: Animation<Double>) -> VideoClip {
-        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors, clipID: clipID, startTime: startTime, transform: transform, transformAnimation: transformAnimation, opacity: base, opacityAnimation: animation)
+        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, filterAnimations: filterAnimations, compositors: compositors, clipID: clipID, startTime: startTime, transform: transform, transformAnimation: transformAnimation, opacity: base, opacityAnimation: animation)
     }
 
     /// Append a ``Compositor`` to this clip. Compositors run after ``Filter``s during
     /// the export pre-render pass; multiple `.compositor` calls accumulate in declaration
     /// order. See the ``Compositor`` documentation for the per-frame contract.
     public func compositor(_ compositor: any Compositor) -> VideoClip {
-        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, compositors: compositors + [compositor], clipID: clipID, startTime: startTime, transform: transform, transformAnimation: transformAnimation, opacity: opacity, opacityAnimation: opacityAnimation)
+        VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, filterAnimations: filterAnimations, compositors: compositors + [compositor], clipID: clipID, startTime: startTime, transform: transform, transformAnimation: transformAnimation, opacity: opacity, opacityAnimation: opacityAnimation)
     }
 
     /// Append an inline closure-backed ``Compositor``. Convenient for one-off
