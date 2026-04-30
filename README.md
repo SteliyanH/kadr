@@ -9,7 +9,13 @@
 
 A modern, declarative Swift library for video composition on Apple platforms. Build videos using a result-builder DSL with async/await throughout. Multi-track timelines, transitions, overlays, filters with keyframe animation, custom per-frame compositors, time-anchored audio with crossfades — all on top of AVFoundation, no third-party dependencies.
 
-> **Companion package:** [`kadr-ui`](https://github.com/SteliyanH/kadr-ui) ships SwiftUI components consuming Kadr's introspection surface — `VideoPreview`, `ThumbnailStrip`, an overlay layer with gesture-routed `LayerID` hit-testing, and a multi-lane `TimelineView` with selection / drag-to-reorder / trim / scrub / optional audio waveforms. Install separately when you need editor-style UI.
+> **Companion packages.** Kadr is the engine; three adapter packages consume its public surface for specific use cases. Pull them in separately as you need them — none are required for core composition / export.
+>
+> | Package | Purpose |
+> |---|---|
+> | [`kadr-ui`](https://github.com/SteliyanH/kadr-ui) | SwiftUI components — `VideoPreview`, `ThumbnailStrip`, multi-lane `TimelineView` (selection / reorder / trim / scrub / audio waveforms), `OverlayHost` with gesture-routed `LayerID` hit-testing, `InspectorPanel`, `KeyframeEditor`, animated `TextOverlay` preview, audio crossfade glyphs. |
+> | [`kadr-captions`](https://github.com/SteliyanH/kadr-captions) | Caption file parsing + authoring for SRT, VTT, iTT, ASS, and SSA. Plus a styled-VTT bridge that maps a parsed cue onto kadr's `TextOverlay` + `textAnimation` for burned-in animated captions. |
+> | [`kadr-photos`](https://github.com/SteliyanH/kadr-photos) | Photos library integration — resolves video / image / Live Photo `PHAsset`s into kadr clip types, ships a `PHPickerViewController` SwiftUI wrapper, surfaces PHAsset metadata, and bridges PHAssets to `ImageOverlay` / `StickerOverlay`. |
 
 ## Quick Start
 
@@ -85,7 +91,17 @@ FFmpegKit retired in January 2025. Pixel SDK sunset in February 2025. AVFoundati
 
 ## Features
 
-### v0.8 (current — `0.8.4`)
+### v0.9 (current — `0.9.2`)
+
+The "Advanced timing" cycle. Three additions that finish kadr's timing story before the v1.0 semver lock. Pure additive — every v0.8 composition compiles unchanged.
+
+- **Speed curves on `VideoClip`** *(v0.9.0)*. `.speed(curve: Animation<Double>)` — non-linear playback rate over clip-relative time. Engine integrates the curve into a piecewise-linear time map (30 Hz sampling) and applies via repeated `scaleTimeRange` segments. Audio (when present) follows the same time map. The signature CapCut feature.
+- **`AudioTrack.speed(_:algorithm:)`** *(v0.9.1)*. Pitch-preserving audio speed in `0.25...4.0`. New `AudioTimePitchAlgorithm` enum (`.spectral` / `.timeDomain` / `.varispeed`). Fades, ramps, ducking, crossfades all operate on the scaled (timeline) duration.
+- **`Caption` value type + `Video.captions(_:)`** *(v0.9.2)*. The AVFoundation caption bridge. Engine bakes attached cues as `AVMetadataItem` group at export. SRT / VTT / iTT / ASS / SSA file parsing lives in [`kadr-captions`](https://github.com/SteliyanH/kadr-captions); core stays bridge-only.
+
+> **Next:** v1.0.0 — semver lock, performance benchmarks, comprehensive DocC tutorials. The v0.9 surface is the last public-API expansion before the lock. See [ROADMAP.md](ROADMAP.md).
+
+### v0.8 (`0.8.4`)
 
 The "Animation & Transform" cycle. v0.8.0 shipped the foundational surface; v0.8.1–v0.8.4 layered on real-user wins. **110 new tests across the cycle** (357 → 467); v0.7 compositions compile unchanged.
 
@@ -97,8 +113,6 @@ The "Animation & Transform" cycle. v0.8.0 shipped the foundational surface; v0.8
 - **`AudioTrack.volumeRamp(start:end:during:)`** *(v0.8.3)*. Granular volume automation between two points in track-relative time. Multiple ramps accumulate; engine drops any that overlap implicit `fadeIn` / `fadeOut` / `crossfade` / `ducking` ranges.
 - **More `Filter` presets** *(v0.8.4)*. `.gaussianBlur`, `.vignette`, `.sharpen`, `.zoomBlur`, `.glow` — each animatable.
 - **Audio cross-fades.** `AudioTrack.crossfade(_:)` with declaration-order pairing. Engine emits matching volume ramps when adjacent tracks overlap and overrides user fades at the boundary.
-
-> **Next:** v1.0.0 — semver lock, performance benchmarks, comprehensive DocC tutorials. The v0.8 surface (Transform, animations, animated overlays, filter animation, audio crossfades + ramps) is the last public-API expansion before the lock. See [ROADMAP.md](ROADMAP.md).
 
 ### v0.7.0 (`0.7.0`)
 
@@ -131,7 +145,7 @@ The "Animation & Transform" cycle. v0.8.0 shipped the foundational surface; v0.8
 - **Composition introspection**: `Video.clips`, `overlays`, `audioTracks`, `preset`, and `crop` are publicly readable so callers can build their own timeline / preview / hit-testing UI without re-deriving state. Per-clip storage on `VideoClip`, `ImageClip`, and `AudioTrack` is also publicly readable.
 - **Preview**: `Video.makePlayerItem()` returns an `AVPlayerItem` with the composition's videoComposition (preset, crop, transitions) and audioMix (background music, fades, ducking) pre-attached, ready for `AVKit.VideoPlayer`. `Video.thumbnail(at:)` renders a single composition frame.
 - **Layout helpers**: `Layout.resolveFrame(position:size:anchor:in:)` mirrors the engine's coordinate math so custom UI can hit-test overlays in pixel-exact alignment with what the engine renders.
-- **Companion package**: [`kadr-ui`](https://github.com/SteliyanH/kadr-ui) is a separate SwiftUI components package (`VideoPreview`, `TimelineView`, `ThumbnailStrip`, gesture handlers) consuming these primitives.
+- **Companion packages**: three adapter packages now consume Kadr's public surface — see the table at the top of this README. [`kadr-ui`](https://github.com/SteliyanH/kadr-ui) for SwiftUI views; [`kadr-captions`](https://github.com/SteliyanH/kadr-captions) for SRT / VTT / iTT / ASS / SSA file I/O + a styled-VTT bridge; [`kadr-photos`](https://github.com/SteliyanH/kadr-photos) for Photos library integration (PHAsset resolvers, Live Photo, PHPicker SwiftUI wrapper, metadata, overlay helpers).
 
 ### v0.3 (`0.3.0`)
 
@@ -287,11 +301,11 @@ Add to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/SteliyanH/kadr.git", from: "0.8.0")
+    .package(url: "https://github.com/SteliyanH/kadr.git", from: "0.9.0")
 ]
 ```
 
-`from: "0.8.0"` picks up every minor and patch up to v1.0; bump to `from: "1.0.0"` once that ships for semver lock.
+`from: "0.9.0"` picks up every minor and patch up to v1.0; bump to `from: "1.0.0"` once that ships for semver lock.
 
 Or in Xcode: File > Add Package Dependencies > enter the repository URL.
 
