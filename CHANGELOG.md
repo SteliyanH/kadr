@@ -4,6 +4,32 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.9.2] - 2026-04-29
+
+Caption ingest — the AVFoundation bridge for caption metadata. Tier 3 of the v0.9 cycle and the final tier; **completes v0.9**.
+
+Per the v0.9 RFC's locked split, this release ships only the AVFoundation bridge in core. SRT / VTT / iTT file-format parsers and writers live in the [`kadr-captions`](https://github.com/SteliyanH/kadr-captions) adapter (planned post-v0.9), which produces `Caption` values that flow into ``Video/captions(_:)`` here.
+
+### Added
+
+- **`Caption`** value type — `text: String` + `timeRange: CMTimeRange`. `Sendable`, `Equatable`.
+- **`Video.captions(_:)`** modifier — attaches caption cues to the composition. Multiple calls accumulate.
+- **Engine writer** — when captions are non-empty, `ExportEngine` assigns `exportSession.metadata` to `captions.map { $0.makeMetadataItem() }`. Each `AVMetadataItem` carries `.commonIdentifierDescription` plus the cue's `time` / `duration`. Players that surface video metadata (Apple Photos, system quick-look, AVPlayer's metadata APIs) read these directly.
+
+### Behavior
+
+- `captions` field is threaded through `Video.init`, every `Video` modifier, `Exporter.init`, and `Video.exporter(to:)` — no latent field-loss.
+- Empty / `nil` captions array produces no metadata writes (no behavior change for v0.9.1 compositions).
+
+### Tests
+
+- 10 new tests covering surface (storage, equality), `AVMetadataItem` mapping (text value, time / duration, identifier), modifier behavior (default empty, single call, accumulation, field preservation), and the latent-bug guard. Suite: 496 → 506.
+
+### Notes
+
+- v0.9 cycle is now complete. Speed curves (`v0.9.0`), pitch-preserving audio speed (`v0.9.1`), and caption ingest (`v0.9.2`) collectively close the timing-related deferrals that were called out in the v0.9 RFC.
+- Caption styling / animation belongs in the `kadr-captions` adapter — it can map onto v0.8 `TextOverlay` + `textAnimation`. Not a kadr-core surface.
+
 ## [0.9.1] - 2026-04-29
 
 Pitch-preserving speed on `AudioTrack`. Closes the v0.7-deferred audio-side speed and is Tier 2 of the v0.9 cycle.
