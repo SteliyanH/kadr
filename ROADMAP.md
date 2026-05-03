@@ -183,6 +183,16 @@ The pre-v1.0 cleanup of timing-related deferrals. Each tier ships as its own min
 - **v0.9.1** ✓ shipped — `AudioTrack.speed(_:algorithm:)` — pitch-preserving via `audioTimePitchAlgorithm` (.spectral / .timeDomain / .varispeed). Closes the v0.7-deferred audio-side speed.
 - **v0.9.2** ✓ shipped — `Caption` value type + `Video.captions(_:)` modifier + engine `AVMetadataItem` writer. The AVFoundation bridge only — SRT / VTT / iTT parsers live in the [`kadr-captions`](#kadr-captions) adapter package. **v0.9 cycle complete.**
 
+## v0.10.0 — Pre-v1.0 polish ✓ shipped
+
+Three small additions before semver lock — closes gaps real consumers hit while building against v0.9.x. Pure additive.
+
+- **`Filter.withScalar(_:)` made public** — was internal in v0.8.2; consumers building inspector UIs can now reuse the helper instead of duplicating the 11-case switch.
+- **`ImageClip.color(_:duration:)`** — solid-color clip factory backed by a 1×1 PlatformImage source.
+- **`Track.opacity(_:)`** — per-track opacity multiplier. Engine multiplies every inner clip's effective opacity by the track factor at layer-instruction-build time.
+
+This is the last public-API expansion before v1.0.
+
 ## v1.0.0 — Production Ready
 
 Semver stability guarantee. Every public surface from v0.8 / v0.9 is locked.
