@@ -49,11 +49,19 @@ public struct Track: Clip, Sendable {
     /// Added in v0.7.
     public let name: String?
 
+    /// Multiplier applied to every inner clip's opacity at render time. `1.0`
+    /// (default) is fully opaque. Set via ``opacity(_:)``. Inner clip's own opacity
+    /// (set via per-clip `.opacity(_:)`) is multiplied by this factor — a clip at
+    /// `.opacity(0.8)` inside a track at `.opacity(0.5)` renders at effective
+    /// opacity `0.4`. Added in v0.10.
+    public let opacityFactor: Double
+
     /// Build a track that starts at composition time `.zero` (composition's t=0).
     public init(name: String? = nil, @VideoBuilder _ content: () -> [any Clip]) {
         self.clips = content()
         self.startTime = .zero
         self.name = name
+        self.opacityFactor = 1.0
     }
 
     /// Build a track anchored at a `CMTime` start position.
@@ -61,11 +69,40 @@ public struct Track: Clip, Sendable {
         self.clips = content()
         self.startTime = time
         self.name = name
+        self.opacityFactor = 1.0
     }
 
     /// Build a track anchored at a `TimeInterval` start position. Convenience overload.
     public init(at time: TimeInterval, name: String? = nil, @VideoBuilder _ content: () -> [any Clip]) {
         self.init(at: CMTime(seconds: time, preferredTimescale: 600), name: name, content)
+    }
+
+    /// Internal init used by modifiers to rebuild the track with mutated fields.
+    internal init(clips: [any Clip], startTime: CMTime?, name: String?, opacityFactor: Double) {
+        self.clips = clips
+        self.startTime = startTime
+        self.name = name
+        self.opacityFactor = opacityFactor
+    }
+
+    /// Apply a per-track opacity factor in `0...1`. Multiplies every inner clip's
+    /// effective opacity at render time. `1.0` (default) is fully opaque; `0.5`
+    /// fades the entire track to half opacity. Useful for fading B-roll over A-roll
+    /// without per-clip wiring.
+    ///
+    /// ```swift
+    /// Track {
+    ///     VideoClip(url: bRollA).trimmed(to: 0...3)
+    ///     VideoClip(url: bRollB).trimmed(to: 0...4)
+    /// }
+    /// .opacity(0.6)
+    /// .at(time: 2.0)
+    /// ```
+    ///
+    /// Composes with per-clip `.opacity(_:)`: a clip at `.opacity(0.8)` inside this
+    /// track at `.opacity(0.5)` renders at effective opacity `0.4`. Added in v0.10.
+    public func opacity(_ factor: Double) -> Track {
+        Track(clips: clips, startTime: startTime, name: name, opacityFactor: factor)
     }
 
     /// Sum of the track's inner clip durations (in track-relative time). For untrimmed
