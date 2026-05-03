@@ -97,10 +97,14 @@ public enum Filter: Sendable, Equatable {
 
     /// Build a new filter case substituting `scalar` for this filter's primary numeric
     /// parameter. Filters without a primary scalar parameter (.mono, .lut, .chromaKey)
-    /// ignore the value and return self. Used by the v0.8.2 filter intensity animation
-    /// path — the engine samples the animation per frame and calls `withScalar(_:)`
-    /// before applying.
-    internal func withScalar(_ scalar: Double) -> Filter {
+    /// ignore the value and return self.
+    ///
+    /// Used by the v0.8.2 filter intensity animation path (the engine samples the
+    /// animation per frame and calls `withScalar(_:)` before applying), and by
+    /// `kadr-ui`'s `InspectorPanel` consumers who receive a new scalar value
+    /// through the `onFilterIntensity` callback and rebuild the filter via this
+    /// helper. Made public in v0.10.
+    public func withScalar(_ scalar: Double) -> Filter {
         switch self {
         case .brightness:  return .brightness(scalar)
         case .contrast:    return .contrast(scalar)
