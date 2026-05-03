@@ -180,6 +180,14 @@ internal enum CompositionBuilder {
                         preset: preset
                     )
                     clipAudioRanges.append(CMTimeRange(start: beforeIP, duration: CMTimeSubtract(insertion, beforeIP)))
+                    // v0.10 — apply track opacity to the entire pre-rendered piece.
+                    if track.opacityFactor != 1.0 {
+                        parallelAnimations.append(ClipAnimationInfo(
+                            clipStart: beforeIP,
+                            clipDuration: CMTimeSubtract(insertion, beforeIP),
+                            opacityFactor: track.opacityFactor
+                        ))
+                    }
                 } else {
                     // Pure-media Track — the Tier 4a sequential-insert fast path. v0.8.2:
                     // inner-clip transforms / opacity / animations are now collected
@@ -197,14 +205,19 @@ internal enum CompositionBuilder {
                         if contributesAudio {
                             clipAudioRanges.append(CMTimeRange(start: beforeIP, duration: CMTimeSubtract(insertion, beforeIP)))
                         }
-                        if innerClip.hasAnimationOrLayout {
+                        // v0.10 — propagate track.opacityFactor to inner-clip records
+                        // so makeLayerInstruction can multiply at emit time. Records
+                        // emit even for clips without their own transform/opacity when
+                        // the track factor isn't 1.0, so the fade applies uniformly.
+                        if innerClip.hasAnimationOrLayout || track.opacityFactor != 1.0 {
                             parallelAnimations.append(ClipAnimationInfo(
                                 clipStart: beforeIP,
                                 clipDuration: CMTimeSubtract(insertion, beforeIP),
                                 transform: innerClip.transform,
                                 transformAnimation: innerClip.transformAnimation,
                                 opacity: innerClip.opacity,
-                                opacityAnimation: innerClip.opacityAnimation
+                                opacityAnimation: innerClip.opacityAnimation,
+                                opacityFactor: track.opacityFactor
                             ))
                         }
                     }
@@ -871,6 +884,11 @@ internal enum CompositionBuilder {
             }
 
             // ---- Opacity ----
+            // v0.10: every emitted opacity is multiplied by info.opacityFactor
+            // (1.0 for non-Track-inner clips). This is how Track.opacity(_:)
+            // propagates a fade across every clip in the track without
+            // mutating per-clip storage.
+            let factor = info.opacityFactor
             if let anim = info.opacityAnimation {
                 let animSpanStart = CMTimeAdd(info.clipStart, anim.startTime)
                 let animSpanEnd = CMTimeAdd(info.clipStart, anim.endTime)
@@ -878,15 +896,18 @@ internal enum CompositionBuilder {
                 while CMTimeCompare(t, animSpanEnd) <= 0 {
                     let clipRelative = CMTimeSubtract(t, info.clipStart)
                     let value = anim.value(at: clipRelative) ?? info.opacity ?? 1.0
-                    layer.setOpacity(Float(value), at: t)
+                    layer.setOpacity(Float(value * factor), at: t)
                     t = CMTimeAdd(t, frameDuration)
                 }
                 if CMTimeCompare(animSpanEnd, CMTimeAdd(info.clipStart, info.clipDuration)) < 0 {
                     let final = anim.value(at: anim.endTime) ?? info.opacity ?? 1.0
-                    layer.setOpacity(Float(final), at: animSpanEnd)
+                    layer.setOpacity(Float(final * factor), at: animSpanEnd)
                 }
             } else if let staticOpacity = info.opacity {
-                layer.setOpacity(Float(staticOpacity), at: info.clipStart)
+                layer.setOpacity(Float(staticOpacity * factor), at: info.clipStart)
+            } else if factor != 1.0 {
+                // No per-clip opacity but the track applies a factor — emit it.
+                layer.setOpacity(Float(factor), at: info.clipStart)
             }
         }
         return layer
@@ -901,6 +922,28 @@ internal enum CompositionBuilder {
         let transformAnimation: Animation<Transform>?
         let opacity: Double?
         let opacityAnimation: Animation<Double>?
+        /// v0.10 per-track opacity. Inner clips inside a `Track.opacity(_:)` block
+        /// inherit the track's factor; the engine multiplies the resolved opacity
+        /// (static or animated) by this factor. Default `1.0`.
+        let opacityFactor: Double
+
+        init(
+            clipStart: CMTime,
+            clipDuration: CMTime,
+            transform: Transform? = nil,
+            transformAnimation: Animation<Transform>? = nil,
+            opacity: Double? = nil,
+            opacityAnimation: Animation<Double>? = nil,
+            opacityFactor: Double = 1.0
+        ) {
+            self.clipStart = clipStart
+            self.clipDuration = clipDuration
+            self.transform = transform
+            self.transformAnimation = transformAnimation
+            self.opacity = opacity
+            self.opacityAnimation = opacityAnimation
+            self.opacityFactor = opacityFactor
+        }
     }
 
     /// The aspect-fill scale + center transform applied to every layer before any slide offset.
