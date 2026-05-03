@@ -657,3 +657,116 @@ None required. New surface is opt-in:
 
 - **Speed-curve sampling rate.** 30 Hz is the obvious starting point (matches preview); benchmark whether 60 Hz produces visibly smoother slow-mo at the cost of 2× scaleTimeRange calls. Decision in tier 1.
 - **Speed-curve serialization.** Should a speed curve survive a `Video` round-trip through some future serialization format? Tracked under v1.0 stability work; deferred from v0.9.
+
+## v0.10.0 design — Pre-v1.0 polish
+
+Three small additions before semver lock. None expand the public surface meaningfully — they close gaps that real consumers (kadr-reels-studio's ProjectStore, kadr-ui's InspectorPanel) hit while building against the v0.9.x surface. Pure additive.
+
+### Problem
+
+Three concrete pain points the v0.9.x cycle didn't address:
+
+1. **`Filter.withScalar(_:)` is internal.** kadr-ui's `InspectorPanel` emits a new scalar value through its `onFilterIntensity` callback, expecting the consumer to rebuild the filter. But the helper that does exactly that — `Filter.withScalar(_:)` — is internal to kadr. kadr-reels-studio's ProjectStore had to duplicate the entire 11-case switch to apply intensity edits. Any other consumer building an inspector hits the same wall.
+2. **No solid-color clip primitive.** Both kadr-reels-studio's `SampleProject` and kadr-ui's `Examples/SimpleViewer` render a `PlatformImage` of solid color, then wrap in `ImageClip(_:duration:)`. ~30 LOC of boilerplate per use site, plus full-resolution memory for what's effectively a single pixel.
+3. **No per-track opacity.** `Track {}` carries clip-level opacity per clip, but the track itself can't fade as a unit. Common edit ("fade B-roll over A-roll") requires manually applying the same opacity to every clip in the track.
+
+### Scope lock
+
+In scope:
+- **`Filter.withScalar(_:)` made public** — the existing helper. No behavior change. Callers (`InspectorPanel` consumers, custom keyframe builders) can now reuse rather than duplicate.
+- **`ImageClip.color(_:duration:)` static factory** — produces an `ImageClip` backed by a 1×1 solid-color `PlatformImage`. AVFoundation stretches the 1-pixel source over the render canvas; for solid color the stretch is artifact-free. Two overloads (`CMTime` and `TimeInterval = 3.0`).
+- **`Track.opacity(_:)` modifier** — per-track opacity in `0...1`. Engine multiplies any per-clip opacity by `track.opacity` at layer-instruction-build time, so a track with `.opacity(0.5)` containing a clip at `.opacity(0.8)` renders that clip at effective opacity `0.4`. Inner-Track recursive pre-render path applies the same multiplier.
+
+Out of scope:
+- **`ColorClip` as a distinct type** — considered, dropped. The factory approach gives identical UX without expanding the type surface; pattern-matching by clip type rarely matters for solid backgrounds.
+- **Gradient / animated color clips** — out of scope; the factory's 1×1 source can't animate. A v0.10.x patch could add a higher-res renderer if demand emerges.
+- **Track-level Transform** — out of scope for v0.10; would expand `Track` substantially. Per-clip Transform inside a Track already covers the common cases.
+- **Track-level animation (`opacityAnimation` / `transformAnimation`)** — out of scope; clip-level animation handles fade-in/fade-out workflows already.
+
+### API examples
+
+```swift
+import Kadr
+import AVFoundation
+
+// 1. Filter.withScalar — public now
+let f = Filter.brightness(0.2)
+let f2 = f.withScalar(0.5)
+// Equivalent to Filter.brightness(0.5); useful when you have a Filter value and
+// only want to substitute its scalar (e.g. driving a slider).
+
+// 2. ImageClip.color — solid-color clip
+Video {
+    ImageClip.color(.red, duration: 2.0)            // TimeInterval form
+    ImageClip.color(.blue, duration: cmt(1.5))      // CMTime form
+}
+
+// 3. Track.opacity — per-track fade
+Video {
+    VideoClip(url: aroll).trimmed(to: 0...10)       // base track
+    Track {
+        VideoClip(url: broll1).trimmed(to: 0...3)
+        VideoClip(url: broll2).trimmed(to: 0...4)
+    }
+    .opacity(0.6)                                   // entire B-roll track at 60%
+    .at(time: 2.0)
+}
+```
+
+### Public surface sketch
+
+```swift
+public extension Filter {
+    /// Build a new filter case substituting `scalar` for this filter's primary
+    /// numeric parameter. Filters without a scalar (.mono, .lut, .chromaKey)
+    /// return `self` unchanged. Made public in v0.10 — kadr-ui's InspectorPanel
+    /// emits new scalar values that consumers apply via this helper.
+    func withScalar(_ scalar: Double) -> Filter
+}
+
+public extension ImageClip {
+    /// Build an `ImageClip` of solid color. Memory-efficient (1×1 source image
+    /// stretched by AVFoundation's aspect-fill), artifact-free on stretch because
+    /// every pixel is identical.
+    static func color(_ color: PlatformColor, duration: CMTime) -> ImageClip
+    static func color(_ color: PlatformColor, duration: TimeInterval = 3.0) -> ImageClip
+}
+
+public extension Track {
+    /// Multiply every clip's effective opacity by `factor` at layer-instruction-
+    /// build time. `factor` in `0...1`; default `1.0` (no fade).
+    func opacity(_ factor: Double) -> Track
+}
+```
+
+### Engine notes
+
+- **`Filter.withScalar`** — pure visibility change. No engine code touched.
+- **`ImageClip.color`** — synthesizes a 1×1 `PlatformImage` once at construction (`UIGraphicsImageRenderer` on iOS, `NSImage(size:1×1)` on macOS), wraps in the existing `ImageClip(_:duration:)` init. Engine treats it identically to any other `ImageClip`; AVFoundation stretches the 1-pixel source via aspect-fill.
+- **`Track.opacity`** — adds an `opacityFactor: Double` field on `Track` (default `1.0`). When the engine builds layer instructions for clips inside a `Track`, the per-clip `opacity` (defaulting to `1.0`) gets multiplied by the parent track's `opacityFactor`. The recursive pre-render path (Tracks-with-transitions, Tracks-with-nested-Tracks) applies the same multiplier on the inserted-pre-rendered-track's instruction.
+
+### Tier breakdown
+
+- **Tier 0** *(this PR)* — design doc only. No code.
+- **Tier 1** — `Filter.withScalar` public + `ImageClip.color` factory. ~30 LOC + tests.
+- **Tier 2** — `Track.opacity` modifier + engine wiring. ~100 LOC + tests.
+- **Tier 3** — Release prep + ship as **v0.10.0**.
+
+### Test strategy
+
+- **`Filter.withScalar`** — already tested internally; expose a couple of public-surface compile-time signature checks.
+- **`ImageClip.color`** — confirms duration / image are wired (1×1 source).
+- **`Track.opacity`** — pure helper for the multiplier (unit-tested without engine), plus engine smoke test that exports a Video with `Track.opacity(0.5)` and asserts the AVMutableVideoCompositionLayerInstruction's recorded opacity ramps reflect the multiplier.
+
+Target test count for v0.10: ~15 new tests. Suite: 506 → ~521.
+
+### Compatibility
+
+- Pure additive — every v0.9.x composition compiles unchanged.
+- No platform-floor change.
+- Bumps kadr-ui's recommended dep floor in a follow-up patch (kadr-ui can drop the duplicated `withScalar` shim once v0.10 ships); same for kadr-reels-studio.
+
+### Open questions (track in PRs, not blocking RFC merge)
+
+- **`Track` opacity vs `opacity` naming.** Short name conflicts with potential future per-track Transform's opacity field. v0.10 uses `.opacity(_:)` for the modifier and `opacityFactor` for the stored field, mirroring the Clip protocol's split. Revisit if a Transform.opacity ever lands.
+- **`ImageClip.color` on macOS via NSImage.** Solid-color `NSImage` synthesis differs slightly from `UIImage`; tests on both paths.
