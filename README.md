@@ -301,11 +301,11 @@ Add to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/SteliyanH/kadr.git", from: "0.9.0")
+    .package(url: "https://github.com/SteliyanH/kadr.git", from: "0.10.0")
 ]
 ```
 
-`from: "0.9.0"` picks up every minor and patch up to v1.0; bump to `from: "1.0.0"` once that ships for semver lock.
+`from: "0.10.0"` picks up every minor and patch up to v1.0; bump to `from: "1.0.0"` once that ships for semver lock.
 
 Or in Xcode: File > Add Package Dependencies > enter the repository URL.
 

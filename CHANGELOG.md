@@ -4,6 +4,32 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.10.0] - 2026-05-03
+
+Pre-v1.0 polish. Three small additions before semver lock — closes gaps real consumers (kadr-reels-studio's `ProjectStore`, kadr-ui's `InspectorPanel`) hit while building against the v0.9.x surface. Pure additive — every v0.9.x composition compiles unchanged.
+
+### Added
+
+- **`Filter.withScalar(_:)` made public.** Was internal in v0.8.2 (engine-only). kadr-ui's `InspectorPanel` emits new scalar values through its `onFilterIntensity` callback, expecting consumers to rebuild filter cases — without a public helper they duplicate the 11-case switch (kadr-reels-studio v0.1.0 did exactly that). Pure visibility flip; no behavior change.
+- **`ImageClip.color(_:duration:)`** — new static factory producing an `ImageClip` backed by a 1×1 `PlatformImage` of the given color. Memory-efficient (single pixel), artifact-free on stretch (every pixel identical). `CMTime` and `TimeInterval = 3.0` overloads. Replaces the ~30 LOC of swatch-rendering boilerplate in sample-project setups.
+- **`Track.opacity(_:)`** — per-track opacity multiplier. Engine multiplies every inner clip's effective opacity by the track's factor at layer-instruction-build time. Common edit: "fade B-roll over A-roll" without per-clip wiring. Composes with per-clip `.opacity(_:)` (a clip at `.opacity(0.8)` inside a track at `.opacity(0.5)` renders at effective opacity `0.4`).
+
+### Engine
+
+- `ClipAnimationInfo` gains `opacityFactor: Double` (default `1.0`); explicit init keeps all existing call-sites compiling.
+- `makeLayerInstruction` multiplies sampled (animated) or static opacity by `opacityFactor` before emitting `setOpacity`. When the clip has no per-clip opacity but the factor isn't `1.0`, the engine emits `setOpacity(Float(factor), at: clipStart)` so the fade applies uniformly.
+- Multi-track pure-media fast path propagates `track.opacityFactor` to inner-clip records.
+- Multi-track recursive pre-render path emits a single `ClipAnimationInfo` for the pre-rendered piece carrying the track factor.
+
+### Tests
+
+- 12 new tests covering `Filter.withScalar` public surface, `ImageClip.color` (CMTime / TimeInterval / default-duration / 1×1 source), `Track.opacityFactor` defaults + chainability, and an export smoke test that builds a `Video` with `Track.opacity(0.5)` over `ImageClip.color` sources and confirms export. Suite: 506 → 518.
+
+### Notes
+
+- Pure additive surface. Existing `kadr-ui` and `kadr-reels-studio` versions keep working; both can drop their duplicated `withScalar` shim once they bump their kadr dep floor to 0.10.0.
+- This is the last public-API expansion before v1.0 (semver lock, DocC tutorials, perf benchmarks). See [ROADMAP.md](ROADMAP.md).
+
 ## [0.9.2] - 2026-04-29
 
 Caption ingest — the AVFoundation bridge for caption metadata. Tier 3 of the v0.9 cycle and the final tier; **completes v0.9**.
