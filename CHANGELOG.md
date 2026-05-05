@@ -4,6 +4,34 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.10.1] - 2026-05-05
+
+Animation-clearing modifiers. Closes the install-but-can't-uninstall asymmetry that forced editor consumers (kadr-reels-studio's `ProjectStore`, every other keyframe-authoring UI) to reconstruct clips from `init(...)` and re-apply every property just to clear an animation. Pure additive — no existing modifier signature is touched.
+
+### Added
+
+- **`VideoClip.transformAnimation(_:)`** / **`VideoClip.opacityAnimation(_:)`** / **`VideoClip.filterAnimation(at:_:)`** — replace the named animation field, preserving the static base value and every other field. `filterAnimation(at:)` is a no-op for out-of-range indices (matches the editor-consumer mental model where stale indices can race with reorders).
+- **`ImageClip.transformAnimation(_:)`** / **`ImageClip.opacityAnimation(_:)`**.
+- **`TitleSequence.transformAnimation(_:)`** / **`TitleSequence.opacityAnimation(_:)`**.
+- **`ImageOverlay.positionAnimation(_:)`** / **`ImageOverlay.sizeAnimation(_:)`**.
+- **`StickerOverlay.positionAnimation(_:)`** / **`StickerOverlay.sizeAnimation(_:)`**.
+
+Pass `nil` to clear; pass a non-nil `Animation<T>` to replace.
+
+### Tests
+
+18 new tests in `AnimationClearingModifiersTests` covering: set non-nil installs the field; set nil clears it; every other field preserves; `filterAnimation(at:)` addresses the indexed slot without disturbing siblings; out-of-range / negative indices no-op; field isolation per overlay kind. Suite: 521 → 536.
+
+### Compatibility
+
+- Pure additive. Every v0.10.0 composition compiles unchanged.
+- One small visibility adjustment: `TitleSequence._duration` private → internal so the modifiers (in `Modifiers/Clip+AnimationClearing.swift`) can read it. No public-API change.
+
+### Notes
+
+- **Consumer follow-up**: kadr-reels-studio's `ProjectStore+Keyframes.swift` can drop the `rebuildVideoClip` / `rebuildImageClip` / `rebuildTitleSequence` helpers (~120 LOC) and use the new modifiers directly.
+- **`AudioTrack.volumeAnimation`?** Not added — kadr's `AudioTrack.volumeRamps` is array-based, not `Animation<Double>`. A future tier could unify the surface.
+
 ## [0.10.0] - 2026-05-03
 
 Pre-v1.0 polish. Three small additions before semver lock — closes gaps real consumers (kadr-reels-studio's `ProjectStore`, kadr-ui's `InspectorPanel`) hit while building against the v0.9.x surface. Pure additive — every v0.9.x composition compiles unchanged.
