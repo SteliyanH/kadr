@@ -770,3 +770,110 @@ Target test count for v0.10: ~15 new tests. Suite: 506 → ~521.
 
 - **`Track` opacity vs `opacity` naming.** Short name conflicts with potential future per-track Transform's opacity field. v0.10 uses `.opacity(_:)` for the modifier and `opacityFactor` for the stored field, mirroring the Clip protocol's split. Revisit if a Transform.opacity ever lands.
 - **`ImageClip.color` on macOS via NSImage.** Solid-color `NSImage` synthesis differs slightly from `UIImage`; tests on both paths.
+
+---
+
+## v0.10.1 — Animation-clearing modifiers
+
+**Status:** RFC. No code yet.
+
+### Motivation
+
+kadr's animation-bearing properties (`Clip.transform` / `transformAnimation`, `Clip.opacity` / `opacityAnimation`, `VideoClip.filters` / `filterAnimations`) ship setter modifiers that *install* an animation but no public path to *clear* one:
+
+```swift
+// kadr v0.10 surface — installation only
+clip.transform(t)                            // sets static, preserves any existing animation
+clip.transform(t, animation: a)              // sets static + animation
+                                             // (no signature for "clear the animation, keep the static")
+```
+
+This asymmetry forces every consumer building a keyframe-authoring UI (the canonical case: `kadr-reels-studio`) to bypass the modifier surface and reconstruct the clip from `init(...)`, manually re-applying every property:
+
+```swift
+// reels-studio v0.3 Tier 1 — ProjectStore+Keyframes.swift, ~120 LOC
+nonisolated static func rebuildVideoClip(
+    _ source: VideoClip,
+    transform: Transform?, transformAnimation: Animation<Transform>?,
+    opacity: Double?, opacityAnimation: Animation<Double>?
+) -> VideoClip {
+    var rebuilt = VideoClip(url: source.url)
+    if let trim = source.trimRange { rebuilt = rebuilt.trimmed(to: trim) }
+    if source.isReversed { rebuilt = rebuilt.reversed() }
+    if source.isMuted { rebuilt = rebuilt.muted() }
+    if let curve = source.speedCurve { rebuilt = rebuilt.speed(curve: curve) }
+    else if source.speedRate != 1.0 { rebuilt = rebuilt.speed(source.speedRate) }
+    for (i, filter) in source.filters.enumerated() { … }
+    // ... and so on
+}
+```
+
+The maintenance footgun: every kadr release that adds a `Clip` field (more animatable properties, future modifiers like `.colorGrade`, etc.) means every editor consumer's rebuild helper silently loses that field unless updated in lock-step. Same shape as the silent-data-loss audit caught in reels-studio v0.2 Tier 1.5 (`TextStyle.color`, `VideoClip.filters`, `Transform` all dropping in the persistence bridge for the same reason).
+
+This is defensive plumbing every editor consumer needs — it should live in kadr core, not get re-invented downstream.
+
+### Public API
+
+Add three setter modifiers per animatable-property type, surfaced on every `Clip` conformer that exposes the property:
+
+```swift
+extension VideoClip {
+    /// Replace the transform animation, preserving the static base
+    /// transform. Pass `nil` to clear the animation; the engine then
+    /// renders the static value at every frame.
+    public func transformAnimation(_ animation: Animation<Transform>?) -> VideoClip
+
+    /// Replace the opacity animation. Pass `nil` to clear.
+    public func opacityAnimation(_ animation: Animation<Double>?) -> VideoClip
+
+    /// Replace the animation on `filters[index]`. Pass `nil` to clear.
+    /// No-op if `index` is out of range.
+    public func filterAnimation(at index: Int, _ animation: Animation<Double>?) -> VideoClip
+}
+
+extension ImageClip {
+    public func transformAnimation(_ animation: Animation<Transform>?) -> ImageClip
+    public func opacityAnimation(_ animation: Animation<Double>?) -> ImageClip
+}
+
+extension TitleSequence {
+    public func transformAnimation(_ animation: Animation<Transform>?) -> TitleSequence
+    public func opacityAnimation(_ animation: Animation<Double>?) -> TitleSequence
+}
+```
+
+**Naming.** `transformAnimation(_:)` mirrors the storage property name. The modifier signature differs from the existing `transform(_:animation:)` (which sets both) so there's no overload collision. Consumers wanting "set both" keep using `.transform(_:animation:)`; consumers wanting "set just the animation" reach for `.transformAnimation(_:)`.
+
+**Semantics.**
+- Static base property unchanged.
+- Animation field assigned to the new value.
+- Clip identity (`clipID`, `startTime`) preserved.
+- All other fields preserved.
+
+### Tier breakdown
+
+- **Tier 0** *(this PR)* — RFC. No code.
+- **Tier 1** — Implement the seven modifiers (3 on VideoClip, 2 each on ImageClip / TitleSequence). ~80 LOC + 15 tests. Each test verifies: the target animation field updates correctly; nil clears it; no other field is disturbed; clip identity survives.
+- **Tier 2** — Release prep + ship as **v0.10.1**.
+
+### Test strategy
+
+Per-modifier:
+- **Set non-nil:** assert the animation field is the passed value.
+- **Set nil:** assert the animation field is `nil` even when one was previously installed.
+- **Field isolation:** start with a clip carrying every other field set (`trimRange`, `isReversed`, `isMuted`, `speedRate`, `speedCurve`, `filters`, `transform`, `opacity`, `clipID`, `startTime`); after applying the modifier, every other field equals its pre-call value.
+- **Filter index out-of-range:** `filterAnimation(at: 99, _:)` returns the clip unchanged.
+
+Target: ~15 new tests. Suite floor unchanged otherwise.
+
+### Compatibility
+
+- **Pure additive.** Every v0.10.0 composition compiles unchanged. No existing modifier signature is touched.
+- **No semver-major bump.** Patch release v0.10.1 — additive setter modifiers are the textbook safe surface change.
+- **Recommended consumer follow-up.** Once v0.10.1 is out, `kadr-reels-studio`'s `ProjectStore+Keyframes.swift` can drop the five `rebuildVideoClip` / `rebuildImageClip` / `rebuildTitleSequence` helpers (~120 LOC) and use the new modifiers directly. Same for any other consumer that's hitting the same pattern.
+
+### Open questions (track in PRs, not blocking RFC merge)
+
+- **Should `filterAnimation(at:_:)` raise on out-of-range index?** RFC says no-op for parity with kadr's existing tolerance for invalid input (e.g. `Filter.withScalar` on a non-scalar filter). Could go either way — surface a `KadrError.filterIndexOutOfRange` instead. Lean: silent no-op matches the editor-consumer mental model.
+- **Position / Size animations on overlays.** kadr-ui v0.7 added `Overlay.positionAnimation` / `sizeAnimation` (on `ImageOverlay` / `StickerOverlay`). Should v0.10.1 ship matching `positionAnimation(_:)` / `sizeAnimation(_:)` clearers on the overlay types? Yes, in scope — same pattern, ~40 more LOC.
+- **`AudioTrack.volumeAnimation`?** Not a thing today — kadr's `AudioTrack.volumeRamps` is array-based, not `Animation<Double>`. Leave alone unless a future tier unifies the surface.
