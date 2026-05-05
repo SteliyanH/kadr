@@ -191,6 +191,10 @@ Three small additions before semver lock — closes gaps real consumers hit whil
 - **`ImageClip.color(_:duration:)`** — solid-color clip factory backed by a 1×1 PlatformImage source.
 - **`Track.opacity(_:)`** — per-track opacity multiplier. Engine multiplies every inner clip's effective opacity by the track factor at layer-instruction-build time.
 
+## v0.10.1 — Animation-clearing modifiers ✓ shipped
+
+Defensive plumbing patch closing the install-but-can't-uninstall asymmetry on every animation field. Adds `transformAnimation(_:)` / `opacityAnimation(_:)` / `filterAnimation(at:_:)` setters across `VideoClip` / `ImageClip` / `TitleSequence`, plus `positionAnimation(_:)` / `sizeAnimation(_:)` on `ImageOverlay` / `StickerOverlay`. Pass `nil` to clear; non-nil to replace. Pure additive — every v0.10.0 composition compiles unchanged.
+
 This is the last public-API expansion before v1.0.
 
 ## v1.0.0 — Production Ready

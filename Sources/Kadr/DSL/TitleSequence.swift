@@ -33,7 +33,7 @@ public struct TitleSequence: Clip, Sendable {
     public let style: TextStyle
     /// Solid color filling the area behind the text.
     public let backgroundColor: PlatformColor
-    private let _duration: CMTime
+    internal let _duration: CMTime
 
     /// Stable identifier for addressing this clip across reorders or trims, set via
     /// ``id(_:)``. `nil` if no ID has been assigned.
