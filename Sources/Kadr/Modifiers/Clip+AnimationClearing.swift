@@ -31,6 +31,7 @@ extension VideoClip {
             replacementAudioURL: replacementAudioURL,
             speedRate: speedRate,
             filters: filters,
+            filterIDs: filterIDs,
             filterAnimations: filterAnimations,
             compositors: compositors,
             clipID: clipID,
@@ -54,6 +55,7 @@ extension VideoClip {
             replacementAudioURL: replacementAudioURL,
             speedRate: speedRate,
             filters: filters,
+            filterIDs: filterIDs,
             filterAnimations: filterAnimations,
             compositors: compositors,
             clipID: clipID,
@@ -70,6 +72,12 @@ extension VideoClip {
     /// No-op if `index` is out of range — the clip is returned unchanged
     /// rather than throwing, matching the editor-consumer mental model
     /// where stale indices can race with reorders. Added in v0.10.1.
+    ///
+    /// **Deprecated in v0.11.** Index-based filter access is fragile —
+    /// reordering or deleting a filter without rotating the animation
+    /// array silently re-maps animations to the wrong filter. Prefer
+    /// ``filterAnimation(for:_:)`` keyed by ``FilterID``.
+    @available(*, deprecated, message: "Index-based access is fragile under filter reordering. Use filterAnimation(for: filterID, _: animation) instead. Removal target: v0.12.")
     public func filterAnimation(at index: Int, _ animation: Animation<Double>?) -> VideoClip {
         guard index >= 0, index < filterAnimations.count else { return self }
         var newAnimations = filterAnimations
@@ -82,6 +90,7 @@ extension VideoClip {
             replacementAudioURL: replacementAudioURL,
             speedRate: speedRate,
             filters: filters,
+            filterIDs: filterIDs,
             filterAnimations: newAnimations,
             compositors: compositors,
             clipID: clipID,
