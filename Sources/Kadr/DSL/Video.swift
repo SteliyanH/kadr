@@ -47,11 +47,6 @@ public struct Video: Sendable {
     /// ``compositor(_:)-(closure)``. `nil` (default) means the engine will use its
     /// built-in alpha-composite later-over-earlier blender when the composition has
     /// multiple parallel tracks.
-    ///
-    /// > **v0.6 Tier 3 status:** the surface is in place but the engine wiring lands
-    /// > with the multi-track engine PR (Tier 4). Setting a multi-input compositor in
-    /// > v0.6.0-pre builds is recorded on the value but not yet consulted at export
-    /// > time — single-track compositions continue to bypass this surface entirely.
     public let multiInputCompositor: (any MultiInputCompositor)?
 
     /// Optional time window during which the ``multiInputCompositor`` is active. When
