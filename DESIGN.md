@@ -877,3 +877,110 @@ Target: ~15 new tests. Suite floor unchanged otherwise.
 - **Should `filterAnimation(at:_:)` raise on out-of-range index?** RFC says no-op for parity with kadr's existing tolerance for invalid input (e.g. `Filter.withScalar` on a non-scalar filter). Could go either way — surface a `KadrError.filterIndexOutOfRange` instead. Lean: silent no-op matches the editor-consumer mental model.
 - **Position / Size animations on overlays.** kadr-ui v0.7 added `Overlay.positionAnimation` / `sizeAnimation` (on `ImageOverlay` / `StickerOverlay`). Should v0.10.1 ship matching `positionAnimation(_:)` / `sizeAnimation(_:)` clearers on the overlay types? Yes, in scope — same pattern, ~40 more LOC.
 - **`AudioTrack.volumeAnimation`?** Not a thing today — kadr's `AudioTrack.volumeRamps` is array-based, not `Animation<Double>`. Leave alone unless a future tier unifies the surface.
+
+## v0.11.0 — API hardening + correctness
+
+**Status:** RFC. No code yet.
+
+### Motivation
+
+A cross-package audit before the v1.0 stability commitment surfaced three load-bearing correctness gaps in the public DSL that should be fixed *before* the API freezes — once v1.0 ships, each becomes a breaking change with no clean migration window.
+
+The cycle is intentionally breaking; the v0.10.x patch ladder isn't the right home. Bundle in one cycle so consumers (kadr-ui v0.10.0, reels-studio v0.6.0) bump together.
+
+### Scope lock — v0.11
+
+In scope:
+- **`CancellationToken` data-race fix.** Today: `_isCancelled: Bool` + `exportSession: AVAssetExportSession?` are non-atomic fields under `@unchecked Sendable`. `register()` (export background) and `cancel()` (UI) race; the `@unchecked` suppresses the compiler check without making it safe. Fix via `OSAllocatedUnfairLock` or actor isolation.
+- **`VideoClip.speed` type-level exclusivity.** Today: `speed(_:)` and `speed(curve:)` mutually clear each other through a documented side-effect. Collapse to a single `Speed` enum: `.flat(Double)` / `.curved(Animation<Double>)`. Compile-time exclusivity. Migration: keep deprecated overloads for one minor.
+- **`filterAnimations` keyed by stable filter ref, not parallel-array index.** Today: `filters: [Filter]` + `filterAnimations: [Animation<Double>?]` coupled by array index. Reordering one without rotating the other silently re-maps animations to the wrong filters. `ProjectDocument` v3 persistence shifts indices on filter deletion — a real bug waiting to fire. Introduce `FilterID` (UUID-backed) on each `Filter` case and key animations by id.
+- **Stale comment sweep.** `Video.swift` multi-input compositor / `ImageClip.at(time:)` notes still reference "engine wiring lands in the multi-track engine PR" (shipped v0.6). Sweep.
+
+Out of scope:
+- Engine perf (CIImage pooling, duration caching) — v0.12.
+- HDR / Dolby Vision pipeline — v0.13.
+- Zero-duration / NaN-time defensive checks — track separately if QA flags.
+
+### Public API changes
+
+```swift
+// MARK: - Tier 1: CancellationToken atomicity
+
+// No public API change — internal field protection only. Callers see the
+// same `register(...)` / `cancel()` surface; race-free under strict
+// concurrency. `@unchecked Sendable` removed.
+
+// MARK: - Tier 2: VideoClip.speed enum
+
+public enum Speed: Sendable, Equatable {
+    case flat(Double)
+    case curved(Animation<Double>)
+}
+
+extension VideoClip {
+    /// Replaces the old `speed(_:)` / `speed(curve:)` pair. Single setter,
+    /// single getter. Deprecated `speed(_:)` / `speed(curve:)` overloads
+    /// kept for one minor.
+    public func speed(_ value: Speed) -> VideoClip
+    public var speed: Speed { get }
+}
+```
+
+```swift
+// MARK: - Tier 3: Filter keyed by FilterID
+
+public struct FilterID: Hashable, Sendable {
+    public init(_ rawValue: String)  // matches ClipID / LayerID
+}
+
+extension Filter {
+    /// Stable identity assigned at construction. Survives reorder, copy,
+    /// and Codable round-trip. Animations bind to the id, not the array
+    /// position.
+    public var id: FilterID { get }
+}
+
+extension VideoClip {
+    /// Animations are now a dictionary keyed by `FilterID`. The old
+    /// parallel-array API stays for one minor (deprecated) and migrates
+    /// on construction.
+    public func filterAnimation(for id: FilterID, _ animation: Animation<Double>?) -> VideoClip
+    public func filterAnimation(for id: FilterID) -> Animation<Double>?
+}
+```
+
+### Migration
+
+- **`speed`:** kept compat overloads emit a `Speed` case; deprecated for one minor; removed in v0.12.
+- **`filterAnimations`:** the v0.10.1 `filterAnimation(at index: Int, _:)` clearer stays as a deprecated overload that resolves index → `FilterID` lazily. Consumer code (reels-studio v0.6 floor bump) flips to the keyed API. Removed in v0.12.
+- **Codable shape:** `ProjectDocument`-style mirrors (reels-studio v3 schema) need a v4 bump that adds `filterID: String?` per filter; absent on v3 → assigned a deterministic id derived from `(clipID, arrayIndex)` so old projects load cleanly.
+- **`CancellationToken`:** internal, no consumer changes.
+
+### Tier breakdown
+
+- **Tier 0** *(this PR)* — RFC. No code.
+- **Tier 1** — `CancellationToken` atomicity. `OSAllocatedUnfairLock` around `_isCancelled` + `exportSession`; cancel-during-register race tests. ~50 LOC + ~6 tests.
+- **Tier 2** — `Speed` enum collapse. `Speed` type; `VideoClip.speed(_ value: Speed)` setter; deprecated overloads; `SpeedSampler` updates if needed; ~80 LOC + ~10 tests.
+- **Tier 3** — `FilterID` + keyed animations. `FilterID` struct; per-`Filter`-case `id` assignment; `filterAnimations: [FilterID: Animation<Double>?]` internal storage; new keyed surface; index-based deprecated overloads; ~150 LOC + ~15 tests (including ordering + Codable round-trip).
+- **Tier 4** — Stale-comment sweep + release prep + tag v0.11.0.
+
+### Test strategy
+
+- **`CancellationToken`:** stress test 1000 concurrent `cancel()` / `register()` interleavings; assert `isCancelled` and `exportSession` reach consistent state.
+- **`Speed`:** flat → curved → flat round-trip; Codable round-trip preserves case; deprecated overloads emit the right `Speed` case.
+- **`FilterID`:** reorder filters → animation still attached to original filter; delete filter → animation cleared; Codable round-trip preserves `FilterID`; old-style index-based overloads resolve to the right `FilterID`.
+
+Target: ~30 new tests. Suite: 536 → ~566.
+
+### Compatibility
+
+- **Breaking** for `VideoClip.speed` getter (now returns `Speed` enum, not `Double`).
+- **Additive** for setters; deprecated overloads for one minor.
+- **Codable schema bump** — kadr's own export shape doesn't change, but downstream `ProjectDocument` mirrors need a v3 → v4 bump (handled in reels-studio v0.6 Tier 2).
+- **Kadr-ui floor** stays at ≥ 0.10.0 — no kadr-ui surface uses the changed types directly. But kadr-ui v0.10.0 bumps its kadr floor to 0.11 for cleanliness.
+
+### Open questions
+
+- **Should `Filter.withScalar(_:)` rebuild preserve `FilterID`?** RFC says yes — the scalar value is a property of the filter case, not its identity. Reordering or rebuilding doesn't issue a new id. Tested.
+- **Should the deprecated `speed(_:)` overload accept `0` (= pause)?** Existing API does; keep the same semantics in the `.flat(0)` case so behavior doesn't shift mid-migration.
+- **`@unchecked Sendable` audit on the rest of the package** — only `CancellationToken` was flagged, but worth a sweep. Track separately as a v0.11.x patch if more surface.
