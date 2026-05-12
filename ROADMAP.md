@@ -195,7 +195,26 @@ Three small additions before semver lock — closes gaps real consumers hit whil
 
 Defensive plumbing patch closing the install-but-can't-uninstall asymmetry on every animation field. Adds `transformAnimation(_:)` / `opacityAnimation(_:)` / `filterAnimation(at:_:)` setters across `VideoClip` / `ImageClip` / `TitleSequence`, plus `positionAnimation(_:)` / `sizeAnimation(_:)` on `ImageOverlay` / `StickerOverlay`. Pass `nil` to clear; non-nil to replace. Pure additive — every v0.10.0 composition compiles unchanged.
 
-This is the last public-API expansion before v1.0.
+This is the last *non-breaking* public-API expansion before the v0.11 hardening cycle.
+
+## v0.11.0 — API hardening + correctness *(planned)*
+
+Pre-v1.0 cycle absorbing three breaking-but-necessary fixes flagged in a cross-package audit before the v1.0 stability commitment. Four tiers:
+
+1. **`CancellationToken` atomicity** — `OSAllocatedUnfairLock` around `_isCancelled` + `exportSession`; `@unchecked Sendable` removed.
+2. **`VideoClip.speed` collapsed to a `Speed` enum** (`.flat(Double)` / `.curved(Animation<Double>)`); compile-time exclusivity. Deprecated overloads for one minor.
+3. **`FilterID` + keyed animations** — `filterAnimations` becomes `[FilterID: Animation<Double>?]`; reorders / deletes don't silently re-map. Deprecated index-based surface for one minor.
+4. **Stale-comment sweep** + release prep + tag.
+
+Consumer impact: kadr-ui v0.10.0 + reels-studio v0.6.0 bump kadr floor to ≥ 0.11.0.
+
+## v0.12.0 — Engine perf *(planned)*
+
+CIImage pooling in `KadrVideoCompositor`; `Video.duration` caching; `OverlayRenderer` per-frame batching. Driven by reels-studio v0.7's perf test suite.
+
+## v0.13.0 — HDR / Dolby Vision / projected media *(planned)*
+
+HDR transfer-function preservation through the compositor; Dolby Vision metadata pass-through; Apple Projected Media Profile (APMP) read awareness. Pairs with kadr-photos v0.7.
 
 ## v1.0.0 — Production Ready
 
