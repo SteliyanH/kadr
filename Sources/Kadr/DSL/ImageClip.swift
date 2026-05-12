@@ -113,8 +113,7 @@ public struct ImageClip: Clip, Sendable {
     }
 
     /// Pin this clip to an explicit composition start time. See ``Clip/startTime`` for
-    /// the contract; v0.6 Tier 1 ships the surface only — engine wiring lands in the
-    /// multi-track engine PR.
+    /// the contract.
     public func at(time: CMTime) -> ImageClip {
         ImageClip(image: image, duration: _duration, backgroundColor: backgroundColor, audioURL: audioURL, clipID: clipID, startTime: time, transform: transform, transformAnimation: transformAnimation, opacity: opacity, opacityAnimation: opacityAnimation)
     }

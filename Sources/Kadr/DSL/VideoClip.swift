@@ -361,9 +361,6 @@ public struct VideoClip: Clip, Sendable {
     /// }
     /// ```
     ///
-    /// > **v0.6 Tier 1 status:** the surface is in place but the engine wiring lands
-    /// > with the multi-track engine PR. Setting `.at(time:)` in v0.6.0-pre builds has
-    /// > no runtime effect yet — the clip still participates in the implicit chain.
     public func at(time: CMTime) -> VideoClip {
         VideoClip(url: url, trimRange: trimRange, isReversed: isReversed, isMuted: isMuted, replacementAudioURL: replacementAudioURL, speedRate: speedRate, filters: filters, filterIDs: filterIDs, filterAnimations: filterAnimations, compositors: compositors, clipID: clipID, startTime: time, transform: transform, transformAnimation: transformAnimation, opacity: opacity, opacityAnimation: opacityAnimation, speedCurve: speedCurve)
     }

@@ -4,6 +4,51 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.11.0] - 2026-05-12
+
+API hardening + correctness cycle. Closes three load-bearing issues surfaced by a cross-package audit before the v1.0 stability commitment: a data race in the export cancellation path, the documented-but-not-type-level mutual exclusion between flat and curved speed, and the parallel-index drift between filters and their animations. All three would have been breaking changes to fix post-v1.0; bundle now so consumers (kadr-ui v0.10.0, kadr-reels-studio v0.6.0) migrate once.
+
+### Added
+
+- **`Speed` enum** — canonical representation of clip playback speed. `.flat(Double)` and `.curved(Animation<Double>)` are mutually exclusive at the type level. New `VideoClip.speed(_ value: Speed)` setter + `var speed: Speed` getter (`.curved` wins over `.flat` when both storage fields are non-default, matching the engine's existing precedence).
+- **`FilterID`** struct mirroring `ClipID` / `LayerID` shape — `Hashable`, `Sendable`, `ExpressibleByStringLiteral`. Static `.generate()` returns a UUID-backed id.
+- **`VideoClip.filterIDs: [FilterID]`** — new public stored property parallel to `filters`. Auto-generated on every `.filter(_:)` call; threaded through every modifier rebuild so identities survive trim / id / opacity / speed / clearing modifiers.
+- **Keyed filter API** on `VideoClip`:
+  - `filter(for: FilterID) -> Filter?`
+  - `filterAnimation(for: FilterID) -> Animation<Double>?`
+  - `filterAnimation(for: FilterID, _ animation: Animation<Double>?) -> VideoClip`
+  - `setFilter(for: FilterID, _ filter: Filter) -> VideoClip` — mutate filter payload while preserving id + bound animation. The intended migration target for consumers rebuilding via `withScalar`.
+  - `removeFilter(for: FilterID) -> VideoClip` — drops the slot and its animation; leaves neighbors intact.
+
+### Fixed
+
+- **`CancellationToken` race.** Pre-v0.11 the type used `@unchecked Sendable` with **no synchronization** around `_isCancelled` and `exportSession`. `register()` (export background) and `cancel()` (UI) racing produced undefined behavior under Swift 6 strict concurrency. v0.11 backs the `@unchecked Sendable` claim with a real `NSLock` guarding every field access. AVFoundation calls (`cancelExport()`) happen outside the lock to avoid reentrancy with delegate callbacks. `@unchecked` stays because `AVAssetExportSession` lacks a `Sendable` conformance on macOS — but it's now load-bearing on the lock invariant, not "trust me".
+
+### Deprecated (removal target v0.12)
+
+- `VideoClip.speed(_ rate: Double)` → use `speed(.flat(rate))`.
+- `VideoClip.speed(curve: Animation<Double>)` → use `speed(.curved(curve))`.
+- `VideoClip.filterAnimation(at index: Int, _ animation: Animation<Double>?)` → use `filterAnimation(for: filterID, _: animation)`. The index-based surface is fragile under filter reordering; the keyed surface survives.
+
+### Internal
+
+- Stale v0.6-pre status comments removed from `Clip.swift`, `VideoClip.swift`, `ImageClip.swift`, `Video.swift` (placeholders for engine wiring that shipped in v0.6.0).
+
+### Tests
+
+30 new tests across three suites: `CancellationTokenTests` (8) covering single-thread sanity / both ordering paths / concurrent stress via GCD; `SpeedEnumTests` (8) covering both round-trip directions / structural exclusivity / deprecated-overload dispatch / field-preservation regression; `FilterIDTests` (14) covering id generation / `.filter(_:)` auto-population / `filter(for:)` lookup / animation setter round-trip + clear / `setFilter` preserves id+animation / `removeFilter` drops slot+animation.
+
+### Compatibility
+
+- **Breaking** for `VideoClip.speed` getter (now returns `Speed` enum, not `Double`). Deprecated setters cover the migration window.
+- **Pure additive** for `FilterID` + keyed API. Existing `filters` / `filterAnimations` stored properties stay public for back-compat with downstream Codable mirrors.
+- **No-op** for `CancellationToken` consumers — internal field protection only.
+- Downstream `ProjectDocument`-style mirrors that serialize filter animations need a schema bump that adds `filterID` per filter; v0.10.x docs assign deterministic ids on load. Handled in kadr-reels-studio v0.6 Tier 2.
+
+### Notes
+
+- The `FilterID` design is **surgical** — `FilterID` lives on `VideoClip` parallel to `filters`, not on the `Filter` enum itself. Consumers passing `Filter` values around independently don't carry the id across copies; the keyed mutation path (`setFilter(for:_:)`) is the supported way to preserve identity across rebuilds. If a future consumer needs id-on-the-`Filter`-value semantics, escalate to a v0.12.x patch.
+
 ## [0.10.1] - 2026-05-05
 
 Animation-clearing modifiers. Closes the install-but-can't-uninstall asymmetry that forced editor consumers (kadr-reels-studio's `ProjectStore`, every other keyframe-authoring UI) to reconstruct clips from `init(...)` and re-apply every property just to clear an animation. Pure additive — no existing modifier signature is touched.

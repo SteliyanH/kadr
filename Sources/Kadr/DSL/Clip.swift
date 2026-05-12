@@ -26,11 +26,6 @@ public protocol Clip: Sendable {
     ///
     /// Set via `.at(time:)` on a media-clip type. Multiple clips can share a `startTime`
     /// or overlap; render order follows declaration order (later renders on top).
-    ///
-    /// > **v0.6 Tier 1 status:** the surface is in place but the engine wiring lands in
-    /// > a subsequent PR. Setting `startTime` in v0.6 pre-release builds has no runtime
-    /// > effect yet — the clip still participates in the chain. Final behavior arrives
-    /// > with the multi-track engine PR.
     var startTime: CMTime? { get }
 
     /// Optional per-clip affine transform applied in the engine's render space. `nil`
