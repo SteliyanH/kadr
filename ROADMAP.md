@@ -197,13 +197,13 @@ Defensive plumbing patch closing the install-but-can't-uninstall asymmetry on ev
 
 This is the last *non-breaking* public-API expansion before the v0.11 hardening cycle.
 
-## v0.11.0 — API hardening + correctness *(planned)*
+## v0.11.0 — API hardening + correctness ✓ shipped
 
-Pre-v1.0 cycle absorbing three breaking-but-necessary fixes flagged in a cross-package audit before the v1.0 stability commitment. Four tiers:
+Pre-v1.0 cycle absorbing three load-bearing fixes flagged in a cross-package audit. Four tiers:
 
-1. **`CancellationToken` atomicity** — `OSAllocatedUnfairLock` around `_isCancelled` + `exportSession`; `@unchecked Sendable` removed.
-2. **`VideoClip.speed` collapsed to a `Speed` enum** (`.flat(Double)` / `.curved(Animation<Double>)`); compile-time exclusivity. Deprecated overloads for one minor.
-3. **`FilterID` + keyed animations** — `filterAnimations` becomes `[FilterID: Animation<Double>?]`; reorders / deletes don't silently re-map. Deprecated index-based surface for one minor.
+1. **`CancellationToken` atomicity** — `NSLock` around `_isCancelled` + `exportSession`; `@unchecked Sendable` stays (`AVAssetExportSession` lacks Sendable on macOS) but is now backed by real synchronization rather than an unbacked claim.
+2. **`VideoClip.speed` collapsed to a `Speed` enum** (`.flat(Double)` / `.curved(Animation<Double>)`); compile-time exclusivity. Deprecated overloads dispatch through the new surface (removal target v0.12).
+3. **`FilterID` + keyed filter API** — `filter(for:)`, `filterAnimation(for:_:)`, `setFilter(for:_:)`, `removeFilter(for:)`. Surgical "add-don't-replace" design — `FilterID` lives on `VideoClip` parallel to `filters`, not on the `Filter` enum. Deprecated index-based `filterAnimation(at:_:)` for one minor.
 4. **Stale-comment sweep** + release prep + tag.
 
 Consumer impact: kadr-ui v0.10.0 + reels-studio v0.6.0 bump kadr floor to ≥ 0.11.0.
