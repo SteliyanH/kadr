@@ -984,3 +984,100 @@ Target: ~30 new tests. Suite: 536 → ~566.
 - **Should `Filter.withScalar(_:)` rebuild preserve `FilterID`?** RFC says yes — the scalar value is a property of the filter case, not its identity. Reordering or rebuilding doesn't issue a new id. Tested.
 - **Should the deprecated `speed(_:)` overload accept `0` (= pause)?** Existing API does; keep the same semantics in the `.flat(0)` case so behavior doesn't shift mid-migration.
 - **`@unchecked Sendable` audit on the rest of the package** — only `CancellationToken` was flagged, but worth a sweep. Track separately as a v0.11.x patch if more surface.
+
+## v0.12.0 — Text effects (stroke + shadow)
+
+**Status:** RFC. No code yet.
+
+### Motivation
+
+`TextStyle` today carries `fontName / fontSize / color / alignment / weight` — enough to render readable copy, not enough to render readable copy *on a busy video frame*. Every CapCut / iMovie / Reels editor reaches for stroke or shadow within the first minute when their white text disappears against a bright background. Reels Studio v0.7 Tier 3 needs both surfaces; this cycle adds them.
+
+Pairs with **reels-studio v0.7** which wires both into `OverlayInspectorArea` once we ship.
+
+### Scope lock — v0.12
+
+In scope:
+- **`TextStyle.stroke: TextStroke?`** — `TextStroke(width: Double, color: PlatformColor)`. `nil` = no stroke (today's default). Renderer paints stroke *under* the fill.
+- **`TextStyle.shadow: TextShadow?`** — `TextShadow(offset: CGSize, blur: Double, color: PlatformColor)`. `nil` = no shadow. Renderer paints shadow *behind* the text glyph layer.
+- **Compositor wiring** in the text-overlay render path (both static `TextOverlay` and `TitleSequence`). On UIKit/AppKit this goes through `NSAttributedString` attributes (`.strokeWidth` + `.strokeColor`) for the stroke and a sublayer / `CGContext.setShadow(...)` for the shadow.
+- **Static-only.** No animation on either field this cycle — both apply at render time and don't tween. Animated stroke / shadow lands when (if) a use case appears.
+
+Out of scope:
+- **Outline rendering** (positive `strokeWidth` only paints the stroke + fill; a *negative* width in `NSAttributedString` semantics would paint the stroke only). Defer — most consumers want the filled+stroked combo.
+- **Gradient stroke / shadow.** Single colors only.
+- **Glow** (multi-pass shadow). v0.13 candidate.
+- **Animated stroke width** — not a v0.12 surface. The kadr animation system handles `Double` paths today; adding `Animation<TextStroke>` is a v1.0+ ergonomic.
+
+### Surface
+
+```swift
+public struct TextStroke: Sendable, Equatable {
+    public var width: Double          // points, render-space (0 = no stroke)
+    public var color: PlatformColor
+
+    public init(width: Double, color: PlatformColor = .black) {
+        self.width = width
+        self.color = color
+    }
+}
+
+public struct TextShadow: Sendable, Equatable {
+    public var offset: CGSize         // points, render-space
+    public var blur: Double           // points
+    public var color: PlatformColor
+
+    public init(
+        offset: CGSize = CGSize(width: 0, height: 2),
+        blur: Double = 4,
+        color: PlatformColor = .black
+    ) {
+        self.offset = offset
+        self.blur = blur
+        self.color = color
+    }
+}
+
+public struct TextStyle: Sendable, Equatable {
+    public var fontName: String?
+    public var fontSize: Double
+    public var color: PlatformColor
+    public var alignment: Alignment
+    public var weight: Weight
+    public var stroke: TextStroke?            // NEW
+    public var shadow: TextShadow?            // NEW
+    // ...
+}
+```
+
+`Equatable` excludes `PlatformColor` components today (AppKit's `NSColor` isn't `Equatable`). The new fields follow the same convention: stroke/shadow widths + offsets compare; colors are excluded from the compiler-synthesized equality. Tests pin this so a future "real `Color` equality" change doesn't silently flip semantics.
+
+### Tier breakdown
+
+#### Tier 1 — Surface + structs (no rendering)
+
+- Add `TextStroke` + `TextShadow` Sendable structs.
+- Add fields to `TextStyle` (default nil, additive).
+- Update the existing `TextStyle.==` operator to compare new fields (excluding color components per the established convention).
+
+~80 LOC + ~10 tests covering init defaults, mutation, equality.
+
+#### Tier 2 — Renderer wiring
+
+- UIKit / AppKit text-overlay compositor (live in `Sources/Kadr/Engine/Compositor/Text*.swift` — exact filename TBD at implementation time, the surface is one helper that builds an `NSAttributedString` + a `CGContext.setShadow` call).
+- Stroke: `NSAttributedString.Key.strokeWidth` + `.strokeColor` (positive width = stroke + fill, matches the convention every other iOS text editor uses).
+- Shadow: paint to `CGContext` with `setShadow(offset:blur:color:)` *before* the text draw call.
+- Verify against export: a rendered frame with stroke + shadow should match the editor's preview.
+
+~150 LOC + ~12 tests (snapshot-ish coverage at the unit level; full visual regression lands when kadr-ui exposes a `TextOverlayPreview` we can pixel-compare against — out of scope here).
+
+#### Tier 3 — Stale-comment sweep + release prep + tag v0.12.0
+
+- Walk `TextStyle.swift` + the compositor + every public docstring touching text rendering. Update example snippets so the new fields appear in the canonical "build a styled title" example.
+- CHANGELOG entry. README mentions the new fields under "Text rendering."
+- Tag, release, back-merge.
+
+### Risks
+
+- **Render parity.** AppKit's `NSAttributedString` stroke / shadow semantics drift slightly from UIKit's at sub-pixel widths. Pin the unit tests to integer widths and a single platform; cross-platform parity test is a v0.13 ergonomics item.
+- **Schema bleed.** Consumers persisting `TextStyle` (reels-studio) need a schema bump downstream — flagged in the reels-studio v0.7 RFC as Schema v5. Coordinate the timing so old kadr + new reels-studio + old reels-studio doc combinations don't surprise anyone.
