@@ -68,6 +68,8 @@ let url = try await Video {
 - ``ImageOverlay``
 - ``TextOverlay``
 - ``TextStyle``
+- ``TextStroke``
+- ``TextShadow``
 - ``StickerOverlay``
 
 ### Filters (v0.3+)

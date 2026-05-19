@@ -208,14 +208,17 @@ Pre-v1.0 cycle absorbing three load-bearing fixes flagged in a cross-package aud
 
 Consumer impact: kadr-ui v0.10.0 + reels-studio v0.6.0 bump kadr floor to ≥ 0.11.0.
 
-## v0.12.0 — Text effects (stroke + shadow) *(planned)*
+## v0.12.0 — Text effects (stroke + shadow) ✓ shipped
 
-`TextStyle` today carries `fontName` / `fontSize` / `color` / `alignment` / `weight` — enough for legible copy on a still, not enough for legible copy on a busy video frame. v0.12 adds two additive fields:
+Additive `TextStroke` + `TextShadow` for legible copy on busy frames. `TextStyle` gains `stroke: TextStroke?` and `shadow: TextShadow?`, both `nil` by default — pre-v0.12 callers compile and render identically.
 
-- **`TextStyle.stroke: TextStroke?`** — `TextStroke(width: Double, color: PlatformColor)`. Renderer paints stroke under the fill via `NSAttributedString.Key.strokeWidth` + `.strokeColor`.
-- **`TextStyle.shadow: TextShadow?`** — `TextShadow(offset: CGSize, blur: Double, color: PlatformColor)`. Painted via `CGContext.setShadow(...)` before the glyph layer.
+Stroke routes through `NSAttributedString` (positive public API, internally negated `.strokeWidth` for stroke+fill — Apple's counter-intuitive convention). Shadow routes through `CALayer.shadowColor` / `.shadowOffset` / `.shadowRadius` / `.shadowOpacity`; opacity is pulled from the color's own alpha so translucent shadows work without an extra knob.
 
-Both default `nil`; v0.11 docs continue rendering unchanged. Three tiers: surface + structs, renderer wiring, stale-comment sweep + release prep. Pairs with **reels-studio v0.7 Tier 3** which surfaces both in `OverlayInspectorArea`.
+Equatable follows TextStyle's existing pattern — compare scalars, skip color components (NSColor isn't Equatable on AppKit). `nil` stroke ≠ zero-width stroke even though both render identically (preserves "user cleared this field" intent for undo / persistence).
+
+Three tiers: surface + structs, renderer wiring, release prep. Suite +17 tests; full run 536 across 44 suites.
+
+Pairs with **reels-studio v0.7 Tier 3** which surfaces both in `OverlayInspectorArea`.
 
 ## v0.12.x — Engine perf *(parked)*
 
