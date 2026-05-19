@@ -208,9 +208,18 @@ Pre-v1.0 cycle absorbing three load-bearing fixes flagged in a cross-package aud
 
 Consumer impact: kadr-ui v0.10.0 + reels-studio v0.6.0 bump kadr floor to ≥ 0.11.0.
 
-## v0.12.0 — Engine perf *(planned)*
+## v0.12.0 — Text effects (stroke + shadow) *(planned)*
 
-CIImage pooling in `KadrVideoCompositor`; `Video.duration` caching; `OverlayRenderer` per-frame batching. Driven by reels-studio v0.7's perf test suite.
+`TextStyle` today carries `fontName` / `fontSize` / `color` / `alignment` / `weight` — enough for legible copy on a still, not enough for legible copy on a busy video frame. v0.12 adds two additive fields:
+
+- **`TextStyle.stroke: TextStroke?`** — `TextStroke(width: Double, color: PlatformColor)`. Renderer paints stroke under the fill via `NSAttributedString.Key.strokeWidth` + `.strokeColor`.
+- **`TextStyle.shadow: TextShadow?`** — `TextShadow(offset: CGSize, blur: Double, color: PlatformColor)`. Painted via `CGContext.setShadow(...)` before the glyph layer.
+
+Both default `nil`; v0.11 docs continue rendering unchanged. Three tiers: surface + structs, renderer wiring, stale-comment sweep + release prep. Pairs with **reels-studio v0.7 Tier 3** which surfaces both in `OverlayInspectorArea`.
+
+## v0.12.x — Engine perf *(parked)*
+
+CIImage pooling in `KadrVideoCompositor`; `Video.duration` caching; `OverlayRenderer` per-frame batching. Driven by reels-studio v0.7's perf test suite. Folded into a v0.12.x patch cycle that follows v0.12.0 rather than gating the text-effects work behind the perf audit — the audit needs the v0.7 perf-test surface to drive it, and that surface lands during the v0.7 cycle.
 
 ## v0.13.0 — HDR / Dolby Vision / projected media *(planned)*
 
