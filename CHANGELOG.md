@@ -4,6 +4,34 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.12.0] - 2026-05-19
+
+Text effects — additive `TextStroke` + `TextShadow` for legible copy on busy frames. Three tiers; no breaking changes. Pairs with the downstream **reels-studio v0.7 Tier 3** which surfaces both in `OverlayInspectorArea`.
+
+### Added
+
+- **`TextStroke`** Sendable struct — `width: Double` + `color: PlatformColor`. Width 0 = renderer skips the stroke pass; negative values clamp at render time (we don't expose outline-only mode through this surface — defer to a v0.13+ ergonomic). Color defaults to `.black`, the canonical pairing for white text on a busy frame.
+- **`TextShadow`** Sendable struct — `offset: CGSize` + `blur: Double` + `color: PlatformColor`. Defaults to `(0, 2)` / `4` / 50%-alpha black, the standard drop-shadow tone. New `PlatformColor.platformShadowDefault` static hoists the alpha-black so the default builds on UIKit + AppKit without a `#if` per call site.
+- **`TextStyle.stroke: TextStroke?`** + **`TextStyle.shadow: TextShadow?`** — both default `nil`. Pre-v0.12 callers compile and render identically.
+
+### Renderer wiring
+
+- **Stroke** routes through `NSAttributedString` because `CATextLayer.string` doesn't honor stroke attributes natively. Counter-intuitive Apple convention: positive `.strokeWidth` paints stroke ONLY (outline), negative paints stroke AND fill — the CapCut / iMovie default. Internal sign-flip keeps the public `TextStroke.width` API positive. Width converts from points to font-size-percentage at render time (NSAttributedString's documented units).
+- **Shadow** routes through `CALayer.shadowColor` / `.shadowOffset` / `.shadowRadius` / `.shadowOpacity` (`CATextLayer` inherits from `CALayer`). Opacity is pulled from the color's own alpha so translucent shadow colors work without an extra knob; blur clamps to non-negative.
+- Stroke + shadow compose freely; the no-effects path stays on the plain-string render for parity / perf with v0.11.
+
+### Equatable convention
+
+`TextStroke` and `TextShadow` follow `TextStyle`'s existing pattern — compare scalars, skip color components (NSColor isn't `Equatable` on AppKit). Tests pin a subtle invariant: `stroke: nil` is NOT equal to `stroke: TextStroke(width: 0)` even though both render identically. Preserving "user cleared this field" intent matters for undo / persistence consumers.
+
+### Tests
+
+12 surface-level tests (struct shape, defaults, equality conventions) + 5 renderer-level tests (plain-string path unchanged, attributed-string path on stroke, zero-width short-circuit, shadow layer properties, absent shadow leaves opacity at 0). New `OverlayRenderer.testHook_makeTextLayer(for:)` internal seam.
+
+### Dependencies
+
+No floor bumps. Platform requirements unchanged.
+
 ## [0.11.0] - 2026-05-12
 
 API hardening + correctness cycle. Closes three load-bearing issues surfaced by a cross-package audit before the v1.0 stability commitment: a data race in the export cancellation path, the documented-but-not-type-level mutual exclusion between flat and curved speed, and the parallel-index drift between filters and their animations. All three would have been breaking changes to fix post-v1.0; bundle now so consumers (kadr-ui v0.10.0, kadr-reels-studio v0.6.0) migrate once.
