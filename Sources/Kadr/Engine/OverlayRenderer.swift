@@ -275,18 +275,29 @@ internal enum OverlayRenderer {
         return layer
     }
 
+    /// Test seam — exposes the text-layer builder so v0.12 renderer tests can
+    /// assert against the produced `CATextLayer`'s string + shadow properties
+    /// without spinning up the full AVFoundation render pipeline. Internal-only.
+    internal static func testHook_makeTextLayer(
+        for overlay: TextOverlay,
+        frame: CGRect = CGRect(x: 0, y: 0, width: 400, height: 100)
+    ) -> CATextLayer {
+        makeTextLayer(text: overlay.text, style: overlay.style, frame: frame)
+    }
+
     private static func makeTextLayer(text: String, style: TextStyle, frame: CGRect) -> CATextLayer {
         let layer = CATextLayer()
         layer.frame = frame
-        layer.string = text
         layer.fontSize = CGFloat(style.fontSize)
         layer.foregroundColor = style.color.cgColor
         layer.alignmentMode = textAlignmentMode(style.alignment)
         layer.isWrapped = true
         layer.truncationMode = .none
 
+        let resolvedFont: CFTypeRef
         if let fontName = style.fontName {
             layer.font = fontName as CFString
+            resolvedFont = fontName as CFString
         } else {
             // System font at requested weight. CATextLayer.font accepts CFString (font
             // family name) or CTFont. Use CTFont to honor weight cleanly.
@@ -296,12 +307,86 @@ internal enum OverlayRenderer {
             ] as CFDictionary)
             let ctFont = CTFontCreateWithFontDescriptor(descriptor, CGFloat(style.fontSize), nil)
             layer.font = ctFont
+            resolvedFont = ctFont
+        }
+
+        // v0.12: stroke routes through NSAttributedString because CATextLayer
+        // doesn't natively honor stroke* properties on its `string` field.
+        // Shadow routes through CALayer's shadow* properties (CATextLayer
+        // inherits from CALayer); both can coexist on the same layer.
+        if let stroke = style.stroke, stroke.width > 0 {
+            layer.string = attributedString(for: text, style: style, stroke: stroke, font: resolvedFont)
+        } else {
+            layer.string = text
+        }
+
+        if let shadow = style.shadow {
+            applyShadow(shadow, to: layer)
         }
 
         // 2x renders text crisply at most export resolutions; production pipelines often
         // bump this further but 2x is a sensible default that won't over-allocate.
         layer.contentsScale = 2.0
         return layer
+    }
+
+    /// Build an `NSAttributedString` carrying the stroke + fill attributes for a
+    /// styled text layer. v0.12.
+    ///
+    /// **NSAttributedString stroke semantics** are counter-intuitive — a
+    /// *positive* `.strokeWidth` paints stroke ONLY (outline mode), while a
+    /// *negative* value paints stroke AND fill (the CapCut / iMovie default).
+    /// We expose `TextStroke.width` as the user-friendly positive number and
+    /// negate it here. Width is a percentage of the font size on Apple
+    /// platforms; documented in NSAttributedString.Key.strokeWidth.
+    private static func attributedString(
+        for text: String,
+        style: TextStyle,
+        stroke: TextStroke,
+        font: CFTypeRef
+    ) -> NSAttributedString {
+        let paragraph = NSMutableParagraphStyle()
+        switch style.alignment {
+        case .leading:  paragraph.alignment = .left
+        case .center:   paragraph.alignment = .center
+        case .trailing: paragraph.alignment = .right
+        }
+
+        // NSAttributedString strokeWidth is expressed as a percentage of the
+        // font size. The TextStroke.width API takes points (matches the
+        // shadow surface), so we convert here. Clamp at 0 — negative input is
+        // documented as "no stroke" rather than "outline-only mode."
+        let widthPoints = max(0, stroke.width)
+        let pctOfFontSize = (widthPoints / max(1, style.fontSize)) * 100
+        let signedStrokeWidth = -pctOfFontSize  // negative = stroke + fill
+
+        var attrs: [NSAttributedString.Key: Any] = [
+            .strokeWidth: signedStrokeWidth,
+            .strokeColor: stroke.color,
+            .foregroundColor: style.color,
+            .paragraphStyle: paragraph,
+        ]
+        // Attach the font if the caller gave us a CTFont. CFString font names
+        // can't be used as a .font attribute; the layer's own font property
+        // handles that path.
+        if CFGetTypeID(font) == CTFontGetTypeID() {
+            attrs[.font] = font
+        }
+        return NSAttributedString(string: text, attributes: attrs)
+    }
+
+    /// Wire ``TextShadow`` into CALayer's shadow properties. v0.12.
+    private static func applyShadow(_ shadow: TextShadow, to layer: CALayer) {
+        layer.shadowColor = shadow.color.cgColor
+        layer.shadowOffset = shadow.offset
+        // CALayer.shadowRadius is the Gaussian blur radius. Clamp to
+        // non-negative since the API allows arbitrary Doubles and a negative
+        // blur would render undefined.
+        layer.shadowRadius = CGFloat(max(0, shadow.blur))
+        // Opacity drives whether the shadow renders at all. Pull it from the
+        // color's own alpha so a translucent shadow color works without an
+        // extra knob.
+        layer.shadowOpacity = Float(shadow.color.cgColor.alpha)
     }
 
     private static func textAlignmentMode(_ alignment: TextStyle.Alignment) -> CATextLayerAlignmentMode {

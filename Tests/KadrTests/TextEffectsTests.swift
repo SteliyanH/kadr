@@ -1,4 +1,5 @@
 import XCTest
+import CoreMedia
 @testable import Kadr
 
 /// v0.12 Tier 1 — surface-only tests for `TextStroke`, `TextShadow`, and the
@@ -104,5 +105,66 @@ final class TextEffectsTests: XCTestCase {
             TextStyle(stroke: nil),
             TextStyle(stroke: TextStroke(width: 0))
         )
+    }
+
+    // MARK: - Renderer wiring (v0.12 Tier 2)
+
+    /// Without stroke, the CATextLayer's `string` stays a plain `String`. v0.12
+    /// only routes through `NSAttributedString` when a stroke is configured —
+    /// keeps the no-effects path identical to v0.11 for parity / perf.
+    func testRendererUsesPlainStringWhenNoStrokeConfigured() {
+        let title = TitleSequence(
+            "hello",
+            duration: CMTime(seconds: 1, preferredTimescale: 600),
+            style: TextStyle(color: .white)
+        )
+        let overlay = TextOverlay("hello", style: title.style)
+        let layer = OverlayRenderer.testHook_makeTextLayer(for: overlay)
+        XCTAssertTrue(layer.string is String)
+    }
+
+    func testRendererUsesAttributedStringWhenStrokeConfigured() {
+        let overlay = TextOverlay("hello", style: TextStyle(
+            stroke: TextStroke(width: 4, color: .black)
+        ))
+        let layer = OverlayRenderer.testHook_makeTextLayer(for: overlay)
+        guard let attr = layer.string as? NSAttributedString else {
+            return XCTFail("Expected NSAttributedString when stroke is configured")
+        }
+        // Negative strokeWidth = stroke + fill (CapCut convention). We expose
+        // a positive `TextStroke.width` and internally negate.
+        let strokeWidth = attr.attribute(.strokeWidth, at: 0, effectiveRange: nil) as? Double
+        XCTAssertNotNil(strokeWidth)
+        XCTAssertLessThan(strokeWidth ?? 0, 0, "strokeWidth must be negative to paint stroke + fill")
+    }
+
+    /// Zero-width stroke still maps to nil-stroke at render time (the renderer
+    /// short-circuits). Pinned because we documented "0 = no stroke" in the
+    /// TextStroke API.
+    func testRendererTreatsZeroWidthStrokeAsNoStroke() {
+        let overlay = TextOverlay("hello", style: TextStyle(
+            stroke: TextStroke(width: 0)
+        ))
+        let layer = OverlayRenderer.testHook_makeTextLayer(for: overlay)
+        XCTAssertTrue(layer.string is String, "Width 0 should skip the attributed-string path")
+    }
+
+    /// CALayer shadow* properties are populated from `TextShadow` regardless
+    /// of stroke configuration. Shadow + stroke compose freely.
+    func testRendererAppliesShadowToCALayer() {
+        let overlay = TextOverlay("hello", style: TextStyle(
+            shadow: TextShadow(offset: CGSize(width: 3, height: 5), blur: 7)
+        ))
+        let layer = OverlayRenderer.testHook_makeTextLayer(for: overlay)
+        XCTAssertEqual(layer.shadowOffset, CGSize(width: 3, height: 5))
+        XCTAssertEqual(layer.shadowRadius, 7)
+    }
+
+    func testRendererLeavesShadowOffWhenNotConfigured() {
+        let overlay = TextOverlay("hello", style: TextStyle())
+        let layer = OverlayRenderer.testHook_makeTextLayer(for: overlay)
+        // CALayer default shadowOpacity is 0 — verifies we didn't accidentally
+        // set it from a nil shadow.
+        XCTAssertEqual(layer.shadowOpacity, 0)
     }
 }
