@@ -91,15 +91,34 @@ FFmpegKit retired in January 2025. Pixel SDK sunset in February 2025. AVFoundati
 
 ## Features
 
-### v0.9 (current — `0.9.2`)
+### v0.12 (current — `0.12.0`)
 
-The "Advanced timing" cycle. Three additions that finish kadr's timing story before the v1.0 semver lock. Pure additive — every v0.8 composition compiles unchanged.
+Text effects on `TextStyle`. Two additive fields — `stroke: TextStroke?` and `shadow: TextShadow?` — that finally let consumers render legible copy over busy frames. Pre-v0.12 callers compile and render identically; both fields default `nil`.
+
+- **`TextStroke(width:color:)`** — outline drawn under the fill via `NSAttributedString.Key.strokeWidth` + `.strokeColor`. Width 0 = no stroke; the public API stays positive while the renderer flips the sign internally (Apple's "negative width = stroke + fill" convention is hidden).
+- **`TextShadow(offset:blur:color:)`** — drop shadow painted via `CALayer.shadowColor` / `.shadowOffset` / `.shadowRadius` / `.shadowOpacity`. Opacity is pulled from the color's own alpha so translucent shadow colors work without an extra knob.
+
+### v0.11 (`0.11.0`)
+
+API hardening + correctness — pre-v1.0 cycle absorbing three load-bearing fixes flagged in a cross-package audit:
+
+- **`CancellationToken` atomicity.** `NSLock`-backed `_isCancelled` + `exportSession`; `@unchecked Sendable` retained but now load-bearing on real synchronization rather than an unbacked claim.
+- **`Speed` enum** (`.flat(Double)` / `.curved(Animation<Double>)`) — compile-time exclusivity between flat and curved playback rates. Deprecated `speed(_:)` / `speed(curve:)` overloads dispatch through the new surface (removal target v0.13).
+- **`FilterID` + keyed filter API** — `filter(for:)`, `filterAnimation(for:_:)`, `setFilter(for:_:)`, `removeFilter(for:)`. Parallel-array `filterIDs: [FilterID]` survives modifier rebuilds so animations bound by id don't drift when filters reorder.
+
+### v0.10 (`0.10.0` + `0.10.1`)
+
+Pre-v1.0 polish — explicit Sendable conformance audit on the public surface, animation-clearing modifiers (`transformAnimation(_:)` / `opacityAnimation(_:)` / `filterAnimation(at:_:)` / overlay variants), ~120 LOC of downstream rebuild helpers dropped.
+
+> **Next:** v0.13 — see [ROADMAP.md](ROADMAP.md). HDR / Dolby Vision support is on the long-tail roadmap but may live in [`kadr-pro`](#kadr-pro) instead — see the Kadr Pro section in ROADMAP for the current free / premium split.
+
+### v0.9 (`0.9.2`)
+
+The "Advanced timing" cycle:
 
 - **Speed curves on `VideoClip`** *(v0.9.0)*. `.speed(curve: Animation<Double>)` — non-linear playback rate over clip-relative time. Engine integrates the curve into a piecewise-linear time map (30 Hz sampling) and applies via repeated `scaleTimeRange` segments. Audio (when present) follows the same time map. The signature CapCut feature.
 - **`AudioTrack.speed(_:algorithm:)`** *(v0.9.1)*. Pitch-preserving audio speed in `0.25...4.0`. New `AudioTimePitchAlgorithm` enum (`.spectral` / `.timeDomain` / `.varispeed`). Fades, ramps, ducking, crossfades all operate on the scaled (timeline) duration.
 - **`Caption` value type + `Video.captions(_:)`** *(v0.9.2)*. The AVFoundation caption bridge. Engine bakes attached cues as `AVMetadataItem` group at export. SRT / VTT / iTT / ASS / SSA file parsing lives in [`kadr-captions`](https://github.com/SteliyanH/kadr-captions); core stays bridge-only.
-
-> **Next:** v1.0.0 — semver lock, performance benchmarks, comprehensive DocC tutorials. The v0.9 surface is the last public-API expansion before the lock. See [ROADMAP.md](ROADMAP.md).
 
 ### v0.8 (`0.8.4`)
 
