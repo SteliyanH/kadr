@@ -220,13 +220,16 @@ Three tiers: surface + structs, renderer wiring, release prep. Suite +17 tests; 
 
 Pairs with **reels-studio v0.7 Tier 3** which surfaces both in `OverlayInspectorArea`.
 
-## v0.12.x — Engine perf *(parked)*
+## v0.13.0 — Engine perf *(planned)*
 
-CIImage pooling in `KadrVideoCompositor`; `Video.duration` caching; `OverlayRenderer` per-frame batching. Driven by reels-studio v0.7's perf test suite. Folded into a v0.12.x patch cycle that follows v0.12.0 rather than gating the text-effects work behind the perf audit — the audit needs the v0.7 perf-test surface to drive it, and that surface lands during the v0.7 cycle.
+Final OSS-core cycle before the v1.0 semver lock. Pure performance work — no new public surface; existing compositions render identically but allocate less and bake faster. Driven by reels-studio v0.7's perf-test surface (the timeline finally has enough complexity in real consumer projects to make benchmarks meaningful):
 
-## v0.13.0 — HDR / Dolby Vision / projected media *(planned)*
+- **CIImage pooling** in `KadrVideoCompositor`. Per-frame compositor allocations are the #1 export-time hotspot in profiled traces — pooling drops the per-frame allocator pressure to near-zero for stable filter chains.
+- **`Video.duration` caching.** Currently re-walked on every body invalidation; cache invalidates on clip-list mutation (the only thing that can change it).
+- **`OverlayRenderer` per-frame batching.** Coalesce CATextLayer + ImageLayer builds when consecutive overlays share a position/anchor/transform shape.
+- **`AVAssetImageGenerator` reuse** in thumbnail / scrub paths — currently constructed per-call; shared instance with cancellation semantics matches consumer expectations from `kadr-reels-studio`'s thumbnail renderer.
 
-HDR transfer-function preservation through the compositor; Dolby Vision metadata pass-through; Apple Projected Media Profile (APMP) read awareness. Pairs with kadr-photos v0.7.
+Pre-v1.0 cycle. No new ergonomic surface; consumers should see export wall-clock improve 10-30% on representative compositions without changing a single line of their code.
 
 ## v1.0.0 — Production Ready
 
