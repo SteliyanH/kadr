@@ -91,7 +91,17 @@ FFmpegKit retired in January 2025. Pixel SDK sunset in February 2025. AVFoundati
 
 ## Features
 
-### v0.12 (current — `0.12.0`)
+### v0.13 (current — `0.13.0`)
+
+Engine perf — the final OSS-core cycle before the v1.0 semver lock. **No API changes**: every v0.12 composition compiles unchanged and renders byte-identical output. Purely internal hot-path / allocation reduction driven by reels-studio v0.7's profiled traces.
+
+- **Compositor color-space hoist** — `KadrVideoCompositor` no longer allocates a `CGColorSpace` per composited frame (the #1 export-time hotspot); ~900 throwaway allocations gone on a 30 s / 30 fps export.
+- **Overlay `CGImage` coalescing** — `OverlayRenderer` resolves each overlay image once per build instead of up to three times, via a per-build identity cache.
+- **`Video.duration` compute-once** — now computed at construction and stored as a `let` (O(1) reads) instead of re-walking the clip list on every access.
+
+> Deferred to v0.13.x / v1.0: thumbnail / `AVAssetImageGenerator` scrub-path reuse — it needs a stateful handle, which would add public surface this no-surface cycle excludes.
+
+### v0.12 (`0.12.0`)
 
 Text effects on `TextStyle`. Two additive fields — `stroke: TextStroke?` and `shadow: TextShadow?` — that finally let consumers render legible copy over busy frames. Pre-v0.12 callers compile and render identically; both fields default `nil`.
 
