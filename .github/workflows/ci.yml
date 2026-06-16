@@ -1,8 +1,11 @@
 name: CI
+# Auto-triggers temporarily disabled (CI minutes limit, v0.13 cycle).
+# Re-enable by restoring the push/pull_request triggers below:
+#   push:
+#     branches: [main, develop]
+#   pull_request:
 on:
-  push:
-    branches: [main, develop]
-  pull_request:
+  workflow_dispatch:
 jobs:
   test:
     runs-on: macos-15
