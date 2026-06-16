@@ -220,7 +220,7 @@ Three tiers: surface + structs, renderer wiring, release prep. Suite +17 tests; 
 
 Pairs with **reels-studio v0.7 Tier 3** which surfaces both in `OverlayInspectorArea`.
 
-## v0.13.0 — Engine perf *(planned)*
+## v0.13.0 — Engine perf ✓ shipped
 
 Final OSS-core cycle before the v1.0 semver lock. Pure performance work — **no new public surface, no behavior change**; existing compositions render byte-identical but allocate less and bake faster. Driven by reels-studio v0.7's perf-test surface (the timeline finally has enough complexity in real consumer projects to make benchmarks meaningful). Three internal targets, grouped by subsystem (see DESIGN.md for the full RFC):
 
