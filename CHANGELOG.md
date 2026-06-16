@@ -4,6 +4,28 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.13.0] - 2026-06-16
+
+Engine perf — the final OSS-core cycle before the v1.0 semver lock. **No API changes: no public symbols added, changed, or removed.** Every v0.12 composition compiles unchanged and renders byte-identical output; the work is purely internal allocation / hot-path reduction driven by reels-studio v0.7's profiled traces. Two tiers grouped by subsystem.
+
+### Performance
+
+- **`KadrVideoCompositor` color-space hoist (render hot-path).** The per-frame compositor called `CGColorSpaceCreateDeviceRGB()` on *every composited frame* before `ciContext.render(...)` — ~900 identical throwaway allocations on a 30 s / 30 fps export. The device-RGB space is constant, so it's now allocated once per compositor instance (`let outputColorSpace`) alongside the already-shared `CIContext`. The #1 export-time hotspot in profiled traces.
+- **`OverlayRenderer` CGImage coalescing (render hot-path).** A single image / sticker overlay resolved its backing `CGImage` three times per build (once for natural-size frame resolution, twice inside `makeImageLayer`); overlays sharing an image instance multiplied that. A per-build identity cache (`CGImageCache`, `ObjectIdentifier`-keyed) now extracts each `PlatformImage` once per `buildLayerTree` pass. Conversion is deterministic per image, so output is byte-identical; on AppKit this also stops `cgImage(forProposedRect:)` returning a fresh object each call.
+- **`Video.duration` compute-once.** `duration` was a computed property re-walking the entire `clips` array via `reduce` on *every* access — and timeline UIs, the exporter, and progress estimation read it repeatedly. `Video` is an immutable value type, so the value is fully determined at construction: it's now computed once in both initializers (via a shared `totalDuration(of:)` helper) and stored as a `public let`. Repeated reads are O(1) instead of O(clips). No `lazy var` (that would break value semantics / `Sendable`); the read surface stays an identical readable `CMTime` property, and the `CMTime.zero` contribution of an untrimmed `VideoClip` is preserved exactly.
+
+### Deferred
+
+- **Thumbnail / `AVAssetImageGenerator` scrub-path reuse** (originally pencilled in as the fourth perf target). Real reuse needs a *stateful handle*, which can't be added without new public surface — incompatible with this cycle's no-surface guarantee. Pushed to a v0.13.x patch / v1.0, where a small additive `ThumbnailGenerator` can be designed deliberately. `thumbnail(at:)` is unchanged; downstream consumers keep holding their own generator.
+
+### Tests
+
+Suite 536 → 540 (+4). New coverage proves the optimizations *deterministically* rather than via flaky timing: two overlays on the same image instance carry the identical `CGImage` object (coalescing), `makeImageLayer` still resolves contents + `contentsScale`, the stored `duration` equals a manual `reduce`, and `duration` is invariant across non-clip modifiers (`preset` / `overlay` / `audio` / `crop` / `captions`).
+
+### Notes
+
+- The `Speed` flat/curved overloads deprecated in v0.11 (removal target v0.13) are **retained** — removing them would be a public API change, which this perf cycle explicitly excludes. Their removal moves to the v1.0 API freeze.
+
 ## [0.12.0] - 2026-05-19
 
 Text effects — additive `TextStroke` + `TextShadow` for legible copy on busy frames. Three tiers; no breaking changes. Pairs with the downstream **reels-studio v0.7 Tier 3** which surfaces both in `OverlayInspectorArea`.
