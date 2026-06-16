@@ -1081,3 +1081,67 @@ public struct TextStyle: Sendable, Equatable {
 
 - **Render parity.** AppKit's `NSAttributedString` stroke / shadow semantics drift slightly from UIKit's at sub-pixel widths. Pin the unit tests to integer widths and a single platform; cross-platform parity test is a v0.13 ergonomics item.
 - **Schema bleed.** Consumers persisting `TextStyle` (reels-studio) need a schema bump downstream — flagged in the reels-studio v0.7 RFC as Schema v5. Coordinate the timing so old kadr + new reels-studio + old reels-studio doc combinations don't surprise anyone.
+
+## v0.13.0 — Engine perf
+
+**Status:** RFC. No code yet.
+
+### Motivation
+
+This is the final OSS-core cycle before the v1.0 semver lock, so it's deliberately a *pure-performance* cycle: **no new public surface, no behavior change.** Every composition that compiles against v0.12 compiles against v0.13 unchanged and renders identical bytes — it just allocates less and bakes faster. The intent is to walk into the v1.0 API freeze with the hot paths already tuned, so v1.0 is purely a stability guarantee and not a "we'll optimize later" promise.
+
+The work is finally tractable because **reels-studio v0.7** gave us real consumer compositions with enough timeline complexity (multi-track + overlays + filters) to profile meaningfully. The three targets below are the top internal allocation hotspots those traces surfaced.
+
+### Scope lock — v0.13
+
+In scope (three pure-internal optimizations):
+
+1. **Render hot-path — `KadrVideoCompositor` color-space hoist.** `process(request:)` calls `CGColorSpaceCreateDeviceRGB()` on **every composited frame** (`KadrVideoCompositor.swift:125`) before `ciContext.render(...)`. A 30 s 30 fps export allocates ~900 throwaway color-space objects for a value that never changes. Hoist it to a stored `let` alongside the already-shared `ciContext`. (Note: the RFC's original "CIImage pooling" framing was imprecise — `CIContext` is already shared since v0.5; the actual per-frame allocation is the color space. `CIImage(cvPixelBuffer:)` wrappers are cheap and value-semantic; pooling them buys nothing.)
+
+2. **Render hot-path — `OverlayRenderer` build coalescing.** `buildLayerTree(...)` runs **once per export** (it builds the `CALayer` tree that `AVVideoCompositionCoreAnimationTool` then animates — not a per-frame path, despite the roadmap's "per-frame" wording). The win is build-time, not frame-time: coalesce repeated `cgImage(from:)` conversions and font/attribute construction across overlays that share an image source or `TextStyle`, so an N-overlay composition stops doing N redundant `CGImage` bridgings. Lower-yield than (1) and (3); kept because it's cheap and removes an O(N) build cost for overlay-heavy projects.
+
+3. **Model — `Video.duration` compute-once.** `duration` (`Video.swift:264`) re-walks the entire `clips` array via `reduce` on **every** access, and consumers (timeline UIs, the exporter, progress estimation) read it repeatedly. Because `Video` is an immutable value type (`let clips`), duration is fully determined at construction — compute it once in the designated initializer and store it as a `let`. No `lazy var` (that would force `mutating` access and quietly break value semantics / `Sendable`).
+
+Out of scope:
+
+- **#4 — `AVAssetImageGenerator` / thumbnail reuse (deferred).** The roadmap's fourth target (a reusable scrub-path generator) requires a *stateful handle* — `thumbnail(at:)` today re-runs `PlaybackComposer.compose` **and** builds a fresh `AVAssetImageGenerator` on every call (`Video.swift:390–391`), and reusing either across scrub calls means holding state somewhere. That can't be done without adding public surface, which violates this cycle's headline promise. **Deferred to a v0.13.x patch or v1.0**, where a small additive `ThumbnailGenerator` type can be designed deliberately rather than smuggled into a perf cycle. reels-studio continues holding its own `AVAssetImageGenerator` in the meantime — no regression.
+- **Any signature, default, or rendering change.** If a change would alter output bytes or a public type, it's out of scope by definition.
+- **Threading / concurrency model changes.** The render-queue architecture stays as-is.
+
+### Success criteria
+
+- **Identical output.** Existing snapshot / frame-hash tests pass unchanged — this is the load-bearing guarantee of a no-behavior-change cycle.
+- **Measured improvement.** Each fix lands with an `XCTest` `measure {}` benchmark demonstrating the reduction (fewer allocations / lower wall-clock on a representative composition). Target: **10–30 % export wall-clock** on overlay+filter compositions, dominated by (1). Benchmarks are evidence, not gates — they accompany each fix rather than forming their own leading tier.
+- **No new public symbols.** A diff of the public API surface against v0.12 is empty.
+
+### Tier breakdown *(grouped by subsystem)*
+
+#### Tier 1 — Render hot-path (compositor + overlay)
+
+- `KadrVideoCompositor`: hoist `CGColorSpaceCreateDeviceRGB()` to a stored `let colorSpace` (target #1).
+- `OverlayRenderer`: coalesce redundant `cgImage(from:)` / attribute builds across overlays sharing an image source or `TextStyle` (target #2).
+- Add a `measure {}` benchmark for a multi-track + overlay + filter export establishing the baseline these two fixes move.
+
+~40 LOC + ~3 benchmark/regression tests. Highest-yield tier.
+
+#### Tier 2 — Model (`Video.duration`)
+
+- Compute `duration` once in the designated initializer; store as `let duration`. Route every secondary initializer / `with`-style copy through it so the value is computed exactly once per `Video` construction.
+- Confirm `Sendable` / value semantics unaffected; pin a test that duration after every builder method (`.overlay`, `.backgroundMusic`, `.track`, crop) equals the old `reduce` result.
+
+~15 LOC + ~4 tests. Pure internal; zero surface delta.
+
+#### Tier 3 — Release prep + tag v0.13.0
+
+- CHANGELOG entry (under a "Performance" heading — first cycle with no Added/Changed public entries; note explicitly "no API changes").
+- ROADMAP: mark v0.13 shipped; note #4 deferred.
+- README status block refresh; DocC index touch-up.
+- Stale-comment sweep across the three touched files.
+- Tag, GH release, develop→main back-merge per the standard flow.
+
+### Risks
+
+- **"Perf with no proof" trap.** A perf cycle with no measured delta is just churn. Mitigation: every tier carries a benchmark; if a fix doesn't move its benchmark, it doesn't ship. The color-space hoist (#1) is the one with a near-certain, explainable win (900 fewer allocations on a 30 s export); #2 is kept honest about being marginal.
+- **Silent behavior drift.** The whole cycle's value rests on byte-identical output. Mitigation: rely on the existing frame-hash / snapshot suite as the gate; do not touch any code path that feeds pixels differently. The color-space object is reconstructed identically each frame today, so hoisting it is provably output-neutral.
+- **`duration` semantics on degenerate clips.** `VideoClip` contributes `CMTime.zero` until metadata loads (documented). Computing once at init must preserve that exact quirk — the stored value is "sum of clip durations *at construction time*," identical to today's lazy `reduce`. Pin it in a test so a future "load metadata eagerly" change doesn't silently alter the contract.
+- **Scope creep toward #4.** The thumbnail path is a real consumer pain point and the temptation to "just add a tiny generator handle" is exactly how a no-surface cycle grows surface. Held firmly out of scope; revisited deliberately in v0.13.x / v1.0.

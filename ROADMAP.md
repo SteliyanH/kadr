@@ -222,14 +222,15 @@ Pairs with **reels-studio v0.7 Tier 3** which surfaces both in `OverlayInspector
 
 ## v0.13.0 — Engine perf *(planned)*
 
-Final OSS-core cycle before the v1.0 semver lock. Pure performance work — no new public surface; existing compositions render identically but allocate less and bake faster. Driven by reels-studio v0.7's perf-test surface (the timeline finally has enough complexity in real consumer projects to make benchmarks meaningful):
+Final OSS-core cycle before the v1.0 semver lock. Pure performance work — **no new public surface, no behavior change**; existing compositions render byte-identical but allocate less and bake faster. Driven by reels-studio v0.7's perf-test surface (the timeline finally has enough complexity in real consumer projects to make benchmarks meaningful). Three internal targets, grouped by subsystem (see DESIGN.md for the full RFC):
 
-- **CIImage pooling** in `KadrVideoCompositor`. Per-frame compositor allocations are the #1 export-time hotspot in profiled traces — pooling drops the per-frame allocator pressure to near-zero for stable filter chains.
-- **`Video.duration` caching.** Currently re-walked on every body invalidation; cache invalidates on clip-list mutation (the only thing that can change it).
-- **`OverlayRenderer` per-frame batching.** Coalesce CATextLayer + ImageLayer builds when consecutive overlays share a position/anchor/transform shape.
-- **`AVAssetImageGenerator` reuse** in thumbnail / scrub paths — currently constructed per-call; shared instance with cancellation semantics matches consumer expectations from `kadr-reels-studio`'s thumbnail renderer.
+- **Tier 1 — render hot-path.** Hoist the per-frame `CGColorSpaceCreateDeviceRGB()` allocation in `KadrVideoCompositor` to a stored constant (the actual #1 hotspot — `CIContext` has been shared since v0.5, so the original "CIImage pooling" framing was imprecise). Plus coalesce redundant `CGImage` / attribute builds in `OverlayRenderer`'s one-shot layer-tree build for overlay-heavy projects.
+- **Tier 2 — model.** `Video.duration` is re-walked on every access; since `Video` is immutable, compute it once at init and store as a `let` (not a `lazy var` — that breaks value semantics).
+- **Tier 3 — release prep.** CHANGELOG (Performance heading), ROADMAP/README, tag.
 
-Pre-v1.0 cycle. No new ergonomic surface; consumers should see export wall-clock improve 10-30% on representative compositions without changing a single line of their code.
+**Deferred:** `AVAssetImageGenerator` / thumbnail-scrub reuse. Real reuse needs a stateful handle, which can't be added without new public surface — so it's pushed to a v0.13.x patch / v1.0 where a small additive `ThumbnailGenerator` type can be designed deliberately rather than smuggled into a perf cycle.
+
+Pre-v1.0 cycle. No new ergonomic surface; consumers should see export wall-clock improve 10–30% on representative compositions without changing a single line of their code.
 
 ## v1.0.0 — Production Ready
 
