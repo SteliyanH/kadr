@@ -43,9 +43,16 @@ internal enum OverlayRenderer {
         videoLayer.frame = bounds
         parent.addSublayer(videoLayer)
 
+        // v0.13: a single image / sticker overlay otherwise resolves its `CGImage`
+        // three times (once for natural-size frame resolution, twice inside
+        // `makeImageLayer`); overlays sharing one image instance multiply that. The
+        // conversion is deterministic per image, so memoizing it by object identity for
+        // the duration of this one build is byte-identical and drops the redundant work.
+        let imageCache = CGImageCache()
+
         for overlay in overlays {
-            let frame = resolvedFrame(for: overlay, in: renderSize)
-            let sublayer = makeContentLayer(for: overlay, frame: frame, renderSize: renderSize)
+            let frame = resolvedFrame(for: overlay, in: renderSize, cache: imageCache)
+            let sublayer = makeContentLayer(for: overlay, frame: frame, renderSize: renderSize, cache: imageCache)
             let baseOpacity = Float(overlay.opacity)
             sublayer.opacity = baseOpacity
             if let layerID = overlay.layerID {
@@ -223,13 +230,14 @@ internal enum OverlayRenderer {
     private static func makeContentLayer(
         for overlay: any Overlay,
         frame: CGRect,
-        renderSize: CGSize
+        renderSize: CGSize,
+        cache: CGImageCache
     ) -> CALayer {
         if let img = overlay as? ImageOverlay {
-            return makeImageLayer(image: img.image, frame: frame)
+            return makeImageLayer(image: img.image, frame: frame, cache: cache)
         }
         if let sticker = overlay as? StickerOverlay {
-            return makeStickerLayer(sticker, frame: frame)
+            return makeStickerLayer(sticker, frame: frame, cache: cache)
         }
         if let txt = overlay as? TextOverlay {
             return makeTextLayer(text: txt.text, style: txt.style, frame: frame)
@@ -240,9 +248,9 @@ internal enum OverlayRenderer {
         return layer
     }
 
-    private static func makeStickerLayer(_ sticker: StickerOverlay, frame: CGRect) -> CALayer {
+    private static func makeStickerLayer(_ sticker: StickerOverlay, frame: CGRect, cache: CGImageCache) -> CALayer {
         // Reuse the image-layer build, then layer on sticker-specific effects.
-        let layer = makeImageLayer(image: sticker.image, frame: frame)
+        let layer = makeImageLayer(image: sticker.image, frame: frame, cache: cache)
 
         if sticker.rotation != 0 {
             // Rotate around the layer's center. Setting CALayer.transform applies
@@ -262,14 +270,17 @@ internal enum OverlayRenderer {
         return layer
     }
 
-    private static func makeImageLayer(image: PlatformImage, frame: CGRect) -> CALayer {
+    private static func makeImageLayer(image: PlatformImage, frame: CGRect, cache: CGImageCache) -> CALayer {
         let layer = CALayer()
         layer.frame = frame
-        layer.contents = cgImage(from: image)
+        // Resolve the backing CGImage once and reuse it for both `contents` and the
+        // contentsScale calculation (v0.13 — previously converted twice here).
+        let cg = cgImage(from: image, cache: cache)
+        layer.contents = cg
         layer.contentsGravity = .resizeAspect
         // contentsScale matches the source image's pixel density to the layer's bounds
         // for one-to-one pixel mapping.
-        if let cg = cgImage(from: image), frame.width > 0 {
+        if let cg, frame.width > 0 {
             layer.contentsScale = CGFloat(cg.width) / frame.width
         }
         return layer
@@ -408,14 +419,14 @@ internal enum OverlayRenderer {
 
     // MARK: - Frame resolution
 
-    private static func resolvedFrame(for overlay: any Overlay, in renderSize: CGSize) -> CGRect {
+    private static func resolvedFrame(for overlay: any Overlay, in renderSize: CGSize, cache: CGImageCache) -> CGRect {
         let resolvedSize: Size
         if let explicit = overlay.size {
             resolvedSize = explicit
-        } else if let img = overlay as? ImageOverlay, let cg = cgImage(from: img.image) {
+        } else if let img = overlay as? ImageOverlay, let cg = cgImage(from: img.image, cache: cache) {
             // ImageOverlay default: natural pixel size
             resolvedSize = .pixels(width: Double(cg.width), height: Double(cg.height))
-        } else if let sticker = overlay as? StickerOverlay, let cg = cgImage(from: sticker.image) {
+        } else if let sticker = overlay as? StickerOverlay, let cg = cgImage(from: sticker.image, cache: cache) {
             // StickerOverlay default: natural pixel size
             resolvedSize = .pixels(width: Double(cg.width), height: Double(cg.height))
         } else if overlay is TextOverlay {
@@ -435,7 +446,27 @@ internal enum OverlayRenderer {
 
     // MARK: - Cross-platform CGImage extraction
 
-    private static func cgImage(from image: PlatformImage) -> CGImage? {
+    /// Per-build memoization of `PlatformImage` → `CGImage`. Keyed by object identity;
+    /// the extraction is deterministic per image, so reusing the result within a single
+    /// `buildLayerTree` pass produces byte-identical output. Created fresh per build and
+    /// never shared across exports, so it holds no cross-composition state. v0.13.
+    private final class CGImageCache {
+        private var store: [ObjectIdentifier: CGImage?] = [:]
+
+        func resolve(_ image: PlatformImage, _ extract: (PlatformImage) -> CGImage?) -> CGImage? {
+            let key = ObjectIdentifier(image)
+            if let cached = store[key] { return cached }
+            let made = extract(image)
+            store[key] = made
+            return made
+        }
+    }
+
+    private static func cgImage(from image: PlatformImage, cache: CGImageCache) -> CGImage? {
+        cache.resolve(image, extractCGImage(from:))
+    }
+
+    private static func extractCGImage(from image: PlatformImage) -> CGImage? {
         #if canImport(UIKit)
         return image.cgImage
         #elseif canImport(AppKit)
