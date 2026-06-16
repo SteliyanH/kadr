@@ -178,4 +178,48 @@ struct IntrospectionTests {
         #expect(Preset.cinema.frameRate == 24)
         #expect(Preset.custom(width: 1080, height: 1920, frameRate: 60, codec: .h264).frameRate == 60)
     }
+
+    // MARK: - v0.13 duration is computed once at init and stored
+
+    /// The stored `duration` (v0.13) must equal the manual sum of each clip's
+    /// contribution — i.e. the compute-once refactor preserves the exact value the old
+    /// computed property produced.
+    @Test func durationEqualsSumOfClipDurations() {
+        let img = PlatformImage()
+        let video = Video {
+            ImageClip(img, duration: 1.0)
+            ImageClip(img, duration: 2.5)
+            ImageClip(img, duration: 0.5)
+        }
+        let manual = video.clips.reduce(CMTime.zero) { CMTimeAdd($0, $1.duration) }
+        #expect(video.duration == manual)
+        #expect(abs(CMTimeGetSeconds(video.duration) - 4.0) < 0.001)
+    }
+
+    /// `duration` is a function of `clips` only, so modifiers that don't touch the clip
+    /// list (preset, overlay, audio, crop, captions) must leave it unchanged after the
+    /// move from a computed property to a stored one.
+    @Test func durationIsInvariantAcrossNonClipModifiers() {
+        let img = PlatformImage()
+        let base = Video {
+            ImageClip(img, duration: 1.0)
+            ImageClip(img, duration: 2.0)
+        }
+        let expected = base.duration
+        #expect(abs(CMTimeGetSeconds(expected) - 3.0) < 0.001)
+
+        let decorated = base
+            .preset(.reelsAndShorts)
+            .overlay(TextOverlay("Hi").id("t"))
+            .audio(url: URL(fileURLWithPath: "/tmp/music.m4a"))
+            .crop(at: .center, size: .normalized(width: 0.5, height: 0.5))
+            .captions([Caption(
+                text: "cue",
+                timeRange: CMTimeRange(
+                    start: CMTime(seconds: 0, preferredTimescale: 600),
+                    duration: CMTime(seconds: 1, preferredTimescale: 600)
+                )
+            )])
+        #expect(decorated.duration == expected)
+    }
 }
