@@ -165,6 +165,45 @@ struct OverlayTests {
         #expect(overlayLayer?.frame == CGRect(x: 440, y: 910, width: 200, height: 100))
     }
 
+    // MARK: - v0.13 CGImage coalescing
+
+    @Test func sharedImageInstanceReusesSingleCGImage() throws {
+        // v0.13: buildLayerTree resolves a PlatformImage to its CGImage once per build
+        // and reuses it. Two overlays backed by the *same* image instance must therefore
+        // carry the identical CGImage object as layer contents — proving the extraction
+        // was coalesced rather than repeated (on AppKit each cgImage(forProposedRect:)
+        // call otherwise hands back a fresh object).
+        let img = try loadTestImage()
+        let tree = OverlayRenderer.buildLayerTree(
+            overlays: [
+                ImageOverlay(img).position(.topLeft),
+                ImageOverlay(img).position(.bottomRight),
+            ],
+            renderSize: CGSize(width: 1080, height: 1920)
+        )
+        let first = try #require(tree.parent.sublayers?[1].contents) as! CGImage
+        let second = try #require(tree.parent.sublayers?[2].contents) as! CGImage
+        #expect(first === second)
+    }
+
+    @Test func imageOverlayContentsAndScaleStillResolved() throws {
+        // Regression for the v0.13 single-resolve change in makeImageLayer: contents are
+        // still populated and contentsScale is still derived from the source pixel width.
+        let img = try loadTestImage()
+        let tree = OverlayRenderer.buildLayerTree(
+            overlays: [
+                ImageOverlay(img)
+                    .position(.center)
+                    .size(.pixels(width: 200, height: 100))
+                    .anchor(.center)
+            ],
+            renderSize: CGSize(width: 1080, height: 1920)
+        )
+        let layer = try #require(tree.parent.sublayers?[1])
+        let cg = try #require(layer.contents) as! CGImage
+        #expect(layer.contentsScale == CGFloat(cg.width) / 200.0)
+    }
+
     // MARK: - Export
 
     @Test func exportWithImageOverlay() async throws {
