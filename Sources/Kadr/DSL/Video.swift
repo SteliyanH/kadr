@@ -62,9 +62,29 @@ public struct Video: Sendable {
     /// Set via ``captions(_:)``. Added in v0.9.2.
     public let captions: [Caption]
 
+    /// The total media-timeline duration of the composition.
+    ///
+    /// Sum of each clip's `Clip/duration`, post-speed and post-trim. For an
+    /// untrimmed `VideoClip` the contribution is `CMTime.zero` because the asset
+    /// hasn't been loaded yet — use ``VideoClip/metadata`` for the asset's true duration.
+    ///
+    /// Computed once at construction and stored (v0.13). `Video` is immutable, so the
+    /// value is fully determined by `clips` at init time; storing it makes repeated reads
+    /// (timeline UIs, the exporter, progress estimation) O(1) instead of re-walking the
+    /// clip list on every access.
+    public let duration: CMTime
+
+    /// Sum of each clip's media-timeline contribution. The single source of truth for
+    /// ``duration``; both initializers route through it so the walk happens exactly once
+    /// per `Video` construction.
+    private static func totalDuration(of clips: [any Clip]) -> CMTime {
+        clips.reduce(CMTime.zero) { CMTimeAdd($0, $1.duration) }
+    }
+
     /// Build a `Video` from a result-builder block of clips.
     public init(@VideoBuilder _ content: () -> [any Clip]) {
-        self.clips = content()
+        let clips = content()
+        self.clips = clips
         self.audioTracks = []
         self.preset = .auto
         self.overlays = []
@@ -72,6 +92,7 @@ public struct Video: Sendable {
         self.multiInputCompositor = nil
         self.compositorWindow = nil
         self.captions = []
+        self.duration = Self.totalDuration(of: clips)
     }
 
     internal init(
@@ -92,6 +113,7 @@ public struct Video: Sendable {
         self.multiInputCompositor = multiInputCompositor
         self.compositorWindow = compositorWindow
         self.captions = captions
+        self.duration = Self.totalDuration(of: clips)
     }
 
     /// Attach caption cues to this composition. The engine bakes them as `AVMetadataItem`
@@ -254,17 +276,6 @@ public struct Video: Sendable {
     /// Closure form of ``compositor(_:during:)-(closedrange)``. Added in v0.7.
     public func compositor(during range: ClosedRange<TimeInterval>, _ body: @Sendable @escaping ([CIImage], CompositorContext) -> CIImage) -> Video {
         compositor(ClosureMultiInputCompositor(body: body), during: range)
-    }
-
-    /// The total media-timeline duration of the composition.
-    ///
-    /// Sum of each clip's `Clip/duration`, post-speed and post-trim. For an
-    /// untrimmed `VideoClip` the contribution is `CMTime.zero` because the asset
-    /// hasn't been loaded yet — use ``VideoClip/metadata`` for the asset's true duration.
-    public var duration: CMTime {
-        clips.reduce(CMTime.zero) { result, clip in
-            CMTimeAdd(result, clip.duration)
-        }
     }
 
     /// Export this composition to `url` as an `mp4`. Throws ``KadrError`` on validation
