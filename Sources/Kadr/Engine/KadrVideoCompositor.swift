@@ -42,6 +42,13 @@ internal final class KadrVideoCompositor: NSObject, AVVideoCompositing, @uncheck
     private var shouldCancelAllRequests = false
     private let ciContext = CIContext()
 
+    /// Output color space for `ciContext.render(...)`. Hoisted out of the per-frame
+    /// path (v0.13): `CGColorSpaceCreateDeviceRGB()` returns the same device-RGB space
+    /// on every call, so allocating it once per compositor instead of once per frame
+    /// removes ~`fps × duration` throwaway allocations from the export hot path with no
+    /// change to rendered output.
+    private let outputColorSpace = CGColorSpaceCreateDeviceRGB()
+
     func renderContextChanged(_ newRenderContext: AVVideoCompositionRenderContext) {
         renderContextQueue.sync {
             self.renderContext = newRenderContext
@@ -122,7 +129,7 @@ internal final class KadrVideoCompositor: NSObject, AVVideoCompositing, @uncheck
             output,
             to: outputBuffer,
             bounds: bounds,
-            colorSpace: CGColorSpaceCreateDeviceRGB()
+            colorSpace: outputColorSpace
         )
         request.finish(withComposedVideoFrame: outputBuffer)
     }
