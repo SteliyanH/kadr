@@ -153,4 +153,69 @@ struct PreviewAPITests {
         _ = try await video.thumbnail(at: CMTime(seconds: 0.5, preferredTimescale: 600))
     }
 
+    // MARK: - ThumbnailGenerator (v0.14)
+
+    @Test func thumbnailGeneratorReusesAcrossCalls() async throws {
+        let url = try loadTestVideoURL()
+        let video = Video {
+            VideoClip(url: url).trimmed(to: 0.0...2.0)
+        }
+        // One composed generator serves multiple frame requests.
+        let generator = try await video.thumbnailGenerator()
+        let a = try await generator.thumbnail(at: 0.25)
+        let b = try await generator.thumbnail(at: CMTime(seconds: 1.0, preferredTimescale: 600))
+        #expect(a.size.width > 0 && a.size.height > 0)
+        #expect(b.size.width > 0 && b.size.height > 0)
+    }
+
+    @Test func thumbnailGeneratorBatchStreamYieldsOnePerTime() async throws {
+        let url = try loadTestVideoURL()
+        let video = Video {
+            VideoClip(url: url).trimmed(to: 0.0...2.0)
+        }
+        let generator = try await video.thumbnailGenerator()
+        let times = [0.0, 0.5, 1.0, 1.5].map { CMTime(seconds: $0, preferredTimescale: 600) }
+
+        var frames: [ThumbnailGenerator.Frame] = []
+        for try await frame in generator.thumbnails(at: times) {
+            frames.append(frame)
+        }
+        // One frame per requested time; each carries a real image.
+        #expect(frames.count == times.count)
+        #expect(frames.allSatisfy { $0.image.size.width > 0 && $0.image.size.height > 0 })
+        // Every requested time is represented (emission order isn't guaranteed).
+        let requested = Set(frames.map { $0.requestedTime })
+        #expect(requested == Set(times))
+    }
+
+    @Test func thumbnailGeneratorHonorsCropRenderSize() async throws {
+        let url = try loadTestVideoURL()
+        let video = Video {
+            VideoClip(url: url).trimmed(to: 0.0...2.0)
+        }
+        .crop(at: .center, size: .normalized(width: 0.5, height: 0.5))
+
+        // Parity with Video.thumbnail(at:) — the generator path applies the same
+        // cropped renderSize via the shared playback videoComposition.
+        let generator = try await video.thumbnailGenerator()
+        let img = try await generator.thumbnail(at: 0.5)
+        let widthRatio = img.size.width / (video.preset.resolution.width * 0.5)
+        let heightRatio = img.size.height / (video.preset.resolution.height * 0.5)
+        #expect(abs(widthRatio - 1.0) < 0.05)
+        #expect(abs(heightRatio - 1.0) < 0.05)
+    }
+
+    @Test func thumbnailGeneratorCancelIsSafeWhenIdle() async throws {
+        let url = try loadTestVideoURL()
+        let video = Video {
+            VideoClip(url: url).trimmed(to: 0.0...2.0)
+        }
+        let generator = try await video.thumbnailGenerator()
+        // No-op when nothing is in flight — must not throw or crash.
+        generator.cancel()
+        // Still usable afterward.
+        let img = try await generator.thumbnail(at: 0.5)
+        #expect(img.size.width > 0)
+    }
+
 }

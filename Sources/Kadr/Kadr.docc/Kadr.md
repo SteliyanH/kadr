@@ -99,6 +99,8 @@ let url = try await Video {
 - ``Video/makePlayerItem()``
 - ``Video/thumbnail(at:)-(CMTime)``
 - ``Video/thumbnail(at:)-(TimeInterval)``
+- ``Video/thumbnailGenerator()``
+- ``ThumbnailGenerator``
 - ``Layout``
 - ``Layout/resolveFrame(position:size:anchor:in:)``
 
