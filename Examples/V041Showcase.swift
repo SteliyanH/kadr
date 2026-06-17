@@ -22,7 +22,7 @@ func v041AssigningIDsSurvivesModifierChain() {
     let body = VideoClip(url: videoURL)
         .id("body")
         .trimmed(to: 0...8)
-        .speed(0.75)
+        .speed(.flat(0.75))
         .filter(.brightness(0.1))
     assert(body.clipID == ClipID("body"))
 

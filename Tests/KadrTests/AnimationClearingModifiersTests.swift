@@ -5,9 +5,10 @@ import CoreMedia
 import CoreGraphics
 
 /// Tests for v0.10.1 — `transformAnimation(_:)` / `opacityAnimation(_:)` /
-/// `filterAnimation(at:_:)` / `positionAnimation(_:)` / `sizeAnimation(_:)`
-/// setter modifiers across `VideoClip` / `ImageClip` / `TitleSequence` /
-/// `ImageOverlay` / `StickerOverlay`.
+/// `positionAnimation(_:)` / `sizeAnimation(_:)` setter modifiers across
+/// `VideoClip` / `ImageClip` / `TitleSequence` / `ImageOverlay` / `StickerOverlay`.
+/// (Index-based `filterAnimation(at:_:)` was removed in v0.14 — see FilterIDTests
+/// for the keyed `filterAnimation(for:_:)` replacement.)
 struct AnimationClearingModifiersTests {
 
     // MARK: - Fixtures
@@ -104,43 +105,10 @@ struct AnimationClearingModifiersTests {
         #expect(cleared.opacity == 0.8)  // static base preserved
     }
 
-    // MARK: - VideoClip.filterAnimation(at:)
-
-    @Test func filterAnimationAtIndexSetsCorrectSlot() {
-        let clip = videoClip().filterAnimation(at: 0, doubleAnim())
-        #expect(clip.filterAnimations.count == 2)
-        #expect(clip.filterAnimations[0] != nil)
-        #expect(clip.filterAnimations[1] == nil)
-    }
-
-    @Test func filterAnimationAtIndexNilClearsSlot() {
-        let withAnim = videoClip().filterAnimation(at: 0, doubleAnim())
-        let cleared = withAnim.filterAnimation(at: 0, nil)
-        #expect(cleared.filterAnimations[0] == nil)
-        #expect(cleared.filters.count == 2)  // filters preserved
-    }
-
-    @Test func filterAnimationAtOutOfRangeIndexIsNoOp() {
-        let original = videoClip()
-        let result = original.filterAnimation(at: 99, doubleAnim())
-        #expect(result.filterAnimations.allSatisfy { $0 == nil })
-        #expect(result.filters.count == original.filters.count)
-    }
-
-    @Test func filterAnimationAtNegativeIndexIsNoOp() {
-        let original = videoClip()
-        let result = original.filterAnimation(at: -1, doubleAnim())
-        #expect(result.filterAnimations.allSatisfy { $0 == nil })
-    }
-
-    @Test func filterAnimationDoesNotDisturbOtherSlots() {
-        let twoAnims = videoClip()
-            .filterAnimation(at: 0, doubleAnim())
-            .filterAnimation(at: 1, doubleAnim())
-        let oneCleared = twoAnims.filterAnimation(at: 0, nil)
-        #expect(oneCleared.filterAnimations[0] == nil)
-        #expect(oneCleared.filterAnimations[1] != nil)
-    }
+    // Note: index-based `filterAnimation(at:_:)` was removed in v0.14. Its keyed
+    // replacement `filterAnimation(for: FilterID, _:)` is covered exhaustively by
+    // FilterIDTests (round-trip, nil-clear, unknown-id no-op), so the old index-based
+    // tests were dropped rather than migrated.
 
     // MARK: - ImageClip
 

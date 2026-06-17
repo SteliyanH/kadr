@@ -52,7 +52,7 @@ struct ClipAtTimeTests {
             .trimmed(to: 0.0...5.0)
             .reversed()
             .muted()
-            .speed(1.5)
+            .speed(.flat(1.5))
             .filter(.brightness(0.1))
             .compositor { image, _ in image }
             .crop(at: .center, size: .normalized(width: 0.5, height: 0.5))

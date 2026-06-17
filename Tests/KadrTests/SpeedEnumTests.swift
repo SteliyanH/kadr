@@ -79,31 +79,6 @@ final class SpeedEnumTests: XCTestCase {
         }
     }
 
-    // MARK: - Deprecated overloads still work
-
-    /// The legacy `speed(_ rate: Double)` overload dispatches through the
-    /// new `Speed.flat` case. Deprecation warning expected at the call
-    /// site; behavior preserved.
-    func testDeprecatedFlatOverloadDispatchesToFlat() {
-        // swiftlint:disable:next deprecated_speed_api
-        let clip = VideoClip(url: url).speed(2.5) as VideoClip
-        if case .flat(let rate) = clip.speed {
-            XCTAssertEqual(rate, 2.5)
-        } else {
-            XCTFail("Expected .flat from deprecated overload; got \(clip.speed)")
-        }
-    }
-
-    func testDeprecatedCurvedOverloadDispatchesToCurved() {
-        let curve = Animation<Double>.keyframes([.at(0.0, value: 1.0)], timing: .linear)
-        let clip = VideoClip(url: url).speed(curve: curve)
-        if case .curved = clip.speed {
-            // ok
-        } else {
-            XCTFail("Expected .curved from deprecated overload; got \(clip.speed)")
-        }
-    }
-
     // MARK: - Modifier chain preservation
 
     /// Setting speed shouldn't disturb other fields (trim, transform,

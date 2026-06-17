@@ -40,7 +40,7 @@ struct ClipCropTests {
             .crop(at: .center, size: .normalized(width: 0.5, height: 0.5))
             .trimmed(to: 0.0...5.0)
             .reversed()
-            .speed(2.0)
+            .speed(.flat(2.0))
             .filter(.brightness(0.1))
             .id("hero")
         // Crop compositor sits in the compositors array; subsequent modifiers preserve it.

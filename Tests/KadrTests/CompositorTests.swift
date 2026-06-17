@@ -59,7 +59,7 @@ struct CompositorTests {
             .trimmed(to: 0.0...5.0)
             .reversed()
             .muted()
-            .speed(2.0)
+            .speed(.flat(2.0))
             .filter(.brightness(0.1))
             .id("hero")
         let tags = clip.compositors.compactMap { ($0 as? TaggedCompositor)?.tag }

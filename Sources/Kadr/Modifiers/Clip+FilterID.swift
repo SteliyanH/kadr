@@ -33,8 +33,8 @@ extension VideoClip {
     /// rather than throwing, matching the editor-consumer mental model
     /// where stale ids can race with concurrent removes.
     ///
-    /// Replaces the deprecated index-based ``filterAnimation(at:_:)``
-    /// added in v0.10.1. Added in v0.11.
+    /// Replaces the index-based `filterAnimation(at:_:)` added in v0.10.1
+    /// (removed in v0.14). Added in v0.11.
     public func filterAnimation(for id: FilterID, _ animation: Animation<Double>?) -> VideoClip {
         guard let i = filterIDs.firstIndex(of: id) else { return self }
         var newAnimations = filterAnimations
