@@ -27,7 +27,7 @@ public struct VideoClipMetadata: Sendable {
 /// ```swift
 /// VideoClip(url: clipURL)
 ///     .trimmed(to: 0...10)
-///     .speed(0.5)            // half-speed slow-mo
+///     .speed(.flat(0.5))     // half-speed slow-mo
 ///     .muted()
 /// ```
 ///

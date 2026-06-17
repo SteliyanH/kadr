@@ -403,7 +403,7 @@ struct SimpleEditorView: View {
 
         case .speed:
             return Video {
-                VideoClip(url: sampleVideoURL).trimmed(to: 0...4).speed(speedRate)
+                VideoClip(url: sampleVideoURL).trimmed(to: 0...4).speed(.flat(speedRate))
             }
             .preset(.cinema)
             .exporter(to: url)

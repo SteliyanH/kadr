@@ -5,7 +5,7 @@ import Foundation
 
 /// Tests for v0.9 Tier 1 — speed curves on `VideoClip`.
 /// Coverage: pure `SpeedCurveSampler` helpers (discretization + integration), the
-/// `VideoClip.speed(curve:)` modifier surface, and `VideoClip.duration` math.
+/// `VideoClip.speed(.curved())` modifier surface, and `VideoClip.duration` math.
 struct SpeedCurveTests {
 
     private func cmt(_ seconds: Double) -> CMTime {
@@ -126,7 +126,7 @@ struct SpeedCurveTests {
         ])
         let clip = VideoClip(url: URL(fileURLWithPath: "/dev/null"))
             .trimmed(to: 0...2)
-            .speed(curve: curve)
+            .speed(.curved(curve))
         #expect(clip.speedCurve != nil)
     }
 
@@ -139,7 +139,7 @@ struct SpeedCurveTests {
             .filter(.brightness(0.2))
             .opacity(0.5, animation: opacityAnim)
             .id(ClipID("c"))
-            .speed(curve: .keyframes([.at(0.0, value: 1.0), .at(2.0, value: 0.5)]))
+            .speed(.curved(.keyframes([.at(0.0, value: 1.0), .at(2.0, value: 0.5)])))
         #expect(clip.filters.count == 1)
         #expect(clip.opacity == 0.5)
         #expect(clip.opacityAnimation != nil)
@@ -150,8 +150,8 @@ struct SpeedCurveTests {
     @Test func flatSpeedClearsCurve() {
         let clip = VideoClip(url: URL(fileURLWithPath: "/dev/null"))
             .trimmed(to: 0...2)
-            .speed(curve: .keyframes([.at(0.0, value: 1.0), .at(2.0, value: 0.5)]))
-            .speed(2.0)
+            .speed(.curved(.keyframes([.at(0.0, value: 1.0), .at(2.0, value: 0.5)])))
+            .speed(.flat(2.0))
         #expect(clip.speedCurve == nil)
         #expect(clip.speedRate == 2.0)
     }
@@ -163,7 +163,7 @@ struct SpeedCurveTests {
             .filter(.brightness(0.2))
             .opacity(0.5)
             .id(ClipID("c"))
-            .speed(2.0)
+            .speed(.flat(2.0))
         #expect(clip.filters.count == 1)
         #expect(clip.opacity == 0.5)
         #expect(clip.clipID == ClipID("c"))
@@ -176,10 +176,10 @@ struct SpeedCurveTests {
         // Half-speed curve → duration doubles.
         let clip = VideoClip(url: URL(fileURLWithPath: "/dev/null"))
             .trimmed(to: 0...2)
-            .speed(curve: .keyframes([
+            .speed(.curved(.keyframes([
                 .at(0.0, value: 0.5),
                 .at(2.0, value: 0.5),
-            ]))
+            ])))
         #expect(abs(CMTimeGetSeconds(clip.duration) - 4.0) < 0.1)
     }
 
@@ -187,7 +187,7 @@ struct SpeedCurveTests {
         // Existing v0.2 flat-speed contract still works.
         let clip = VideoClip(url: URL(fileURLWithPath: "/dev/null"))
             .trimmed(to: 0...2)
-            .speed(2.0)
+            .speed(.flat(2.0))
         #expect(abs(CMTimeGetSeconds(clip.duration) - 1.0) < 0.001)
     }
 }

@@ -23,13 +23,13 @@ struct SpeedTests {
 
     @Test func speedHalvesDurationAtTwoX() {
         let videoURL = URL(fileURLWithPath: "/dev/null")
-        let clip = VideoClip(url: videoURL).trimmed(to: 0...4).speed(2.0)
+        let clip = VideoClip(url: videoURL).trimmed(to: 0...4).speed(.flat(2.0))
         #expect(abs(CMTimeGetSeconds(clip.duration) - 2.0) < 0.01)
     }
 
     @Test func speedDoublesDurationAtHalfX() {
         let videoURL = URL(fileURLWithPath: "/dev/null")
-        let clip = VideoClip(url: videoURL).trimmed(to: 0...4).speed(0.5)
+        let clip = VideoClip(url: videoURL).trimmed(to: 0...4).speed(.flat(0.5))
         #expect(abs(CMTimeGetSeconds(clip.duration) - 8.0) < 0.01)
     }
 
@@ -41,7 +41,7 @@ struct SpeedTests {
 
     @Test func speedComposesWithOtherModifiers() {
         let videoURL = URL(fileURLWithPath: "/dev/null")
-        let clip = VideoClip(url: videoURL).trimmed(to: 0...4).muted().speed(2.0)
+        let clip = VideoClip(url: videoURL).trimmed(to: 0...4).muted().speed(.flat(2.0))
         #expect(clip.isMuted)
         #expect(abs(CMTimeGetSeconds(clip.duration) - 2.0) < 0.01)
     }
@@ -53,7 +53,7 @@ struct SpeedTests {
         let outputURL = testOutputURL("speed_2x")
 
         let result = try await Video {
-            VideoClip(url: videoURL).trimmed(to: 0...4).speed(2.0)
+            VideoClip(url: videoURL).trimmed(to: 0...4).speed(.flat(2.0))
         }
         .export(to: outputURL)
 
@@ -74,7 +74,7 @@ struct SpeedTests {
         let outputURL = testOutputURL("speed_half")
 
         let result = try await Video {
-            VideoClip(url: videoURL).trimmed(to: 0...2).speed(0.5)
+            VideoClip(url: videoURL).trimmed(to: 0...2).speed(.flat(0.5))
         }
         .export(to: outputURL)
 
@@ -97,7 +97,7 @@ struct SpeedTests {
         // First clip: 4s @ 2x = 2s. Second clip: 4s @ 1x = 4s. Dissolve 0.4 overlap.
         // Total = 2 + 4 - 0.4 = 5.6
         let result = try await Video {
-            VideoClip(url: videoURL).trimmed(to: 0...4).speed(2.0)
+            VideoClip(url: videoURL).trimmed(to: 0...4).speed(.flat(2.0))
             Transition.dissolve(duration: 0.4)
             VideoClip(url: videoURL).trimmed(to: 0...4)
         }
@@ -122,7 +122,7 @@ struct SpeedTests {
 
         await #expect(throws: KadrError.self) {
             _ = try await Video {
-                VideoClip(url: videoURL).trimmed(to: 0...3).speed(0.1)
+                VideoClip(url: videoURL).trimmed(to: 0...3).speed(.flat(0.1))
             }
             .export(to: outputURL)
         }
@@ -134,7 +134,7 @@ struct SpeedTests {
 
         await #expect(throws: KadrError.self) {
             _ = try await Video {
-                VideoClip(url: videoURL).trimmed(to: 0...3).speed(8.0)
+                VideoClip(url: videoURL).trimmed(to: 0...3).speed(.flat(8.0))
             }
             .export(to: outputURL)
         }
@@ -146,7 +146,7 @@ struct SpeedTests {
         // 0.25 lower bound
         let slowURL = testOutputURL("speed_quarter")
         _ = try await Video {
-            VideoClip(url: videoURL).trimmed(to: 0...1).speed(0.25)
+            VideoClip(url: videoURL).trimmed(to: 0...1).speed(.flat(0.25))
         }.export(to: slowURL)
         #expect(FileManager.default.fileExists(atPath: slowURL.path))
         try? FileManager.default.removeItem(at: slowURL)
@@ -154,7 +154,7 @@ struct SpeedTests {
         // 4.0 upper bound
         let fastURL = testOutputURL("speed_4x")
         _ = try await Video {
-            VideoClip(url: videoURL).trimmed(to: 0...4).speed(4.0)
+            VideoClip(url: videoURL).trimmed(to: 0...4).speed(.flat(4.0))
         }.export(to: fastURL)
         #expect(FileManager.default.fileExists(atPath: fastURL.path))
         try? FileManager.default.removeItem(at: fastURL)

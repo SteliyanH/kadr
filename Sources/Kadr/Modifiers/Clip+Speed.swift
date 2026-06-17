@@ -6,9 +6,8 @@ import Foundation
 /// mutual-exclusion compile-time-checked.
 ///
 /// `.flat(Double)` and `.curved(Animation<Double>)` are not composable —
-/// a clip is one or the other at any time. The legacy `speed(_:)` and
-/// `speed(curve:)` overloads stay deprecated for one minor and dispatch
-/// through ``VideoClip/speed(_:)-(Speed)``.
+/// a clip is one or the other at any time. The legacy `speed(_:)-(Double)`
+/// and `speed(curve:)` overloads this enum replaced were removed in v0.14.
 public enum Speed: Sendable {
     /// Constant playback multiplier. `1.0` = normal, `0.5` = half-speed,
     /// `2.0` = 2×. Engine-side validation throws `KadrError.invalidSpeed`
@@ -27,8 +26,9 @@ extension VideoClip {
     // MARK: - Canonical surface (v0.11+)
 
     /// Apply a playback speed (flat multiplier or animated curve). Replaces
-    /// the v0.2 ``speed(_:)-(Double)`` and v0.9 ``speed(curve:)`` overloads
-    /// with a single setter that makes flat-vs-curved exclusivity type-level.
+    /// the v0.2 `speed(_:)` (`Double`) and v0.9 `speed(curve:)` overloads
+    /// (removed in v0.14) with a single setter that makes flat-vs-curved
+    /// exclusivity type-level.
     ///
     /// ```swift
     /// VideoClip(url: u).speed(.flat(2.0))                  // 2× playback
@@ -93,49 +93,5 @@ extension VideoClip {
             return .curved(speedCurve)
         }
         return .flat(speedRate)
-    }
-
-    // MARK: - Deprecated legacy overloads (kept for one minor)
-
-    /// Plays this clip at the given speed multiplier. Valid range: `0.25...4.0`.
-    /// `2.0` halves the clip's duration; `0.5` doubles it. Audio pitch is preserved.
-    /// Out-of-range values throw `KadrError.invalidSpeed` at export time.
-    ///
-    /// Setting a flat speed clears any previously-set ``speed(curve:)``: the two surfaces
-    /// are mutually exclusive.
-    @available(*, deprecated, message: "Use speed(.flat(rate)) — the v0.11 Speed enum makes flat/curved exclusivity type-level. Removal target: v0.12.")
-    public func speed(_ rate: Double) -> VideoClip {
-        speed(.flat(rate))
-    }
-
-    /// Apply a non-linear playback speed curve over clip-relative time. Values in the
-    /// animation are speed multipliers (`1.0` = normal, `0.5` = half-speed, `2.0` = 2×).
-    /// The engine integrates the curve into a piecewise-linear time map and applies via
-    /// repeated `scaleTimeRange` segments.
-    ///
-    /// Animation timing is **clip-relative** to the trim range: `.at(0.0, ...)` is the
-    /// first frame after trim, `.at(trimRange.duration, ...)` is the last. Composes with
-    /// ``trimmed(to:)`` (trim selects the source range; the curve maps that range to the
-    /// timeline), ``filter(_:animation:)``, ``transform(_:animation:)``, and
-    /// ``opacity(_:animation:)``. Audio (when not muted / replaced) follows the same
-    /// time map; pitch correction defaults to spectral.
-    ///
-    /// Setting a curve overrides the flat ``speed(_:)``. Per-sample multipliers outside
-    /// `0.25...4.0` clamp at the boundaries rather than throwing — animated curves may
-    /// pass through extremes briefly. Added in v0.9.
-    ///
-    /// ```swift
-    /// VideoClip(url: clipURL)
-    ///     .trimmed(to: 0...4)
-    ///     .speed(curve: .keyframes([
-    ///         .at(0.0, value: 1.0),
-    ///         .at(1.5, value: 0.25),  // dip into slow-mo
-    ///         .at(2.5, value: 0.25),  // hold
-    ///         .at(4.0, value: 1.0),   // back to normal
-    ///     ], timing: .easeInOut))
-    /// ```
-    @available(*, deprecated, message: "Use speed(.curved(animation)) — the v0.11 Speed enum makes flat/curved exclusivity type-level. Removal target: v0.12.")
-    public func speed(curve: Animation<Double>) -> VideoClip {
-        speed(.curved(curve))
     }
 }

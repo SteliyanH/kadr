@@ -46,7 +46,7 @@ struct ClipMaskTests {
         let clip = VideoClip(url: url)
             .mask(solidMaskCIImage())
             .trimmed(to: 0.0...5.0)
-            .speed(2.0)
+            .speed(.flat(2.0))
             .filter(.brightness(0.1))
             .id("hero")
         #expect(clip.compositors.count == 1)

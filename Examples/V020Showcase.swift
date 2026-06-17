@@ -18,7 +18,7 @@ func v020ShowcaseExample() async throws {
         Transition.dissolve(duration: 0.5)
 
         // 4 seconds of source plays back at 0.5x → 8 seconds of slow-mo on the timeline
-        VideoClip(url: actionURL).trimmed(to: 5...9).speed(0.5)
+        VideoClip(url: actionURL).trimmed(to: 5...9).speed(.flat(0.5))
         Transition.slide(direction: .fromRight, duration: 0.4)
 
         VideoClip(url: outroURL).trimmed(to: 0...3)
@@ -56,7 +56,7 @@ func vlogStyleExample() async throws {
 
     _ = try await Video {
         // 30s of b-roll played at 3x speed = 10s on the timeline. Original audio replaced by commentary.
-        VideoClip(url: bRollURL).trimmed(to: 0...30).speed(3.0).withAudio(commentaryURL)
+        VideoClip(url: bRollURL).trimmed(to: 0...30).speed(.flat(3.0)).withAudio(commentaryURL)
     }
     // Music ducks to 30% whenever the (replacement) commentary track is present, then back up.
     .audio { AudioTrack(url: bgMusicURL).ducking(0.3) }
