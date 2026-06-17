@@ -91,7 +91,14 @@ FFmpegKit retired in January 2025. Pixel SDK sunset in February 2025. AVFoundati
 
 ## Features
 
-### v0.13 (current — `0.13.0`)
+### v0.14 (current — `0.14.0`)
+
+Core closeout — the final cycle before the v1.0 semver lock. Clears everything still deferred in kadr core, so v1.0 is a pure lock with no code changes.
+
+- **`ThumbnailGenerator`** (additive) — `video.thumbnailGenerator()` composes once and reuses a single `AVAssetImageGenerator` across many frame requests. `thumbnail(at:)`, a batch `thumbnails(at:)` `AsyncThrowingStream` for filmstrips, and `cancel()`. `Video.thumbnail(at:)` now delegates to it.
+- **Removed three overdue deprecations** *(breaking)* — `speed(_ rate: Double)` → `speed(.flat(rate))`, `speed(curve:)` → `speed(.curved(_:))`, and index-based `filterAnimation(at:_:)` → `filterAnimation(for: FilterID, _:)`. All three were deprecated since v0.11.
+
+### v0.13 (`0.13.0`)
 
 Engine perf — the final OSS-core cycle before the v1.0 semver lock. **No API changes**: every v0.12 composition compiles unchanged and renders byte-identical output. Purely internal hot-path / allocation reduction driven by reels-studio v0.7's profiled traces.
 

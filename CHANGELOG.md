@@ -4,6 +4,34 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.14.0] - 2026-06-17
+
+Core closeout — the final cycle before the v1.0 semver lock. Ships the one additive surface deferred from v0.13 (reusable thumbnail generation) and removes every overdue deprecation, so **v1.0 will be a pure lock with no code changes**. Contains breaking removals; pre-1.0, those ride a minor bump.
+
+### Added
+
+- **`ThumbnailGenerator`** — a reusable thumbnail / scrub-frame generator built via the new **`Video.thumbnailGenerator()`**. It composes the video **once** and holds a single `AVAssetImageGenerator`, so a scrubber or filmstrip pays the composition + generator-allocation cost a single time instead of per call. Surface: `thumbnail(at:)` (`CMTime` + `TimeInterval`), a batch `thumbnails(at:)` returning an `AsyncThrowingStream<Frame, Error>` (backed by `AVAssetImageGenerator.images(for:)`, for filmstrips), and `cancel()`. `Frame` carries `requestedTime` / `actualTime` / `image`. Overlays are not baked in, matching `Video.thumbnail(at:)`.
+- **`Video.thumbnail(at:)` now delegates** to a `ThumbnailGenerator` internally — one code path, identical output. For many frames, build a generator once and reuse it instead of calling `thumbnail(at:)` in a loop.
+
+### Removed
+
+Three APIs deprecated since v0.11 (each tagged "Removal target: v0.12", overdue). All removals are mechanical one-line migrations:
+
+- **`VideoClip.speed(_ rate: Double)`** → `speed(.flat(rate))`.
+- **`VideoClip.speed(curve: Animation<Double>)`** → `speed(.curved(animation))`.
+- **`VideoClip.filterAnimation(at index: Int, _:)`** → `filterAnimation(for: FilterID, _:)` (keyed access is stable under filter reordering; index access was not).
+
+> `AudioTrack.speed(_:algorithm:)` is a separate, non-deprecated API and is unaffected.
+
+### Tests
+
+Suite 540 → 539 net: +4 `ThumbnailGenerator` tests (reuse across calls, batch stream yields one frame per requested time, crop-renderSize parity with `Video.thumbnail(at:)`, idle `cancel()` safe), −7 tests tied to the removed APIs (two deprecated-dispatch assertions in `SpeedEnumTests`; the index-based `filterAnimation` block in `AnimationClearingModifiersTests`, redundant with `FilterIDTests`' keyed coverage). Zero deprecation warnings remain.
+
+### Notes
+
+- This is the **last cycle with code changes before v1.0**. v1.0.0 is the stability commitment plus DocC tutorials, benchmarks, and the migration guide — no further API changes.
+- **Concurrency:** `ThumbnailGenerator` is a `final class` marked `@unchecked Sendable` (not an `actor`): its batch stream drives `images(for:)` from a producer task, which fights actor isolation under Swift 6 strict concurrency. `AVAssetImageGenerator` is thread-safe for image generation; this matches the engine's other AVFoundation wrappers.
+
 ## [0.13.0] - 2026-06-16
 
 Engine perf — the final OSS-core cycle before the v1.0 semver lock. **No API changes: no public symbols added, changed, or removed.** Every v0.12 composition compiles unchanged and renders byte-identical output; the work is purely internal allocation / hot-path reduction driven by reels-studio v0.7's profiled traces. Two tiers grouped by subsystem.
