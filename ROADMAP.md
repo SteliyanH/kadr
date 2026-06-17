@@ -232,7 +232,7 @@ Final OSS-core cycle before the v1.0 semver lock. Pure performance work — **no
 
 Pre-v1.0 cycle. No new ergonomic surface; consumers should see export wall-clock improve 10–30% on representative compositions without changing a single line of their code.
 
-## v0.14.0 — Core closeout *(planned)*
+## v0.14.0 — Core closeout ✓ shipped
 
 The final cycle before the v1.0 semver lock. Clears everything still deferred in kadr core so v1.0 can be a **pure lock with zero code changes**. Two workstreams (full RFC in DESIGN.md):
 
