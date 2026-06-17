@@ -398,20 +398,28 @@ public struct Video: Sendable {
     /// - Returns: A `UIImage` on iOS / tvOS / visionOS, `NSImage` on macOS.
     /// - Throws: ``KadrError/noClipsProvided`` or the underlying image-generation error.
     public func thumbnail(at time: CMTime) async throws -> PlatformImage {
+        // Delegates to the reusable generator (v0.14): one code path, identical
+        // configuration / output. For many frames (scrubbing, filmstrips) build a
+        // ``ThumbnailGenerator`` once via ``thumbnailGenerator()`` and reuse it instead
+        // of paying composition + generator setup per call.
+        try await thumbnailGenerator().thumbnail(at: time)
+    }
+
+    /// Compose this video once and return a reusable ``ThumbnailGenerator`` for
+    /// scrubbing or building a filmstrip.
+    ///
+    /// The generator holds a single `AVAssetImageGenerator` over the composed asset, so
+    /// repeated ``ThumbnailGenerator/thumbnail(at:)-(CMTime)`` calls — or a batch
+    /// ``ThumbnailGenerator/thumbnails(at:)`` stream — don't re-run composition or
+    /// re-allocate the generator. Prefer this over calling ``thumbnail(at:)-(CMTime)`` in
+    /// a loop. Frames honor crop / transitions / preset resolution but **exclude
+    /// overlays**, same as ``thumbnail(at:)-(CMTime)``. Added in v0.14.
+    ///
+    /// - Throws: ``KadrError/noClipsProvided`` if the composition has no clips, or any
+    ///   error surfaced by the underlying composition build.
+    public func thumbnailGenerator() async throws -> ThumbnailGenerator {
         let playback = try await PlaybackComposer.compose(video: self)
-        let generator = AVAssetImageGenerator(asset: playback.composition)
-        generator.appliesPreferredTrackTransform = true
-        generator.requestedTimeToleranceBefore = .zero
-        generator.requestedTimeToleranceAfter = .zero
-        if let videoComposition = playback.videoComposition {
-            generator.videoComposition = videoComposition
-        }
-        let cgImage = try await generator.image(at: time).image
-        #if canImport(UIKit)
-        return UIImage(cgImage: cgImage)
-        #elseif canImport(AppKit)
-        return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
-        #endif
+        return ThumbnailGenerator(playback: playback)
     }
 
     /// Render a single frame of the composition at `time` (seconds) for use as a thumbnail.
