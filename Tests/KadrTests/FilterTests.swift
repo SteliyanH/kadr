@@ -56,7 +56,7 @@ struct FilterTests {
         let clip = VideoClip(url: URL(fileURLWithPath: "/tmp/x.mov"))
             .filter(.sepia(intensity: 0.8))
             .trimmed(to: 0...3)
-            .speed(2.0)
+            .speed(.flat(2.0))
             .muted()
         #expect(clip.filters.count == 1)
         #expect(clip.filters[0] == .sepia(intensity: 0.8))
@@ -165,7 +165,7 @@ struct FilterTests {
         let outputURL = testOutputURL("filter_speed")
 
         let result = try await Video {
-            VideoClip(url: videoURL).trimmed(to: 0...4).speed(2.0).filter(.brightness(0.1))
+            VideoClip(url: videoURL).trimmed(to: 0...4).speed(.flat(2.0)).filter(.brightness(0.1))
         }
         .export(to: outputURL)
 

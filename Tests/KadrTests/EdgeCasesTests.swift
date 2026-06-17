@@ -98,7 +98,7 @@ struct EdgeCasesTests {
         let outputURL = testOutputURL("speed_reversed")
 
         let result = try await Video {
-            VideoClip(url: videoURL).trimmed(to: 0...3).reversed().speed(2.0)
+            VideoClip(url: videoURL).trimmed(to: 0...3).reversed().speed(.flat(2.0))
         }
         .export(to: outputURL)
 
@@ -121,7 +121,7 @@ struct EdgeCasesTests {
         let outputURL = testOutputURL("speed_irrational")
 
         let result = try await Video {
-            VideoClip(url: videoURL).trimmed(to: 0...3).speed(1.5)
+            VideoClip(url: videoURL).trimmed(to: 0...3).speed(.flat(1.5))
             Transition.fade(duration: 0.4)
             VideoClip(url: videoURL).trimmed(to: 0...3)
         }
@@ -144,7 +144,7 @@ struct EdgeCasesTests {
         let outputURL = testOutputURL("speed_dissolve_combo")
 
         let result = try await Video {
-            VideoClip(url: videoURL).trimmed(to: 0...4).speed(0.5)  // becomes 8s
+            VideoClip(url: videoURL).trimmed(to: 0...4).speed(.flat(0.5))  // becomes 8s
             Transition.dissolve(duration: 0.5)
             VideoClip(url: videoURL).trimmed(to: 0...3)             // 3s
         }

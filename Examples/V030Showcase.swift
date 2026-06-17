@@ -139,7 +139,7 @@ func v030EverythingShowcase() async throws {
         Transition.slide(direction: .fromRight, duration: 0.4)
 
         // Slow-mo action with a different color grade
-        VideoClip(url: actionURL).trimmed(to: 0...3).speed(0.5)
+        VideoClip(url: actionURL).trimmed(to: 0...3).speed(.flat(0.5))
             .filter(.saturation(1.4), .exposure(0.2))
 
         Transition.dissolve(duration: 0.5)
