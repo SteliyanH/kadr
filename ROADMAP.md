@@ -228,15 +228,25 @@ Final OSS-core cycle before the v1.0 semver lock. Pure performance work — **no
 - **Tier 2 — model.** `Video.duration` is re-walked on every access; since `Video` is immutable, compute it once at init and store as a `let` (not a `lazy var` — that breaks value semantics).
 - **Tier 3 — release prep.** CHANGELOG (Performance heading), ROADMAP/README, tag.
 
-**Deferred:** `AVAssetImageGenerator` / thumbnail-scrub reuse. Real reuse needs a stateful handle, which can't be added without new public surface — so it's pushed to a v0.13.x patch / v1.0 where a small additive `ThumbnailGenerator` type can be designed deliberately rather than smuggled into a perf cycle.
+**Deferred to v0.14:** `AVAssetImageGenerator` / thumbnail-scrub reuse (needs a stateful handle = new public surface, so it can't ride a no-surface perf cycle).
 
 Pre-v1.0 cycle. No new ergonomic surface; consumers should see export wall-clock improve 10–30% on representative compositions without changing a single line of their code.
 
-## v1.0.0 — Production Ready
+## v0.14.0 — Core closeout *(planned)*
 
-Semver stability guarantee. Every public surface from v0.8 / v0.9 is locked.
+The final cycle before the v1.0 semver lock. Clears everything still deferred in kadr core so v1.0 can be a **pure lock with zero code changes**. Two workstreams (full RFC in DESIGN.md):
 
-- API stability commitment — no breaking changes without major version bump
+- **Tier 1 — `ThumbnailGenerator` (additive).** A reusable `actor` that composes the video once and holds a single `AVAssetImageGenerator`: `thumbnail(at:)` (CMTime / seconds), a batch `thumbnails(at:)` `AsyncThrowingStream` for filmstrips, and `cancel()`. `Video.thumbnailGenerator()` builds it; `Video.thumbnail(at:)` is refactored to delegate. Fixes the scrub-path cost where the one-shot recomposes + reallocates per call. (The v0.13 deferral.)
+- **Tier 2 — remove three overdue deprecations (breaking).** `speed(_ rate: Double)` → `speed(.flat(rate))`, `speed(curve:)` → `speed(.curved(_:))`, and index-based `filterAnimation(at:_:)` → `filterAnimation(for: FilterID, _:)`. All three were tagged "Removal target: v0.12" and are overdue; clearing them now keeps v1.0 free of deletions.
+- **Tier 3 — release prep.** CHANGELOG (first with a `Removed` section), ROADMAP/README, tag.
+
+A minor (not a patch) because removing public API is breaking — the correct pre-1.0 vehicle.
+
+## v1.0.0 — Production Ready (pure lock)
+
+Semver stability guarantee. **No code changes** — every public surface is frozen as of v0.14; this release is the commitment plus docs. (All deprecations are already removed in v0.14, so there is nothing left to delete here.)
+
+- API stability commitment — no breaking changes without a major version bump
 - Comprehensive DocC tutorials: Slideshow, Multi-track, Custom compositors, Keyframe animations, Editor app walkthrough
 - Performance benchmarks — single-track export, multi-track with `KadrVideoCompositor`, keyframe-heavy compositions
 - Migration guide v0.x → v1.0

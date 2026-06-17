@@ -1145,3 +1145,88 @@ Out of scope:
 - **Silent behavior drift.** The whole cycle's value rests on byte-identical output. Mitigation: rely on the existing frame-hash / snapshot suite as the gate; do not touch any code path that feeds pixels differently. The color-space object is reconstructed identically each frame today, so hoisting it is provably output-neutral.
 - **`duration` semantics on degenerate clips.** `VideoClip` contributes `CMTime.zero` until metadata loads (documented). Computing once at init must preserve that exact quirk — the stored value is "sum of clip durations *at construction time*," identical to today's lazy `reduce`. Pin it in a test so a future "load metadata eagerly" change doesn't silently alter the contract.
 - **Scope creep toward #4.** The thumbnail path is a real consumer pain point and the temptation to "just add a tiny generator handle" is exactly how a no-surface cycle grows surface. Held firmly out of scope; revisited deliberately in v0.13.x / v1.0.
+
+## v0.14.0 — Core closeout (final pre-v1.0 cycle)
+
+**Status:** RFC. No code yet.
+
+### Motivation
+
+This is the last cycle before the v1.0 semver lock, and its job is to leave kadr core with **nothing deferred**: ship the one additive surface that was punted from v0.13 (reusable thumbnail generation) and **remove every overdue deprecation** so v1.0 can be a *pure* lock — a stability guarantee with zero code changes, no API deletions in the same breath as "stable forever."
+
+Two unrelated workstreams, bundled because together they close the core:
+
+1. **Add `ThumbnailGenerator`** — the v0.13 RFC deferred this (it needs a stateful handle = new public surface, incompatible with v0.13's no-surface promise). It's the right shape for a scrubber / filmstrip: compose once, reuse one `AVAssetImageGenerator` across many frame requests.
+2. **Remove three overdue deprecations** — all three are tagged *"Removal target: v0.12"* in source and were never removed. They've carried their replacements for three+ minors; the v1.0 freeze is the deadline.
+
+### Why a *minor* (0.14.0), not a patch (0.13.1)
+
+Removing public API is a breaking change. Under pre-1.0 semver a **minor** bump is the correct vehicle for breaking changes; a patch is not. The thumbnail generator is additive (would be a minor on its own anyway), so both fit cleanly in 0.14.0. After this, **v1.0.0 carries no code delta** — only the API-stability commitment, DocC tutorials, benchmarks, and the migration guide.
+
+### Tier 1 — `ThumbnailGenerator` (additive)
+
+A reusable, `Sendable` generator that composes the video **once** and holds a single `AVAssetImageGenerator`, so a scrubber requesting dozens of frames pays the composition + generator-allocation cost once instead of per call (today's `Video/thumbnail(at:)` re-runs `PlaybackComposer.compose` *and* builds a fresh generator on every call).
+
+```swift
+public actor ThumbnailGenerator {
+    // Built via Video.thumbnailGenerator(); composes once, reuses one generator.
+
+    /// Single frame at a composition time. Honors crop / transitions / preset
+    /// resolution exactly like Video.thumbnail(at:). Overlays are NOT baked in
+    /// (same AVAssetImageGenerator constraint as the existing one-shot path).
+    public func thumbnail(at time: CMTime) async throws -> PlatformImage
+    public func thumbnail(at seconds: TimeInterval) async throws -> PlatformImage
+
+    /// Batch / filmstrip: stream frames as each becomes ready, backed by
+    /// AVAssetImageGenerator.images(for:). Order of emission is not guaranteed;
+    /// each Frame carries its requestedTime so callers can place it.
+    public nonisolated func thumbnails(at times: [CMTime]) -> AsyncThrowingStream<Frame, Error>
+
+    /// Cancel all in-flight generation (cancelAllCGImageGeneration()).
+    public func cancel()
+
+    public struct Frame: Sendable {
+        public let requestedTime: CMTime
+        public let actualTime: CMTime
+        public let image: PlatformImage
+    }
+}
+
+extension Video {
+    /// Compose once and return a reusable generator for scrubbing / filmstrips.
+    public func thumbnailGenerator() async throws -> ThumbnailGenerator
+}
+```
+
+- **`Video/thumbnail(at:)` delegates.** Rewritten to `try await thumbnailGenerator().thumbnail(at: time)` — one code path, no duplicated `AVAssetImageGenerator` setup. Output identical (same generator config: `appliesPreferredTrackTransform`, zero tolerances, the playback `videoComposition`). The one-shot convenience stays for callers rendering a single frame.
+- **Actor, not class.** Generation mutates shared `AVAssetImageGenerator` state and supports cancellation; an actor gives Swift-6-clean isolation. `thumbnails(at:)` is `nonisolated` and returns a stream whose producer drives `images(for:)`.
+- **Platform.** `image(at:)` async and `images(for:)` (AsyncSequence) are both iOS 16 / macOS 13 — at the package floor, no `@available` gymnastics.
+- Tests: reuse (two `thumbnail(at:)` calls succeed against one generator), batch stream yields one `Frame` per requested time, `Video/thumbnail(at:)` parity with the generator path, cancel() is a no-throw no-op when idle.
+
+### Tier 2 — Remove the three overdue deprecations (breaking)
+
+| Removed (was `@available(*, deprecated …)`) | Replacement |
+|---|---|
+| `VideoClip.speed(_ rate: Double)` | `speed(.flat(rate))` |
+| `VideoClip.speed(curve: Animation<Double>)` | `speed(.curved(animation))` |
+| `VideoClip.filterAnimation(at index: Int, _:)` | `filterAnimation(for: FilterID, _:)` |
+
+Call-site migration (all internal — examples + tests; no consumer code in this repo):
+- **Examples** (5 sites): `SimpleEditor/ContentView.swift`, `V041Showcase`, `V030Showcase`, `V020Showcase` — `.speed(x)` → `.speed(.flat(x))`.
+- **Tests** (~10 files): `.speed(2.0)` → `.speed(.flat(2.0))`, `.speed(curve: c)` → `.speed(.curved(c))`.
+- **`SpeedEnumTests`** has tests that *specifically assert the deprecated overloads dispatch* (`.speed(2.5) as VideoClip`, `.speed(curve:)`); these lose their reason to exist — delete them (the canonical `.speed(.flat/.curved)` paths are covered in the same suite).
+- **`AnimationClearingModifiersTests`** index-based `filterAnimation(at:)` tests are **redundant** with `FilterIDTests`' keyed coverage (round-trip, nil-clear, unknown-ID no-op all exist there) — delete the index block rather than migrate; the out-of-range-index no-op has no keyed analogue (there's no "index 99") and is already covered by `testFilterAnimationForUnknownIDIsNoOp`.
+- **Stale doc ref:** `Clip+FilterID.swift:36` references the deprecated `filterAnimation(at:_:)` — update.
+
+### Tier 3 — Release prep + tag v0.14.0
+
+- CHANGELOG: `Added` (ThumbnailGenerator surface) + `Removed` (the three deprecations, with the one-line migration for each). First release with a `Removed` section.
+- ROADMAP: v0.14 ✓ shipped; restate v1.0 as a **pure lock — no code changes**.
+- README status block; DocC index gains `ThumbnailGenerator` + `Video/thumbnailGenerator()`.
+- develop→main → tag → GH release → reset develop. CI stays disabled (verify locally); admin-bypass merges.
+
+### Risks
+
+- **Downstream breakage from the removals.** reels-studio / kadr-ui may still call `.speed(Double)` or the index-based `filterAnimation`. They're separate repos on their own version tracks; the deprecation has shipped since v0.11, and the migration is a mechanical find-replace. Flag in the release notes; those repos bump their kadr floor to 0.14 when they migrate.
+- **Thumbnail surface lock-in.** Whatever `ThumbnailGenerator` ships here is frozen at v1.0. Keep it minimal and obvious (single + batch + cancel); resist adding caching / pre-warming knobs now — additive later if a real need appears.
+- **Actor + `AsyncThrowingStream` + non-Sendable `AVAssetImageGenerator`.** `images(for:)` is the supported batch path and is safe to drive from the stream's producer; the actor serializes single-frame calls. Pin a test that a batch stream and the actor don't deadlock when interleaved.
