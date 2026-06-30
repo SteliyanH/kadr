@@ -4,9 +4,9 @@ import PackageDescription
 let package = Package(
     name: "Kadr",
     platforms: [
-        .iOS(.v16),
-        .macOS(.v13),
-        .tvOS(.v16),
+        .iOS(.v17),
+        .macOS(.v14),
+        .tvOS(.v17),
         .visionOS(.v1)
     ],
     products: [

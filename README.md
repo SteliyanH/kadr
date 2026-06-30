@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/SteliyanH/kadr/actions/workflows/ci.yml/badge.svg)](https://github.com/SteliyanH/kadr/actions/workflows/ci.yml)
 [![Swift 6.0](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
-[![Platforms](https://img.shields.io/badge/Platforms-iOS%2016+%20|%20macOS%2013+%20|%20tvOS%2016+%20|%20visionOS%201+-blue.svg)](https://developer.apple.com)
+[![Platforms](https://img.shields.io/badge/Platforms-iOS%2017+%20|%20macOS%2014+%20|%20tvOS%2017+%20|%20visionOS%201+-blue.svg)](https://developer.apple.com)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 
 **SwiftUI for video. Compose, transform, export — in Swift you actually want to write.**
@@ -351,10 +351,12 @@ Or in Xcode: File > Add Package Dependencies > enter the repository URL.
 
 | Platform | Minimum Version |
 |---|---|
-| iOS | 16.0 |
-| macOS | 13.0 |
-| tvOS | 16.0 |
+| iOS | 17.0 |
+| macOS | 14.0 |
+| tvOS | 17.0 |
 | visionOS | 1.0 |
+
+> **Platform floor raised in v0.15.0** (was iOS 16 / macOS 13 / tvOS 16). Aligns the ecosystem on the iOS 17 baseline for the `@Observable` migration in `kadr-reels-studio`. Stay on `0.14.x` if you need the iOS 16 floor.
 
 ## Architecture
 

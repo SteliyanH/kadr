@@ -4,6 +4,23 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.15.0] - 2026-06-30
+
+Platform floor raised to **iOS 17 / macOS 14 / tvOS 17 / visionOS 1**. Mechanical, no API or behavior change — this lifts the ecosystem baseline so `kadr-reels-studio` can migrate to the iOS 17 `@Observable` macro. The kadr public surface is unchanged; only the minimum deployment target moves.
+
+### Changed
+
+- **`Package.swift` platforms** → `.iOS(.v17)` / `.macOS(.v14)` / `.tvOS(.v17)` / `.visionOS(.v1)` (was iOS 16 / macOS 13 / tvOS 16).
+
+### Removed
+
+- Two now-redundant `@available(iOS 16, macOS 13, tvOS 16, visionOS 1, *)` annotations on `VideoClip.speed(_:)` / `VideoClip.speed` — the package floor already exceeds them.
+
+### Notes
+
+- **Breaking only at the deployment-target level.** No source changes are required of consumers already on iOS 17+; consumers needing the iOS 16 floor stay on the `0.14.x` line.
+- This is the last floor/manifest change before **v1.0.0**, which remains a pure API-stability lock with no code delta.
+
 ## [0.14.0] - 2026-06-17
 
 Core closeout — the final cycle before the v1.0 semver lock. Ships the one additive surface deferred from v0.13 (reusable thumbnail generation) and removes every overdue deprecation, so **v1.0 will be a pure lock with no code changes**. Contains breaking removals; pre-1.0, those ride a minor bump.
