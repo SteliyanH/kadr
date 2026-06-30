@@ -38,7 +38,6 @@ extension VideoClip {
     /// - Parameter value: `.flat(rate)` or `.curved(animation)`.
     /// - Returns: A new clip with the speed applied. The other speed slot is
     ///   cleared, matching the documented mutual exclusion.
-    @available(iOS 16, macOS 13, tvOS 16, visionOS 1, *)
     public func speed(_ value: Speed) -> VideoClip {
         switch value {
         case .flat(let rate):
@@ -87,7 +86,6 @@ extension VideoClip {
     /// Canonical read surface for the clip's current speed. `.curved` wins
     /// over `.flat` when both stored fields are non-default — matching the
     /// engine's existing precedence (the curve takes priority when set).
-    @available(iOS 16, macOS 13, tvOS 16, visionOS 1, *)
     public var speed: Speed {
         if let speedCurve {
             return .curved(speedCurve)

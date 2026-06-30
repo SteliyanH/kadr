@@ -242,6 +242,10 @@ The final cycle before the v1.0 semver lock. Clears everything still deferred in
 
 A minor (not a patch) because removing public API is breaking — the correct pre-1.0 vehicle.
 
+## v0.15.0 — iOS 17 platform floor ✓ shipped
+
+Mechanical floor bump to **iOS 17 / macOS 14 / tvOS 17 / visionOS 1** (`Package.swift` platforms + two redundant `@available(iOS 16…)` annotations dropped). No API or behavior change. Lifts the ecosystem baseline so `kadr-reels-studio` can adopt the iOS 17 `@Observable` macro — part of a coordinated stack-wide move (kadr v0.15 → kadr-ui v0.12 → reels-studio). Breaking only at the deployment-target level; consumers needing iOS 16 stay on `0.14.x`. The last manifest change before the v1.0 lock.
+
 ## v1.0.0 — Production Ready (pure lock)
 
 Semver stability guarantee. **No code changes** — every public surface is frozen as of v0.14; this release is the commitment plus docs. (All deprecations are already removed in v0.14, so there is nothing left to delete here.)
