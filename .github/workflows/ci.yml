@@ -27,9 +27,35 @@ concurrency:
 jobs:
   test:
     runs-on: macos-15
+
+    # The suite takes ~30s locally and ~3-4 min on a runner. Without a cap, a
+    # hung process runs to GitHub's 360-minute default — six hours of macOS
+    # runner time, billed at 10x the Linux rate, for a job that should be over
+    # in minutes. That is not hypothetical: a run on 2026-08-17 sat for 33
+    # minutes after its tests had already finished, and had to be cancelled by
+    # hand. 15 is generous against the real 3-4.
+    timeout-minutes: 15
+
+    env:
+      # Real-media export tests decode the bundled H.264 fixture and run an
+      # AVAssetExportSession. This runner is virtualised and has no hardware
+      # video decode, so they fail with -11821 "Cannot Decode" and then wedge
+      # the test process (the runner logs `Terminate orphan process
+      # (swiftpm-testing)`). They pass on hardware, so they are skipped here
+      # rather than deleted. See Tests/KadrTests/TestEnvironment.swift.
+      #
+      # This means CI does NOT cover export. That is a real gap, deliberately
+      # taken, and the reason to move these onto a runner that can decode.
+      KADR_SKIP_MEDIA_EXPORT_TESTS: "1"
+
     steps:
       - uses: actions/checkout@v4
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          # Pinned, not `latest-stable`. The suite's behaviour depends on
+          # AVFoundation, so the toolchain is part of the test environment: a
+          # green run months ago and a red run today should differ because the
+          # code changed, not because the image moved under us. 26.3 is what
+          # the last green run used.
+          xcode-version: '26.3'
       - run: swift test

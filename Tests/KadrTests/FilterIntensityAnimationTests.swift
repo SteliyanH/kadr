@@ -119,7 +119,7 @@ struct FilterIntensityAnimationTests {
 
     // MARK: - Engine integration
 
-    @Test func videoExportWithFilterAnimationCompletes() async throws {
+    @Test(.enabled(if: TestEnvironment.canDecodeMedia)) func videoExportWithFilterAnimationCompletes() async throws {
         // End-to-end: clip with filter animation goes through FilterProcessor pre-render
         // and the parent composition. We just want to confirm the engine doesn't trip
         // up — pixel-level animation correctness would need frame extraction, out of

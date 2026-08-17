@@ -55,7 +55,7 @@ struct DuckingTests {
 
     // MARK: - Export
 
-    @Test func exportWithDucking() async throws {
+    @Test(.enabled(if: TestEnvironment.canDecodeMedia)) func exportWithDucking() async throws {
         let videoURL = try loadTestVideoURL()
         let audioURL = try loadTestAudioURL()
         let outputURL = testOutputURL("ducking_basic")
@@ -75,7 +75,7 @@ struct DuckingTests {
         try? FileManager.default.removeItem(at: result)
     }
 
-    @Test func duckingWithMutedClipDoesNotDuck() async throws {
+    @Test(.enabled(if: TestEnvironment.canDecodeMedia)) func duckingWithMutedClipDoesNotDuck() async throws {
         // Muted clip contributes no audio → music should play at full level (no clip-audio range to duck around)
         let videoURL = try loadTestVideoURL()
         let audioURL = try loadTestAudioURL()
@@ -138,7 +138,7 @@ struct DuckingTests {
         }
     }
 
-    @Test func duckingAtBoundsExports() async throws {
+    @Test(.enabled(if: TestEnvironment.canDecodeMedia)) func duckingAtBoundsExports() async throws {
         let videoURL = try loadTestVideoURL()
         let audioURL = try loadTestAudioURL()
 

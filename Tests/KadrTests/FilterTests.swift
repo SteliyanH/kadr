@@ -87,7 +87,7 @@ struct FilterTests {
 
     // MARK: - Export
 
-    @Test func exportWithSingleFilter() async throws {
+    @Test(.enabled(if: TestEnvironment.canDecodeMedia)) func exportWithSingleFilter() async throws {
         let videoURL = try loadTestVideoURL()
         let outputURL = testOutputURL("filter_brightness")
 
@@ -100,7 +100,7 @@ struct FilterTests {
         try? FileManager.default.removeItem(at: result)
     }
 
-    @Test func exportWithChainedFilters() async throws {
+    @Test(.enabled(if: TestEnvironment.canDecodeMedia)) func exportWithChainedFilters() async throws {
         let videoURL = try loadTestVideoURL()
         let outputURL = testOutputURL("filter_chain")
 
@@ -114,7 +114,7 @@ struct FilterTests {
         try? FileManager.default.removeItem(at: result)
     }
 
-    @Test func exportWithMonoFilter() async throws {
+    @Test(.enabled(if: TestEnvironment.canDecodeMedia)) func exportWithMonoFilter() async throws {
         let videoURL = try loadTestVideoURL()
         let outputURL = testOutputURL("filter_mono")
 
@@ -127,7 +127,7 @@ struct FilterTests {
         try? FileManager.default.removeItem(at: result)
     }
 
-    @Test func exportWithSepiaFilter() async throws {
+    @Test(.enabled(if: TestEnvironment.canDecodeMedia)) func exportWithSepiaFilter() async throws {
         let videoURL = try loadTestVideoURL()
         let outputURL = testOutputURL("filter_sepia")
 
@@ -140,7 +140,7 @@ struct FilterTests {
         try? FileManager.default.removeItem(at: result)
     }
 
-    @Test func filterWithTransition() async throws {
+    @Test(.enabled(if: TestEnvironment.canDecodeMedia)) func filterWithTransition() async throws {
         let videoURL = try loadTestVideoURL()
         let outputURL = testOutputURL("filter_transition")
 
@@ -160,7 +160,7 @@ struct FilterTests {
         try? FileManager.default.removeItem(at: result)
     }
 
-    @Test func filterWithSpeed() async throws {
+    @Test(.enabled(if: TestEnvironment.canDecodeMedia)) func filterWithSpeed() async throws {
         let videoURL = try loadTestVideoURL()
         let outputURL = testOutputURL("filter_speed")
 
