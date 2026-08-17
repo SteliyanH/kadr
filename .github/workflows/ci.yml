@@ -37,16 +37,21 @@ jobs:
     timeout-minutes: 15
 
     env:
-      # Real-media export tests decode the bundled H.264 fixture and run an
-      # AVAssetExportSession. This runner is virtualised and has no hardware
-      # video decode, so they fail with -11821 "Cannot Decode" and then wedge
-      # the test process (the runner logs `Terminate orphan process
-      # (swiftpm-testing)`). They pass on hardware, so they are skipped here
-      # rather than deleted. See Tests/KadrTests/TestEnvironment.swift.
+      # Export itself works here — crop, overlays, transitions, speed and
+      # multi-overlay exports all pass. What fails is narrower: 15 tests that
+      # need a *second* decode pass, either because the feature pre-renders an
+      # intermediate file (filters via FilterProcessor, reverse via
+      # ReverseProcessor) or because it decodes a second asset (the audio tests
+      # and the sample.mp3 fixture). Those fail with -11821 "Cannot Decode" and
+      # then wedge the test process — the runner logs `Terminate orphan process
+      # (swiftpm-testing)`, which is what `timeout-minutes` above now caps.
       #
-      # This means CI does NOT cover export. That is a real gap, deliberately
-      # taken, and the reason to move these onto a runner that can decode.
-      KADR_SKIP_MEDIA_EXPORT_TESTS: "1"
+      # They pass on hardware, so they are skipped rather than deleted. Full
+      # diagnosis in Tests/KadrTests/TestEnvironment.swift.
+      #
+      # This leaves filters, audio mixing and reverse unverified by CI. Real
+      # gap, deliberately taken; tracked in the issues, not just here.
+      KADR_SKIP_REENCODE_TESTS: "1"
 
     steps:
       - uses: actions/checkout@v4

@@ -133,7 +133,7 @@ struct SugarTests {
         #expect(video.audioTracks.first?.duckingLevel == nil)
     }
 
-    @Test(.enabled(if: TestEnvironment.canDecodeMedia)) func exportWithBackgroundMusic() async throws {
+    @Test(.enabled(if: TestEnvironment.canReencodeMedia)) func exportWithBackgroundMusic() async throws {
         let videoURL = try loadTestVideoURL()
         let audioURL = try loadTestAudioURL()
         let outputURL = testOutputURL("bg_music")

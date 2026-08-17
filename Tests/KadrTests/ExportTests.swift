@@ -196,7 +196,7 @@ struct ExportTests {
         try? FileManager.default.removeItem(at: result)
     }
 
-    @Test(.enabled(if: TestEnvironment.canDecodeMedia)) func replaceAudio() async throws {
+    @Test(.enabled(if: TestEnvironment.canReencodeMedia)) func replaceAudio() async throws {
         let videoURL = try loadTestVideoURL()
         let audioURL = try loadTestAudioURL()
 
@@ -229,7 +229,7 @@ struct ExportTests {
         }
     }
 
-    @Test(.enabled(if: TestEnvironment.canDecodeMedia)) func reverseVideoClip() async throws {
+    @Test(.enabled(if: TestEnvironment.canReencodeMedia)) func reverseVideoClip() async throws {
         let videoURL = try loadTestVideoURL()
 
         let outputURL = testOutputURL("reverse")
