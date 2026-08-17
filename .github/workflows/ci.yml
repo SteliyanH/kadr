@@ -1,11 +1,29 @@
 name: CI
-# Auto-triggers temporarily disabled (CI minutes limit, v0.13 cycle).
-# Re-enable by restoring the push/pull_request triggers below:
-#   push:
-#     branches: [main, develop]
-#   pull_request:
+
+# `develop` and `main` require the `test` check (branch protection). A workflow
+# that only ran on `workflow_dispatch` could never produce it: manually
+# dispatched runs are not reported as a PR status, so every pull request sat
+# BLOCKED and the only way to land anything was an admin override. Restored on
+# `pull_request` so the required check exists where protection actually needs
+# it — on the PR's head commit.
+#
+# Runner minutes are shared, so the trigger set stays deliberately narrow:
+#
+#   - `pull_request` only, NOT `push`. A post-merge push run would re-test code
+#     the PR already tested. Where merge commits differ from PR heads it is
+#     `strict: true` in branch protection (require branches up to date) that
+#     catches it, not a second full run.
+#   - `concurrency` cancels superseded runs, so iterating on a PR costs one run
+#     rather than one per push.
+#   - `workflow_dispatch` stays for manual runs on a branch.
 on:
+  pull_request:
   workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: macos-15
