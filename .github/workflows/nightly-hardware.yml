@@ -1,0 +1,63 @@
+name: Nightly (hardware)
+
+# The other half of the CI story.
+#
+# `ci.yml` runs on GitHub's hosted macOS runners, which are Apple-Silicon VMs
+# without an exposed hardware media engine. 15 tests that need a second decode
+# pass — filters and reverse (both pre-render an intermediate file), and the
+# audio tests (they decode a second asset) — fail there with -11821
+# "Cannot Decode" and then wedge the test process. They are skipped on PRs via
+# KADR_SKIP_REENCODE_TESTS. See Tests/KadrTests/TestEnvironment.swift.
+#
+# This workflow runs the **full** suite, that variable unset, on real hardware.
+# Regressions in filters, audio mixing and reverse surface within a day instead
+# of never — without putting a ~30-minute hardware dependency in front of every
+# pull request.
+#
+# ---------------------------------------------------------------------------
+# THIS WORKFLOW IS INERT UNTIL YOU OPT IN.
+#
+# It needs a self-hosted macOS runner on real hardware (an Apple Silicon Mac
+# with the media engine available — any normal Mac, not a VM). To enable:
+#
+#   1. Register a self-hosted runner on this repo, labelled `macOS`.
+#      Settings -> Actions -> Runners -> New self-hosted runner.
+#   2. Set the repository variable HARDWARE_RUNNER_ENABLED to `true`.
+#      Settings -> Secrets and variables -> Actions -> Variables.
+#
+# The `if:` below gates the job on that variable, so until it is set this
+# workflow schedules, finds nothing to do, and exits green. That is deliberate:
+# a scheduled job pointing at a runner that does not exist would otherwise queue
+# and fail every night, and a nightly red badge that everyone learns to ignore is
+# worse than no badge.
+# ---------------------------------------------------------------------------
+
+on:
+  schedule:
+    # 03:00 UTC daily. Off-peak, and a failure is waiting when work starts.
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-hardware
+  cancel-in-progress: false
+
+jobs:
+  full-suite:
+    # Inert until opted in — see the header.
+    if: vars.HARDWARE_RUNNER_ENABLED == 'true'
+
+    runs-on: [self-hosted, macOS]
+
+    # Generous next to the ~30s this suite takes on hardware, but a cap: the
+    # failure mode being guarded against here is a wedged test process, which is
+    # exactly what happens when the media path is unavailable.
+    timeout-minutes: 30
+
+    # KADR_SKIP_REENCODE_TESTS is deliberately NOT set. Running the tests the
+    # hosted runners cannot is this workflow's entire reason to exist.
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the full suite, including re-encode tests
+        run: swift test
