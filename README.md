@@ -1,13 +1,15 @@
 # Kadr
 
 [![CI](https://github.com/SteliyanH/kadr/actions/workflows/ci.yml/badge.svg)](https://github.com/SteliyanH/kadr/actions/workflows/ci.yml)
-[![Swift 6.0](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
-[![Platforms](https://img.shields.io/badge/Platforms-iOS%2017+%20|%20macOS%2014+%20|%20tvOS%2017+%20|%20visionOS%201+-blue.svg)](https://developer.apple.com)
+[![Swift versions](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2FSteliyanH%2Fkadr%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/SteliyanH/kadr)
+[![Platforms](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2FSteliyanH%2Fkadr%2Fbadge%3Ftype%3Dplatforms)](https://swiftpackageindex.com/SteliyanH/kadr)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 
 **SwiftUI for video. Compose, transform, export — in Swift you actually want to write.**
 
 A modern, declarative Swift library for video composition on Apple platforms. Build videos using a result-builder DSL with async/await throughout. Multi-track timelines, transitions, overlays, filters with keyframe animation, custom per-frame compositors, time-anchored audio with crossfades — all on top of AVFoundation, no third-party dependencies.
+
+**[API documentation →](https://swiftpackageindex.com/SteliyanH/kadr/documentation/kadr)**  ·  built and hosted by the Swift Package Index for every release.
 
 > **Companion packages.** Kadr is the engine; three adapter packages consume its public surface for specific use cases. Pull them in separately as you need them — none are required for core composition / export.
 >
@@ -91,126 +93,41 @@ FFmpegKit retired in January 2025. Pixel SDK sunset in February 2025. AVFoundati
 
 ## Features
 
-### v0.14 (current — `0.14.0`)
+Everything below is in the shipping public API. For what changed in which
+release, see [CHANGELOG.md](CHANGELOG.md) — it is not duplicated here, so it
+cannot drift out of date here either.
 
-Core closeout — the final cycle before the v1.0 semver lock. Clears everything still deferred in kadr core, so v1.0 is a pure lock with no code changes.
+**Composition**
+- Result-builder DSL over `Video`, `Track`, `VideoClip`, `ImageClip` and `TitleSequence`, `async`/`await` throughout, no third-party dependencies.
+- Multi-track timelines with named lanes and per-track opacity; time-anchored audio tracks.
+- `KadrVideoCompositor` for custom per-frame compositing, and `makePlayerItem()` so a composition previews before it exports.
 
-- **`ThumbnailGenerator`** (additive) — `video.thumbnailGenerator()` composes once and reuses a single `AVAssetImageGenerator` across many frame requests. `thumbnail(at:)`, a batch `thumbnails(at:)` `AsyncThrowingStream` for filmstrips, and `cancel()`. `Video.thumbnail(at:)` now delegates to it.
-- **Removed three overdue deprecations** *(breaking)* — `speed(_ rate: Double)` → `speed(.flat(rate))`, `speed(curve:)` → `speed(.curved(_:))`, and index-based `filterAnimation(at:_:)` → `filterAnimation(for: FilterID, _:)`. All three were deprecated since v0.11.
+**Transform and animation**
+- `Transform(center:rotation:scale:anchor:)` on every clip type — picture-in-picture, scaled cutaways, rotated clips.
+- `Animation<T>` with `Animatable` conformances for `Transform`, `Double`, `Position` and `Size`. `TimingFunction` covers linear, ease-in/out, cubic Bézier and custom closures.
+- **Keyframes are clip-relative**: a keyframe at `0.0` maps to the clip's first frame, not composition zero. The same animations drive export and live preview.
 
-### v0.13 (`0.13.0`)
+**Filters**
+- Animatable presets including brightness, contrast, saturation, exposure, sepia, gaussian blur, vignette, sharpen, zoom blur and glow.
+- Keyed by `FilterID`, so animations bound to a filter survive reordering instead of drifting onto their neighbours.
 
-Engine perf — the final OSS-core cycle before the v1.0 semver lock. **No API changes**: every v0.12 composition compiles unchanged and renders byte-identical output. Purely internal hot-path / allocation reduction driven by reels-studio v0.7's profiled traces.
+**Overlays and text**
+- `TextOverlay` with built-in animation recipes (`.fadeIn`, `.slideIn`, `.scaleUp`), plus `ImageOverlay` and `StickerOverlay` with animatable position and size.
+- `TextStyle` carries `TextStroke` and `TextShadow` — legible copy over busy footage.
 
-- **Compositor color-space hoist** — `KadrVideoCompositor` no longer allocates a `CGColorSpace` per composited frame (the #1 export-time hotspot); ~900 throwaway allocations gone on a 30 s / 30 fps export.
-- **Overlay `CGImage` coalescing** — `OverlayRenderer` resolves each overlay image once per build instead of up to three times, via a per-build identity cache.
-- **`Video.duration` compute-once** — now computed at construction and stored as a `let` (O(1) reads) instead of re-walking the clip list on every access.
+**Audio**
+- Per-track volume, fades, ducking, `volumeRamp(start:end:during:)` and declaration-ordered `crossfade(_:)`.
+- Pitch-preserving speed from 0.25× to 4× via `AudioTimePitchAlgorithm` (`.spectral`, `.timeDomain`, `.varispeed`).
 
-> Deferred to v0.13.x / v1.0: thumbnail / `AVAssetImageGenerator` scrub-path reuse — it needs a stateful handle, which would add public surface this no-surface cycle excludes.
+**Timing**
+- `Speed` is `.flat(Double)` or `.curved(Animation<Double>)` — compile-time exclusivity, with non-linear playback rates integrated into a piecewise-linear time map that audio follows.
 
-### v0.12 (`0.12.0`)
+**Captions**
+- `Caption` value type and `Video.captions(_:)` bake cues as an `AVMetadataItem` group at export. File parsing for SRT, VTT, iTT, ASS and SSA lives in [`kadr-captions`](https://github.com/SteliyanH/kadr-captions); the core stays a bridge.
 
-Text effects on `TextStyle`. Two additive fields — `stroke: TextStroke?` and `shadow: TextShadow?` — that finally let consumers render legible copy over busy frames. Pre-v0.12 callers compile and render identically; both fields default `nil`.
-
-- **`TextStroke(width:color:)`** — outline drawn under the fill via `NSAttributedString.Key.strokeWidth` + `.strokeColor`. Width 0 = no stroke; the public API stays positive while the renderer flips the sign internally (Apple's "negative width = stroke + fill" convention is hidden).
-- **`TextShadow(offset:blur:color:)`** — drop shadow painted via `CALayer.shadowColor` / `.shadowOffset` / `.shadowRadius` / `.shadowOpacity`. Opacity is pulled from the color's own alpha so translucent shadow colors work without an extra knob.
-
-### v0.11 (`0.11.0`)
-
-API hardening + correctness — pre-v1.0 cycle absorbing three load-bearing fixes flagged in a cross-package audit:
-
-- **`CancellationToken` atomicity.** `NSLock`-backed `_isCancelled` + `exportSession`; `@unchecked Sendable` retained but now load-bearing on real synchronization rather than an unbacked claim.
-- **`Speed` enum** (`.flat(Double)` / `.curved(Animation<Double>)`) — compile-time exclusivity between flat and curved playback rates. Deprecated `speed(_:)` / `speed(curve:)` overloads dispatch through the new surface (removal target v0.13).
-- **`FilterID` + keyed filter API** — `filter(for:)`, `filterAnimation(for:_:)`, `setFilter(for:_:)`, `removeFilter(for:)`. Parallel-array `filterIDs: [FilterID]` survives modifier rebuilds so animations bound by id don't drift when filters reorder.
-
-### v0.10 (`0.10.0` + `0.10.1`)
-
-Pre-v1.0 polish — explicit Sendable conformance audit on the public surface, animation-clearing modifiers (`transformAnimation(_:)` / `opacityAnimation(_:)` / `filterAnimation(at:_:)` / overlay variants), ~120 LOC of downstream rebuild helpers dropped.
-
-> **Next:** v0.13 — see [ROADMAP.md](ROADMAP.md). HDR / Dolby Vision support is on the long-tail roadmap but may live in [`kadr-pro`](#kadr-pro) instead — see the Kadr Pro section in ROADMAP for the current free / premium split.
-
-### v0.9 (`0.9.2`)
-
-The "Advanced timing" cycle:
-
-- **Speed curves on `VideoClip`** *(v0.9.0)*. `.speed(curve: Animation<Double>)` — non-linear playback rate over clip-relative time. Engine integrates the curve into a piecewise-linear time map (30 Hz sampling) and applies via repeated `scaleTimeRange` segments. Audio (when present) follows the same time map. The signature CapCut feature.
-- **`AudioTrack.speed(_:algorithm:)`** *(v0.9.1)*. Pitch-preserving audio speed in `0.25...4.0`. New `AudioTimePitchAlgorithm` enum (`.spectral` / `.timeDomain` / `.varispeed`). Fades, ramps, ducking, crossfades all operate on the scaled (timeline) duration.
-- **`Caption` value type + `Video.captions(_:)`** *(v0.9.2)*. The AVFoundation caption bridge. Engine bakes attached cues as `AVMetadataItem` group at export. SRT / VTT / iTT / ASS / SSA file parsing lives in [`kadr-captions`](https://github.com/SteliyanH/kadr-captions); core stays bridge-only.
-
-### v0.8 (`0.8.4`)
-
-The "Animation & Transform" cycle. v0.8.0 shipped the foundational surface; v0.8.1–v0.8.4 layered on real-user wins. **110 new tests across the cycle** (357 → 467); v0.7 compositions compile unchanged.
-
-- **Per-clip Transform.** `Transform(center:rotation:scale:anchor:)` on `VideoClip` / `ImageClip` / `TitleSequence`. Reuses `Position` + `Anchor` from v0.3 overlays so the coordinate space is one consumers already know. Picture-in-picture, scaled cutaways, rotated clips.
-- **Keyframe animations.** `Animation<T>` generic + `Animatable` protocol on `Transform` / `Double` / `Position` / `Size`. `TimingFunction` covers linear / easeIn / easeOut / easeInOut / cubicBezier / custom-closure. **Clip-relative timing** (a `.at(0.0, ...)` keyframe maps to the clip's first frame, not composition t=0). Drives both export and `makePlayerItem()` preview.
-- **Animated `TextOverlay`.** `TextAnimation` protocol + built-in recipes (`.fadeIn`, `.slideIn`, `.scaleUp`). CALayer-backed export render via `AVVideoCompositionCoreAnimationTool`.
-- **Animated overlay layout** *(v0.8.1)*. `.position(_:animation:)` and `.size(_:animation:)` on `ImageOverlay` / `StickerOverlay` — sliding watermarks, drifting stickers, animated logo placements.
-- **Filter intensity animation** *(v0.8.2)*. `VideoClip.filter(_:animation:)` drives the primary scalar of any animatable filter (brightness, contrast, saturation, exposure, sepia, gaussianBlur, vignette, sharpen, zoomBlur, glow). Animated blur sweeps, fade-to-sepia, intensity-ramped vignette. Inner-Track clip Transforms / animations now also work in the pure-media Track fast path.
-- **`AudioTrack.volumeRamp(start:end:during:)`** *(v0.8.3)*. Granular volume automation between two points in track-relative time. Multiple ramps accumulate; engine drops any that overlap implicit `fadeIn` / `fadeOut` / `crossfade` / `ducking` ranges.
-- **More `Filter` presets** *(v0.8.4)*. `.gaussianBlur`, `.vignette`, `.sharpen`, `.zoomBlur`, `.glow` — each animatable.
-- **Audio cross-fades.** `AudioTrack.crossfade(_:)` with declaration-order pairing. Engine emits matching volume ramps when adjacent tracks overlap and overrides user fades at the boundary.
-
-### v0.7.0 (`0.7.0`)
-
-- **Track names.** Optional `name:` parameter on `Track(...)` for downstream tooling. kadr-ui's `TimelineView` consumes it for lane labels.
-- **Transitions in the implicit chain alongside multi-track parallel clips** — closes the v0.6 deferral. The engine pre-renders the chain to a temp `.mp4` (mirroring v0.6's Tracks-with-transitions pattern), then inserts it as a single piece on the main video track. No more `KadrError.notYetImplemented` for that combination.
-- **Time-windowed compositors.** `Video.compositor(_:during:)` — single global `MultiInputCompositor` active only during a `CMTimeRange` / `ClosedRange<TimeInterval>`. Outside the window the engine falls back to its built-in alpha-composite blender. Closure forms also available.
-- **AudioTrack timing.** `AudioTrack.at(time:)` and `.duration(_:)` — pin a track to a composition time and cap its playback length. Sound effects and time-anchored music are first-class. All volume / fade / ducking automation re-anchored to absolute composition time so timing-aware tracks layer correctly with chain audio.
-
-### v0.6.0 (`0.6.0`)
-
-- **Multi-track timeline.** Hybrid DSL: top-level clips chain implicitly (v0.5 unchanged); `.at(time:)` pins a clip to an explicit composition time as a free-floating parallel track; `Track { ... }` groups clips into a parallel sub-timeline anchored at `Track(at:)`. Layer ordering is declaration order — later renders on top.
-- **Multi-input compositors.** `MultiInputCompositor` protocol (separate from v0.5's single-input `Compositor`) — `func process(images: [CIImage], context:) -> CIImage`. Attach via `Video.compositor(_:)`. Default behavior is alpha-composite later-over-earlier; custom blends run via a `KadrVideoCompositor` (custom `AVVideoCompositing` implementation).
-- **Transitions inside Tracks** and **nested Tracks** via recursive pre-render. Mirrors the `FilterProcessor` pattern — Tracks containing transitions or nested Tracks are pre-rendered to a temp `.mp4` then inserted as a single piece on the parent's parallel video track.
-
-### v0.5.0 (`0.5.0`)
-
-- **Time-ranged overlay visibility**: `.visible(during: CMTimeRange)` / `.visible(during: ClosedRange<TimeInterval>)` on every overlay type — overlays render only during a portion of the composition.
-- **LUTs**: `Filter.lut(LUT)` and the throwing factory `Filter.lut(url:)` for `.cube` 3D color-grading files. Standalone `LUT` value type loads + parses once for reuse across clips.
-- **Chroma key**: `Filter.chromaKey(color:threshold:)` and the standalone `ChromaKey` value type. ITU-R BT.601 chroma distance, programmatic `CIColorCube` cube.
-- **Custom compositors** *(foundation)*: public `Compositor` protocol + closure form, plus `CompositorContext` carrying per-frame `time` + `renderSize`. Plugs into the engine's existing per-clip pre-render pass.
-- **Per-clip crop**: `VideoClip.crop(at:size:anchor:)` mirroring the composition-wide `Video.crop`. Built as a thin `Compositor`.
-- **Alpha-mask crop**: `VideoClip.mask(_: CIImage)` / `mask(_: PlatformImage)` for non-rectangular shapes via `CIBlendWithAlphaMask`. Built as a thin `Compositor`.
-
-### v0.4.1 (`0.4.1`)
-
-- **Clip identity**: `ClipID` (string-backed, mirrors `LayerID`). Assign with `.id(_:)` on `VideoClip`, `ImageClip`, `TitleSequence`. IDs survive the existing modifier chain (`.trimmed`, `.reversed`, `.speed`, `.filter`, etc.) so callers can address clips across reorders and trims — driven by [`kadr-ui`](https://github.com/SteliyanH/kadr-ui)'s timeline component.
-
-### v0.4.0 (`0.4.0`)
-
-- **Composition introspection**: `Video.clips`, `overlays`, `audioTracks`, `preset`, and `crop` are publicly readable so callers can build their own timeline / preview / hit-testing UI without re-deriving state. Per-clip storage on `VideoClip`, `ImageClip`, and `AudioTrack` is also publicly readable.
-- **Preview**: `Video.makePlayerItem()` returns an `AVPlayerItem` with the composition's videoComposition (preset, crop, transitions) and audioMix (background music, fades, ducking) pre-attached, ready for `AVKit.VideoPlayer`. `Video.thumbnail(at:)` renders a single composition frame.
-- **Layout helpers**: `Layout.resolveFrame(position:size:anchor:in:)` mirrors the engine's coordinate math so custom UI can hit-test overlays in pixel-exact alignment with what the engine renders.
-- **Companion packages**: three adapter packages now consume Kadr's public surface — see the table at the top of this README. [`kadr-ui`](https://github.com/SteliyanH/kadr-ui) for SwiftUI views; [`kadr-captions`](https://github.com/SteliyanH/kadr-captions) for SRT / VTT / iTT / ASS / SSA file I/O + a styled-VTT bridge; [`kadr-photos`](https://github.com/SteliyanH/kadr-photos) for Photos library integration (PHAsset resolvers, Live Photo, PHPicker SwiftUI wrapper, metadata, overlay helpers).
-
-### v0.3 (`0.3.0`)
-
-- **Layout primitives**: `Position` (`.normalized` / `.pixels` / `.percent` plus 9 named anchors), `Size` (with `.aspectFit` / `.aspectFill`), `Anchor`, and `LayerID`
-- **Overlays**: `ImageOverlay`, `TextOverlay` + `TextStyle`, `StickerOverlay` (with `.shadow` and `.rotation` modifiers), and `Video.watermark(...)` sugar
-- **Filters**: `VideoClip.filter(_:)` with built-in `CIFilter` presets — `.brightness`, `.contrast`, `.saturation`, `.exposure`, `.sepia`, `.mono`. Variadic and chainable.
-- **Crop**: `Video.crop(at:size:anchor:)` — composition-wide rectangular crop sharing the layout coordinate system
-- **Sugar**: `BackgroundMusic` (defaults: volume 0.6, fades, ducking), `TitleSequence` (text title clip with cross-platform rendering), `Timecode` (SMPTE `HH:MM:SS:FF` format/parse)
-
-### v0.2
-
-- **Transitions**: `.fade` (through black), `.dissolve` (cross-blend), `.slide` (4 directions) — wired through the engine with audio crossfades
-- **Speed control**: `VideoClip.speed(_:)` — `0.25...4.0`, pitch-preserving
-- **Audio ducking**: `AudioTrack.ducking(_:)` — auto-lowers music while clip audio plays
-- **Frame-accurate timing**: every time-related API accepts `CMTime` for frame-precise edits, with `TimeInterval` overloads for ergonomic call sites
-
-### v0.1
-
-- Result-builder DSL (`Video { ... }`)
-- `ImageClip` and `VideoClip` primitives
-- `AudioTrack` with `.volume(_:)`, `.fadeIn(_:)`, `.fadeOut(_:)`
-- Clip modifiers: `.trimmed(to:)`, `.reversed()`, `.muted()`, `.withAudio(_:)`
-- Export presets: `.reelsAndShorts`, `.tiktok`, `.square`, `.cinema`, `.custom(...)`
-- H.264 and HEVC codec support
-- Progress reporting via `AsyncThrowingStream` with time estimation
-- Thumbnail extraction: `VideoClip.thumbnail(at:)`
-- Video metadata: duration, resolution, frame rate
-- Typed errors via `KadrError`
-- Export cancellation support
+**Export**
+- `ThumbnailGenerator` reuses one `AVAssetImageGenerator` across many frame requests, with a batch `AsyncThrowingStream` for filmstrips and cooperative `cancel()`.
+- `CancellationToken` backed by real synchronisation, not an unchecked claim.
 
 ### Roadmap
 
@@ -337,11 +254,17 @@ Add to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/SteliyanH/kadr.git", from: "0.10.0")
+    .package(url: "https://github.com/SteliyanH/kadr.git", .upToNextMinor(from: "0.15.0"))
 ]
 ```
 
-`from: "0.10.0"` picks up every minor and patch up to v1.0; bump to `from: "1.0.0"` once that ships for semver lock.
+**Pin to the next minor while kadr is pre-1.0.** SwiftPM's `from:` means
+`.upToNextMajor`, and it does not special-case `0.x` — so `from: "0.15.0"`
+would resolve as `>=0.15.0, <1.0.0` and accept every 0.x release, including
+breaking ones. Minors here do break: v0.15.0 raised the platform floor to
+iOS 17. `.upToNextMinor` resolves `>=0.15.0, <0.16.0`, so a breaking minor
+becomes a deliberate bump you review. Once v1.0 ships, `from: "1.0.0"` is the
+correct and safe form.
 
 Or in Xcode: File > Add Package Dependencies > enter the repository URL.
 
