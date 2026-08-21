@@ -36,7 +36,6 @@ jobs:
     # hand. 15 is generous against the real 3-4.
     timeout-minutes: 15
 
-    env:
       # Export itself works here — crop, overlays, transitions, speed and
       # multi-overlay exports all pass. What fails is narrower: 15 tests that
       # need a *second* decode pass, either because the feature pre-renders an
