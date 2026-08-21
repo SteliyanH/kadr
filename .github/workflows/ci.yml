@@ -51,7 +51,10 @@ jobs:
       #
       # This leaves filters, audio mixing and reverse unverified by CI. Real
       # gap, deliberately taken; tracked in the issues, not just here.
-      KADR_SKIP_REENCODE_TESTS: "1"
+      # EXPERIMENT (#139 option 4): skip removed on purpose, and the
+      # re-encode tests pointed at a smaller video and AAC audio.
+      # Reverted before this branch merges, either way.
+      KADR_TINY_FIXTURES: "1"
 
     steps:
       - uses: actions/checkout@v4
