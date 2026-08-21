@@ -4,6 +4,41 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.16.0] - 2026-08-21
+
+Error messages a person can read, and a way to check the performance claims
+this project has been making. Minor rather than patch: `KadrError` gains a
+protocol conformance it did not have, and `localizedDescription` changes
+observably.
+
+### Added
+
+- **`KadrError` conforms to `LocalizedError`.** Previously an export failure
+  surfaced to users as `"The operation couldn't be completed. (Kadr.KadrError
+  error 6.)"`, because `localizedDescription` is what error-handling paths
+  reach for. `invalidTransition` is documented as carrying "a human-readable
+  explanation suitable for surfacing to users" — that explanation was being
+  discarded, and is now passed through unwrapped.
+
+  Messages name files without their paths: a path is not something a person can
+  act on, and it leaks a sandbox layout into the interface. Consumers were
+  sanitising these strings themselves for exactly that reason. Suggestions
+  appear only where an action exists — a cancelled export gets none, because
+  filler in an error message costs trust. Not localised; this package ships no
+  string catalogue, so translation remains separate work.
+
+- **A benchmark target** covering the three scenarios the v1.0 roadmap names —
+  single-track export, multi-track with `KadrVideoCompositor`, keyframe-heavy
+  compositions. v0.13 claimed a 10-30% export improvement that nothing here
+  could verify or defend against regression. `--json` records a baseline,
+  `--compare` checks a later run and exits non-zero past a tolerance.
+
+  Not in CI: export needs hardware encode, which hosted runners lack. First
+  finding, in `Benchmarks/README.md`: at 120 keyframes over 5s the
+  keyframe-heavy path runs within a few percent of single-track, while the
+  multi-track compositor path costs roughly 3x. Keyframe evaluation is not
+  where export time goes.
+
 ## [0.15.1] - 2026-08-21
 
 CI and documentation. **No API or behaviour change** — this is the last
