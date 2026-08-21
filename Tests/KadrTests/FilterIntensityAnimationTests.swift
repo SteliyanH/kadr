@@ -11,7 +11,7 @@ struct FilterIntensityAnimationTests {
     private let preset: Preset = .auto
 
     private func loadTestVideoURL() throws -> URL {
-        guard let url = Bundle.module.url(forResource: "sample", withExtension: "mov") else {
+        guard let url = Bundle.module.url(forResource: TestEnvironment.videoFixtureName, withExtension: "mov") else {
             throw KadrError.invalidURL(URL(fileURLWithPath: "sample.mov"))
         }
         return url

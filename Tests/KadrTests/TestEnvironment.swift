@@ -50,4 +50,24 @@ enum TestEnvironment {
     static var canReencodeMedia: Bool {
         ProcessInfo.processInfo.environment["KADR_SKIP_REENCODE_TESTS"] == nil
     }
+
+    /// EXPERIMENT (issue #139, option 4): swap the re-encode tests onto a
+    /// smaller, shorter fixture and an AAC audio track, to find out whether the
+    /// runner is failing on the *size* of the intermediate it has to decode or
+    /// on the capability itself.
+    ///
+    /// Two variables move together on purpose — this is a cheap yes/no, not a
+    /// controlled study. If it passes, narrow it down; if it fails, the
+    /// capability-absence hypothesis stands and this gets deleted.
+    static var usesTinyFixtures: Bool {
+        ProcessInfo.processInfo.environment["KADR_TINY_FIXTURES"] != nil
+    }
+
+    /// Video fixture the re-encode tests should load.
+    static var videoFixtureName: String { usesTinyFixtures ? "tiny" : "sample" }
+
+    /// Audio fixture, and its extension — the tiny variant is AAC rather than
+    /// MP3, because MP3 decode is one of the things suspected of failing.
+    static var audioFixtureName: String { usesTinyFixtures ? "tiny" : "sample" }
+    static var audioFixtureExtension: String { usesTinyFixtures ? "m4a" : "mp3" }
 }

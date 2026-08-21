@@ -13,14 +13,14 @@ struct SugarTests {
     }
 
     private func loadTestVideoURL() throws -> URL {
-        guard let url = Bundle.module.url(forResource: "sample", withExtension: "mov") else {
+        guard let url = Bundle.module.url(forResource: TestEnvironment.videoFixtureName, withExtension: "mov") else {
             throw KadrError.invalidURL(URL(fileURLWithPath: "sample.mov"))
         }
         return url
     }
 
     private func loadTestAudioURL() throws -> URL {
-        if let url = Bundle.module.url(forResource: "sample", withExtension: "mp3") { return url }
+        if let url = Bundle.module.url(forResource: TestEnvironment.audioFixtureName, withExtension: TestEnvironment.audioFixtureExtension) { return url }
         guard let url = Bundle.module.url(forResource: "sample", withExtension: "wav") else {
             throw KadrError.invalidURL(URL(fileURLWithPath: "sample.wav"))
         }
