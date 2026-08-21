@@ -73,7 +73,7 @@ func v060TrackWithTransitions() async throws {
 /// A custom blend that multiplies the foreground over the background. Multi-input
 /// compositors run after the v0.6 multi-track engine assembles parallel tracks.
 @available(iOS 16, macOS 13, *)
-struct MultiplyBlend: MultiInputCompositor {
+struct V060MultiplyBlend: MultiInputCompositor {
     func process(images: [CIImage], context: CompositorContext) -> CIImage {
         guard images.count >= 2 else { return images.first ?? CIImage(color: .clear) }
         let filter = CIFilter(name: "CIMultiplyBlendMode")
@@ -93,7 +93,7 @@ func v060CustomMultiInputCompositor() async throws {
         VideoClip(url: baseURL).trimmed(to: 0...8)
         VideoClip(url: overlayURL).trimmed(to: 0...8).at(time: 0)
     }
-    .compositor(MultiplyBlend())
+    .compositor(V060MultiplyBlend())
     .export(to: outputURL)
 }
 
@@ -173,6 +173,6 @@ func v060Combined() async throws {
             VideoClip(url: pipBURL).trimmed(to: 0...2)
         }
     }
-    .compositor(MultiplyBlend())            // v0.6 multi-input compositor
+    .compositor(V060MultiplyBlend())            // v0.6 multi-input compositor
     .export(to: outputURL)
 }

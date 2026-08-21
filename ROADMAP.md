@@ -251,10 +251,22 @@ Mechanical floor bump to **iOS 17 / macOS 14 / tvOS 17 / visionOS 1** (`Package.
 Semver stability guarantee. **No code changes** — every public surface is frozen as of v0.14; this release is the commitment plus docs. (All deprecations are already removed in v0.14, so there is nothing left to delete here.)
 
 - API stability commitment — no breaking changes without a major version bump
-- Comprehensive DocC tutorials: Slideshow, Multi-track, Custom compositors, Keyframe animations, Editor app walkthrough
+- Task-based DocC articles and topic groups covering slideshows, multi-track
+  composition, custom compositors and keyframe animation
+
+  > **Downgraded from interactive tutorials, deliberately.** `.tutorial` files
+  > are the highest-maintenance DocC artefact by a wide margin: every step
+  > carries a screenshot and a code snapshot, and both rot on any API or UI
+  > change. For a single maintainer that is the promise most likely to be
+  > quietly broken, and a 1.0 that ships against a broken promise is worse than
+  > one that amends it. Articles carry most of the value at a fraction of the
+  > upkeep.
 - Performance benchmarks — single-track export, multi-track with `KadrVideoCompositor`, keyframe-heavy compositions
 - Migration guide v0.x → v1.0
-- CocoaPods support (if community demand warrants it)
+- ~~CocoaPods support~~ — **not planned.** CocoaPods is moving into maintenance
+  mode ecosystem-wide and every known consumer of this package uses SwiftPM.
+  Recorded as a decision rather than left conditional: an open "maybe" invites
+  the question repeatedly and reads as an unmet commitment at 1.0.
 
 ---
 
