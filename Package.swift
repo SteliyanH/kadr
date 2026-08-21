@@ -20,6 +20,15 @@ let package = Package(
                 .swiftLanguageMode(.v6)
             ]
         ),
+        // Benchmarks are an executable rather than a test target: they are run
+        // deliberately, on real hardware, not as part of `swift test`. Export
+        // needs hardware encode, which hosted CI runners do not have.
+        .executableTarget(
+            name: "KadrBenchmarks",
+            dependencies: ["Kadr"],
+            path: "Benchmarks/KadrBenchmarks",
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
         .testTarget(
             name: "KadrTests",
             dependencies: ["Kadr"],
