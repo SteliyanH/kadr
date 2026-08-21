@@ -55,7 +55,9 @@ func v070TransitionsInChainWithMultiTrack() async throws {
 /// `Video.compositor(_:during:)` runs the user's blender only inside `range`. Outside
 /// the window, the engine's default alpha-composite blender takes over per frame.
 @available(iOS 16, macOS 13, *)
-struct MultiplyBlend: MultiInputCompositor {
+/// Same shape as v0.6's compositor; named per-showcase so the examples can
+/// compile together as one target.
+struct V070MultiplyBlend: MultiInputCompositor {
     func process(images: [CIImage], context: CompositorContext) -> CIImage {
         guard images.count >= 2 else { return images.first ?? CIImage(color: .clear) }
         let filter = CIFilter(name: "CIMultiplyBlendMode")
@@ -76,7 +78,7 @@ func v070TimeWindowedCompositor() async throws {
         VideoClip(url: overlayURL).trimmed(to: 0...8).at(time: 0)
     }
     // Multiply blend only fires between t=2s and t=5s; before/after, plain alpha.
-    .compositor(MultiplyBlend(), during: 2.0...5.0)
+    .compositor(V070MultiplyBlend(), during: 2.0...5.0)
     .export(to: outputURL)
 }
 
@@ -179,7 +181,7 @@ func v070Combined() async throws {
             VideoClip(url: bRollURL).trimmed(to: 2...4)
         }
     }
-    .compositor(MultiplyBlend(), during: 5.0...9.0)      // blend the cutaway window
+    .compositor(V070MultiplyBlend(), during: 5.0...9.0)      // blend the cutaway window
     .audio {
         AudioTrack(url: bedURL).volume(0.4).ducking(0.2)
         AudioTrack(url: stingURL).at(time: 5.0).duration(0.5)
