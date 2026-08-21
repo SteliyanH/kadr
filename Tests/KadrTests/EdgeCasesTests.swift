@@ -93,7 +93,7 @@ struct EdgeCasesTests {
 
     // MARK: - 2. Speed × reverse
 
-    @Test(.enabled(if: TestEnvironment.canReencodeMedia)) func speedAndReversedCombined() async throws {
+    @Test func speedAndReversedCombined() async throws {
         let videoURL = try loadTestVideoURL()
         let outputURL = testOutputURL("speed_reversed")
 
@@ -201,7 +201,7 @@ struct EdgeCasesTests {
 
     /// Two background tracks both with ducking — they should each get their own
     /// independent volume-ramp params on their own AVMutableCompositionTrack.
-    @Test(.enabled(if: TestEnvironment.canReencodeMedia)) func multipleBackgroundTracksWithDucking() async throws {
+    @Test func multipleBackgroundTracksWithDucking() async throws {
         let videoURL = try loadTestVideoURL()
         let audioURL = try loadTestAudioURL()
         let outputURL = testOutputURL("multi_bg_ducking")

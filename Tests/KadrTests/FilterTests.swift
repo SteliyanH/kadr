@@ -87,7 +87,7 @@ struct FilterTests {
 
     // MARK: - Export
 
-    @Test(.enabled(if: TestEnvironment.canReencodeMedia)) func exportWithSingleFilter() async throws {
+    @Test func exportWithSingleFilter() async throws {
         let videoURL = try loadTestVideoURL()
         let outputURL = testOutputURL("filter_brightness")
 
@@ -100,7 +100,7 @@ struct FilterTests {
         try? FileManager.default.removeItem(at: result)
     }
 
-    @Test(.enabled(if: TestEnvironment.canReencodeMedia)) func exportWithChainedFilters() async throws {
+    @Test func exportWithChainedFilters() async throws {
         let videoURL = try loadTestVideoURL()
         let outputURL = testOutputURL("filter_chain")
 
@@ -114,7 +114,7 @@ struct FilterTests {
         try? FileManager.default.removeItem(at: result)
     }
 
-    @Test(.enabled(if: TestEnvironment.canReencodeMedia)) func exportWithMonoFilter() async throws {
+    @Test func exportWithMonoFilter() async throws {
         let videoURL = try loadTestVideoURL()
         let outputURL = testOutputURL("filter_mono")
 
@@ -127,7 +127,7 @@ struct FilterTests {
         try? FileManager.default.removeItem(at: result)
     }
 
-    @Test(.enabled(if: TestEnvironment.canReencodeMedia)) func exportWithSepiaFilter() async throws {
+    @Test func exportWithSepiaFilter() async throws {
         let videoURL = try loadTestVideoURL()
         let outputURL = testOutputURL("filter_sepia")
 
@@ -140,7 +140,7 @@ struct FilterTests {
         try? FileManager.default.removeItem(at: result)
     }
 
-    @Test(.enabled(if: TestEnvironment.canReencodeMedia)) func filterWithTransition() async throws {
+    @Test func filterWithTransition() async throws {
         let videoURL = try loadTestVideoURL()
         let outputURL = testOutputURL("filter_transition")
 
@@ -160,7 +160,7 @@ struct FilterTests {
         try? FileManager.default.removeItem(at: result)
     }
 
-    @Test(.enabled(if: TestEnvironment.canReencodeMedia)) func filterWithSpeed() async throws {
+    @Test func filterWithSpeed() async throws {
         let videoURL = try loadTestVideoURL()
         let outputURL = testOutputURL("filter_speed")
 
