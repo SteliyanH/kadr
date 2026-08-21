@@ -51,7 +51,8 @@ jobs:
       #
       # This leaves filters, audio mixing and reverse unverified by CI. Real
       # gap, deliberately taken; tracked in the issues, not just here.
-      KADR_SKIP_REENCODE_TESTS: "1"
+      # KADR_SKIP_REENCODE_TESTS removed: the 15 tests it hid pass when the
+      # suite is serialised — see the swift test invocation below.
 
     steps:
       - uses: actions/checkout@v4
@@ -63,4 +64,20 @@ jobs:
           # code changed, not because the image moved under us. 26.3 is what
           # the last green run used.
           xcode-version: '26.3'
-      - run: swift test
+      # `--no-parallel` is load-bearing, not a preference.
+      #
+      # 15 tests were skipped here for months, blamed on these runners being
+      # VMs without an exposed media engine. That diagnosis was wrong, and the
+      # giveaway was nondeterminism: the same tests passed in one run on a
+      # third-party runner and failed in the next on the same machine. A
+      # missing capability does not come and go.
+      #
+      # swift-testing parallelises by default, and this suite runs many
+      # concurrent AVAssetExportSession jobs. VideoToolbox has a finite number
+      # of concurrent sessions, and exhausting them surfaces as an opaque
+      # -16977 "Cannot Decode" rather than anything resembling "too many
+      # sessions".
+      #
+      # Serialised, all 562 pass on a machine that previously failed 9 of them.
+      # Cost is wall-clock: ~25s parallel against ~60s serialised.
+      - run: swift test --no-parallel
