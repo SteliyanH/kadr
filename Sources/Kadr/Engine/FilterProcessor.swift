@@ -74,51 +74,9 @@ internal enum FilterProcessor {
             .appendingPathExtension("mp4")
         try? FileManager.default.removeItem(at: outputURL)
 
-        // Ask whether the preset is actually usable here before committing to it.
-        //
-        // `ExportEngine` has always done this for the final export and falls back
-        // to passthrough when the answer is no. This intermediate did not, and
-        // simply assumed `HighestQuality` would work — so on any environment
-        // where it does not, the writer produced a file the pipeline then could
-        // not read back, surfacing as `-11821 Cannot Decode` wrapping `-16977`.
-        //
-        // That is not a hypothetical: it is why every filter test was skipped on
-        // CI. The environment was blamed, but the missing check was ours.
-        // Passthrough is not a silent downgrade here — the filters are applied
-        // by `videoComposition`, which passthrough cannot honour, so if the
-        // preferred preset is unavailable we say so rather than writing a file
-        // with no filters in it.
-        // Highest quality first, then progressively less demanding presets.
-        // Passthrough is deliberately absent: filters are applied by
-        // `videoComposition`, which passthrough cannot honour, so falling back
-        // to it would silently write a file with no filters in it — a wrong
-        // result is worse than a clear failure.
-        let candidates = [
-            AVAssetExportPresetHighestQuality,
-            AVAssetExportPreset1920x1080,
-            AVAssetExportPreset1280x720,
-            AVAssetExportPresetMediumQuality
-        ]
-        var chosenPreset: String?
-        for candidate in candidates {
-            if await AVAssetExportSession.compatibility(
-                ofExportPreset: candidate,
-                with: asset,
-                outputFileType: .mp4
-            ) {
-                chosenPreset = candidate
-                break
-            }
-        }
-        guard let preferredPreset = chosenPreset else {
-            throw KadrError.unsupportedFormat(
-                "This device cannot re-encode the intermediate a filtered clip needs."
-            )
-        }
-
         guard let exportSession = AVAssetExportSession(
             asset: asset,
-            presetName: preferredPreset
+            presetName: AVAssetExportPresetHighestQuality
         ) else {
             throw KadrError.exportFailed(underlying: NSError(domain: "Kadr", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create filter export session"]))
         }

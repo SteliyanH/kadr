@@ -16,21 +16,8 @@ internal enum ReverseProcessor {
 
         // Read all video frames
         let reader = try AVAssetReader(asset: asset)
-        // 32BGRA rather than 32ARGB.
-        //
-        // Both are 32-bit RGB, but BGRA is the format Apple's decoders and
-        // encoders actually prefer — ARGB asks for a channel order that some
-        // environments will not produce, and the failure surfaces late and
-        // opaquely as a decode error rather than as "unsupported format".
-        // Every filter and reverse test was skipped on CI because of failures
-        // in this shape.
-        //
-        // Safe to change: these buffers are never interpreted here. They are
-        // decoded, held, reversed, and handed back to the writer, so as long as
-        // the reader and the adaptor below agree on the format, no channel
-        // swap is possible.
         let readerOutputSettings: [String: Any] = [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32ARGB
         ]
         let readerOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: readerOutputSettings)
         reader.add(readerOutput)
@@ -61,9 +48,8 @@ internal enum ReverseProcessor {
         let writerInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
         writerInput.expectsMediaDataInRealTime = false
 
-        // Must match the reader's format above, or the round trip swaps channels.
         let pixelBufferAttributes: [String: Any] = [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32ARGB,
             kCVPixelBufferWidthKey as String: Int(naturalSize.width),
             kCVPixelBufferHeightKey as String: Int(naturalSize.height)
         ]
