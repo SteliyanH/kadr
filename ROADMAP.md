@@ -248,6 +248,17 @@ Mechanical floor bump to **iOS 17 / macOS 14 / tvOS 17 / visionOS 1** (`Package.
 
 ## v1.0.0 — Production Ready (pure lock)
 
+> **Known limitation at 1.0: three subsystems are not verified by CI.**
+> Filters, audio mixing and reverse pass on every local run but cannot run on
+> hosted CI — GitHub's and Codemagic's macOS runners are Apple-Silicon VMs
+> without the media engine exposed to the guest, so anything that decodes a
+> re-encoded intermediate fails. Tested, not assumed: a smaller fixture and a
+> different provider both failed identically. See issue #139 and
+> `Tests/KadrTests/TestEnvironment.swift`. Stated here rather than left for
+> someone to discover, and reopenable the moment hardware is available —
+> `nightly-hardware.yml` is already written.
+
+
 Semver stability guarantee. **No code changes** — every public surface is frozen as of v0.14; this release is the commitment plus docs. (All deprecations are already removed in v0.14, so there is nothing left to delete here.)
 
 - API stability commitment — no breaking changes without a major version bump

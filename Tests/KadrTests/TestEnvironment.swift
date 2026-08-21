@@ -40,9 +40,27 @@ import Foundation
 /// locally runs all 539. Only the workflow sets the variable, explicitly, where
 /// it is visible.
 ///
-/// **This is a stopgap, not a resolution.** Filters, audio mixing and reverse
-/// are unverified by CI until these run somewhere that can decode. Tracked in
-/// the repo's issues rather than left to live in a comment.
+/// **What was tried, so nobody re-runs it.** The alternatives are exhausted,
+/// and each was tested rather than assumed:
+///
+/// - *A smaller fixture.* Video 5.7MB → 3.0MB and audio MP3 → AAC produced
+///   byte-identical failure counts. Not a resource limit, and not MP3-specific.
+/// - *A different hosted provider.* Codemagic's Mac mini M2 machines fail with
+///   the same `-11821` / `-16977`. Virtualised the same way.
+/// - *A self-hosted runner.* No machine available to dedicate to it.
+/// - *Asserting composition structure instead.* Mostly redundant — the DSL
+///   surface these tests exercise is already covered by ungated tests in the
+///   same files. The version that would add real coverage means separating the
+///   ramp and filter-chain *decisions* from their *application* inside
+///   `CompositionBuilder`, and even that would not test the encode path.
+///
+/// **So this is a known limitation, not a stopgap awaiting a fix.** Filters,
+/// audio mixing and reverse are verified on every local run — all 562 tests
+/// pass on hardware in about 30 seconds — and unverified by CI. Stated plainly
+/// here and in the release notes rather than implied away.
+///
+/// Reopening is cheap: `nightly-hardware.yml` is written and inert, and needs
+/// only a runner and a repository variable.
 enum TestEnvironment {
 
     /// `false` only when CI has declared it cannot survive a re-encode /
