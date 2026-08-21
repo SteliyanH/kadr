@@ -84,10 +84,27 @@ workflows:
           # the hardware entries.
           system_profiler SPDisplaysDataType 2>/dev/null | head -20 || true
 
-      - name: Full test suite, re-encode tests included
+      - name: Full test suite, re-encode tests included (serialised)
         script: |
           set -euo pipefail
-          swift test
+          # `--no-parallel` is the experiment, not a preference.
+          #
+          # The same tests passed in one Codemagic run and failed in the next on
+          # the same machine. A missing hardware capability does not come and
+          # go, so the failures are not a static capability limit — something
+          # varies between runs.
+          #
+          # swift-testing parallelises by default, and this suite runs many
+          # simultaneous AVAssetExportSession jobs. VideoToolbox has a finite
+          # number of concurrent sessions; exhausting them would produce exactly
+          # this shape — opaque -16977 decode failures, varying run to run,
+          # worse on a constrained machine, and never reproducing on a fast
+          # local Mac with headroom to spare.
+          #
+          # If serialising turns these green, the diagnosis in
+          # TestEnvironment.swift is wrong: it is contention, not capability,
+          # and the fix is a test-suite change rather than a hardware bill.
+          swift test --no-parallel
 
     artifacts:
       - build/**/*.xcresult
