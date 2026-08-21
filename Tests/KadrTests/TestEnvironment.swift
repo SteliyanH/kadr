@@ -1,53 +1,57 @@
 import Foundation
 
-/// Environment gate for tests that need a second decode pass.
+/// Test-environment notes.
 ///
-/// **What fails, precisely.** Export is *not* broken on GitHub's macOS runners.
-/// Crop, overlays, transitions, speed and multi-overlay exports all pass there.
-/// What fails is narrower, and it clusters exactly:
+/// This file used to gate 15 tests behind `KADR_SKIP_REENCODE_TESTS`, on the
+/// diagnosis that GitHub's macOS runners were Apple-Silicon VMs without the
+/// media engine exposed to the guest. **That diagnosis was wrong**, and the
+/// gate is gone. The story is kept because it cost real time and the wrong
+/// answer was convincing.
 ///
-/// | Underlying OSStatus | Tests | Feature |
-/// | --- | --- | --- |
-/// | `-16977` | 13 | every filter test, and every audio test (ducking, background music, replaceAudio) |
-/// | `-12137` | 2 | the two reverse tests |
+/// **What was actually wrong.** `swift-testing` runs in parallel by default,
+/// and this suite fires many concurrent `AVAssetExportSession` jobs.
+/// VideoToolbox has a finite number of concurrent sessions, and exhausting them
+/// fails as an opaque `-11821 "Cannot Decode"` wrapping `-16977` — nothing that
+/// resembles "too many sessions". Serialised, all 562 pass on the same runners
+/// that used to fail 15 of them. CI now runs `swift test --no-parallel`; the
+/// cost is roughly 25s → 57s of wall clock.
 ///
-/// **Why those and not the others.** `CompositionBuilder` pre-renders certain
-/// features to a temporary file before composition — reverse first via
-/// `ReverseProcessor` (`AVAssetReader` → `AVAssetWriter`), then filters via
-/// `FilterProcessor` (`applyingCIFiltersWithHandler`). Each writes an
-/// intermediate the pipeline must then decode *again*. The audio tests pull in
-/// a second asset, the `sample.mp3` fixture, for `AVMutableAudioMix`.
+/// **Why the wrong answer looked right.** The failures clustered exactly on the
+/// paths that pre-render an intermediate (filters via `FilterProcessor`,
+/// reverse via `ReverseProcessor`) or decode a second asset (the audio tests
+/// and `sample.mp3`) — because those are the heaviest media work in the suite,
+/// so they lose the race for sessions first. A clean mechanical story fitted a
+/// coincidence.
 ///
-/// Everything that fails asks the runner either to encode an intermediate and
-/// read it back, or to decode a second media file. Everything that passes goes
-/// through a single composition pass with no re-encode. No exceptions in either
-/// direction — that pattern is what the gate is named after.
+/// **What broke it.** Four hypotheses were tested and killed cheaply:
 ///
-/// **Root cause, inferred rather than proven:** GitHub's macOS runners are
-/// Apple-Silicon VMs where the hardware media engine is not exposed to the
-/// guest. Single-pass composition survives on the software path; the
-/// intermediate encode produces something the runner's own decoder cannot read,
-/// and MP3 decode fails the same way. This is not reproducible on hardware —
-/// all 539 tests pass locally — so the mechanism is a strong inference from the
-/// failure pattern, not a verified claim.
+/// - *Fixture too large.* 5.7MB → 3.0MB and MP3 → AAC produced byte-identical
+///   failure counts.
+/// - *MP3 decode unavailable.* AAC failed the same way.
+/// - *Media engine absent in VMs.* A third-party runner reporting
+///   `kern.hv_vmm_present = 1` decoded video happily — the thumbnail tests load
+///   the real fixture and pass — and recovered all six audio tests that GitHub
+///   failed. Two VMs behaving differently is not a capability story.
+/// - *Wrong export preset.* Adding the compatibility check the main export path
+///   uses changed nothing: it returned `true`, and the file was still
+///   unreadable.
 ///
-/// **The expensive symptom.** After those failures the test process never
-/// exits: the runner logs `Terminate orphan process (swiftpm-testing)`. One run
-/// sat 33 minutes against a suite that takes 32 seconds locally and had to be
-/// cancelled by hand. `timeout-minutes` in the workflow now caps that.
+/// **The giveaway was nondeterminism.** The same tests passed in one run on one
+/// machine and failed in the next. A missing capability does not come and go.
+/// Every environment-shaped explanation had to ignore that; contention explains
+/// it directly.
 ///
-/// **Nothing is skipped by default.** The gate is opt-*out*: `swift test`
-/// locally runs all 539. Only the workflow sets the variable, explicitly, where
-/// it is visible.
-///
-/// **This is a stopgap, not a resolution.** Filters, audio mixing and reverse
-/// are unverified by CI until these run somewhere that can decode. Tracked in
-/// the repo's issues rather than left to live in a comment.
+/// **If these tests start failing again**, suspect concurrency before hardware.
+/// A `--no-parallel` run that goes green is the fastest way to tell the two
+/// apart, and it is one flag rather than a machine.
 enum TestEnvironment {
 
-    /// `false` only when CI has declared it cannot survive a re-encode /
-    /// second-asset decode round-trip.
-    static var canReencodeMedia: Bool {
-        ProcessInfo.processInfo.environment["KADR_SKIP_REENCODE_TESTS"] == nil
-    }
+    /// Retained so any straggling reference still compiles. Nothing is skipped:
+    /// the media tests run everywhere now.
+    ///
+    /// Deliberately not removed outright — a consumer or a branch may still
+    /// reference it, and a compile error is a worse way to learn this than a
+    /// value that simply says "yes".
+    @available(*, deprecated, message: "Always true. The re-encode tests are no longer skipped anywhere — the failures were parallelism, not capability. See this file's documentation.")
+    static var canReencodeMedia: Bool { true }
 }
