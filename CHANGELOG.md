@@ -4,6 +4,59 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.17.0] - 2026-08-22
+
+Three engine subsystems go from unverified to verified on every pull request,
+and the examples compile for the first time. **No public API change** — the
+Kadr library surface is identical to 0.16.0.
+
+### Fixed
+
+- **The 15 tests skipped since v0.13 now run everywhere.** Filters, audio mixing
+  and reverse were gated behind `KADR_SKIP_REENCODE_TESTS`, on the diagnosis
+  that CI runners were Apple-Silicon VMs without the media engine exposed to the
+  guest. That diagnosis was wrong.
+
+  `swift-testing` parallelises by default, and this suite fires many concurrent
+  `AVAssetExportSession` jobs. VideoToolbox has a finite number of concurrent
+  sessions, and exhausting them fails as an opaque `-11821 "Cannot Decode"`
+  wrapping `-16977` — nothing resembling "too many sessions". CI now runs
+  `swift test --no-parallel` and all 562 pass on the same runners that used to
+  fail 15 of them.
+
+  The giveaway was nondeterminism: the same tests passed in one run and failed
+  in the next on one machine. A missing capability does not come and go. Four
+  hypotheses were tested and killed on the way — a smaller fixture, an AAC
+  fixture, a third-party runner, and an export-preset compatibility check — and
+  `Tests/KadrTests/TestEnvironment.swift` keeps the record so nobody repeats
+  them.
+
+  This matters beyond CI: it means filters, audio mixing and reverse are now
+  covered per-PR rather than only locally, which is the state a v1.0 stability
+  guarantee should be able to claim.
+
+### Added
+
+- **`Examples/` is a build target, so the examples cannot rot.** They were
+  reference files nothing compiled, and they had rotted: `V080Showcase` passed
+  `Transform`'s arguments in an order the initialiser no longer accepted, and
+  two showcases each declared a `MultiplyBlend` that only collided once anything
+  built them together. Both fixed.
+
+- **Six cycles of undemonstrated API now have showcases** — v0.9 speed curves,
+  pitch-preserving audio speed and the caption bridge; v0.10 track opacity and
+  animation clearing; v0.11 keyed filters; v0.12 text stroke and shadow; v0.14
+  `ThumbnailGenerator`. The newest and least obvious APIs were the ones with no
+  examples, and they are what a v1.0 freeze locks.
+
+  No v0.13 showcase: that cycle was pure performance work with no public surface
+  to demonstrate. Its evidence lives in `Benchmarks/`.
+
+### Removed
+
+- `nightly-hardware.yml` — it existed to run the skipped tests on hardware this
+  project could not obtain. CI now runs them everywhere.
+
 ## [0.16.0] - 2026-08-21
 
 Error messages a person can read, and a way to check the performance claims

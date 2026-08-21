@@ -40,8 +40,8 @@ func v080KenBurns() async throws {
     _ = try await Video {
         ImageClip(photo, duration: 5.0)
             .transform(.identity, animation: .keyframes([
-                .at(0.0, value: Transform(scale: 1.0, center: .normalized(x: 0.5, y: 0.5))),
-                .at(5.0, value: Transform(scale: 1.3, center: .normalized(x: 0.6, y: 0.4))),
+                .at(0.0, value: Transform(center: .normalized(x: 0.5, y: 0.5), scale: 1.0)),
+                .at(5.0, value: Transform(center: .normalized(x: 0.6, y: 0.4), scale: 1.3)),
             ], timing: .easeInOut))
     }
     .export(to: outputURL)
@@ -151,7 +151,7 @@ func v080Combined() async throws {
         ImageClip(photo, duration: 5.0)
             .transform(.identity, animation: .keyframes([
                 .at(0.0, value: Transform(scale: 1.0)),
-                .at(5.0, value: Transform(scale: 1.3, center: .normalized(x: 0.6, y: 0.4))),
+                .at(5.0, value: Transform(center: .normalized(x: 0.6, y: 0.4), scale: 1.3)),
             ], timing: .easeInOut))
             .opacity(1.0, animation: .keyframes([
                 .at(0.0, value: 0.0),
