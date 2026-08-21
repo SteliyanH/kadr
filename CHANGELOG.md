@@ -4,6 +4,28 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.15.1] - 2026-08-21
+
+CI and documentation. **No API or behaviour change** — this is the last
+housekeeping before the v1.0 lock.
+
+### Fixed
+
+- **CI runs again on `main`.** The workflow there carried only `on: workflow_dispatch`, disabled during the v0.13 cycle for a stated reason — "CI minutes limit" — that does not apply to this repository: `macos-15` is a *standard* GitHub-hosted runner, and standard runners are free and unlimited on public repositories. Meanwhile branch protection required a `test` check the workflow could never produce, so pull requests were landing only by admin override, and **v0.15.0 was cut under that regime**.
+- The restored workflow adds `concurrency` cancellation, a `timeout-minutes` cap and a pinned Xcode, so a runaway job cannot burn hours unnoticed.
+
+### Added
+
+- **`KADR_SKIP_REENCODE_TESTS` and `TestEnvironment.swift`** — the mechanism issue #139 describes. It previously existed only on `develop`, so the issue documented a `main` that did not exist.
+- **`FilterPixelTests`** — covers filter maths without an export round-trip, recovering coverage the virtualised-runner skips had lost.
+- **A nightly hardware workflow**, inert until `HARDWARE_RUNNER_ENABLED` is set.
+
+### Documentation
+
+- **The README describes what kadr does, rather than what changed when.** The Features section was 120 lines of version-by-version history duplicating this file — which is *why* it went stale, still headlining "v0.14 (current)" after v0.15.0 shipped. It now groups capabilities and links here for history. 378 → 293 lines.
+- **The install snippet no longer recommends an unsafe pin.** It suggested `from: "0.10.0"` and described the range as a feature: "picks up every minor and patch up to v1.0". That is the hazard, not the benefit — `from:` is `.upToNextMajor` and SwiftPM does not special-case `0.x`. Now recommends `.upToNextMinor`, and notes plain `from:` becomes correct at 1.0.
+- Live Swift Package Index badges replace hand-written ones that understated the supported Swift versions, and the hosted API documentation is linked for the first time.
+
 ## [0.15.0] - 2026-06-30
 
 Platform floor raised to **iOS 17 / macOS 14 / tvOS 17 / visionOS 1**. Mechanical, no API or behavior change — this lifts the ecosystem baseline so `kadr-reels-studio` can migrate to the iOS 17 `@Observable` macro. The kadr public surface is unchanged; only the minimum deployment target moves.
