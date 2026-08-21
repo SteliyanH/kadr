@@ -1,0 +1,93 @@
+# Codemagic — the hardware half of CI, on someone else's Mac.
+#
+# ## Why this exists
+#
+# 15 tests are skipped on GitHub Actions: every filter test, every audio-mixing
+# test, and both reverse tests. They fail there with `-11821 Cannot Decode`
+# (`-16977` ×13, `-12137` ×2) because GitHub's macOS runners are Apple-Silicon
+# VMs where the SoC's media engine is not exposed to the guest. Anything that
+# encodes an intermediate and decodes it back, or decodes a second asset, dies.
+# See `Tests/KadrTests/TestEnvironment.swift` and issue #139.
+#
+# That was tested, not assumed: shrinking the fixture 5.7MB → 3.0MB and swapping
+# MP3 → AAC produced byte-identical failure counts, ruling out both a resource
+# limit and an MP3-specific decode problem.
+#
+# Codemagic's free individual tier gives 500 macOS **Mac mini M2** minutes a
+# month. This suite takes about 30 seconds, so a nightly costs ~15 minutes of
+# that. If those machines expose the media engine, the gap closes for free.
+#
+# ## This is a trial, and it may not work
+#
+# Codemagic does not document whether free-tier builds run on bare metal or in a
+# VM on that hardware — and it lists "dedicated machines" as an enterprise
+# feature, which suggests the free tier is shared. If it is virtualised the same
+# way GitHub's is, these tests will fail identically and this file should be
+# deleted rather than left to rot as a permanently red pipeline.
+#
+# **Read the result by the error codes, not the colour.** A failure carrying
+# `-16977` / `-12137` means the same missing capability and settles the
+# question. A failure carrying anything else is a real bug this CI just caught,
+# which would itself justify keeping the pipeline.
+#
+# ## Setup
+#
+#   1. Sign up at codemagic.io with GitHub, connect this repository.
+#   2. Codemagic picks this file up automatically.
+#   3. Run `hardware-full-suite` manually once to get the answer.
+#
+# Nothing here is required for the project to build; GitHub Actions remains the
+# gate on pull requests.
+
+workflows:
+  hardware-full-suite:
+    name: Full suite on hardware (incl. re-encode tests)
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+
+    environment:
+      xcode: 26.3
+      vars:
+        # Deliberately absent: KADR_SKIP_REENCODE_TESTS.
+        #
+        # Running the 15 tests GitHub's runners cannot is this pipeline's whole
+        # reason to exist. If that variable ever appears here, this file is
+        # doing nothing that GitHub Actions does not already do for free.
+        KADR_HARDWARE_CI: "1"
+
+    triggering:
+      # Manual only until it has proven it can pass. A scheduled pipeline that
+      # fails every night trains everyone to ignore it, which is worse than not
+      # having it — the same reason nightly-hardware.yml is gated behind a
+      # repository variable rather than simply switched on.
+      events: []
+
+    scripts:
+      - name: Environment
+        script: |
+          set -euo pipefail
+          echo "=== machine ==="
+          sysctl -n machdep.cpu.brand_string || true
+          sw_vers
+          swift --version
+
+          echo
+          echo "=== is this virtualised? ==="
+          # The question this pipeline exists to answer. A guest under
+          # Virtualization.framework reports 1 here; bare metal reports 0 or
+          # nothing at all. Informational — the tests below are the real answer.
+          sysctl -n kern.hv_vmm_present 2>/dev/null || echo "(kern.hv_vmm_present unavailable)"
+
+          echo
+          echo "=== hardware video encoders visible to this machine ==="
+          # If the media engine is absent, this list is usually empty or missing
+          # the hardware entries.
+          system_profiler SPDisplaysDataType 2>/dev/null | head -20 || true
+
+      - name: Full test suite, re-encode tests included
+        script: |
+          set -euo pipefail
+          swift test
+
+    artifacts:
+      - build/**/*.xcresult
