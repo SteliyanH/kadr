@@ -91,3 +91,61 @@ workflows:
 
     artifacts:
       - build/**/*.xcresult
+
+  probe-environment:
+    name: Probe — what kind of machine is this?
+    instance_type: mac_mini_m2
+    max_build_duration: 5
+
+    environment:
+      xcode: 26.3
+
+    triggering:
+      events: []
+
+    scripts:
+      - name: Machine and virtualisation
+        script: |
+          set +e
+          echo "=================================================="
+          echo " CPU"
+          echo "=================================================="
+          sysctl -n machdep.cpu.brand_string
+          sysctl -n hw.model
+          echo "cores: $(sysctl -n hw.ncpu)   memory: $(($(sysctl -n hw.memsize) / 1073741824))GB"
+
+          echo
+          echo "=================================================="
+          echo " Virtualised?   1 = guest under a hypervisor"
+          echo "                0 = bare metal"
+          echo "=================================================="
+          sysctl -n kern.hv_vmm_present 2>/dev/null || echo "(key unavailable — inconclusive)"
+
+          echo
+          echo "=================================================="
+          echo " OS and toolchain"
+          echo "=================================================="
+          sw_vers
+          xcodebuild -version 2>/dev/null | head -2
+
+          echo
+          echo "=================================================="
+          echo " VideoToolbox hardware decode support"
+          echo "=================================================="
+          # Whether the OS believes hardware decode exists for the codecs this
+          # pipeline writes and reads back. If H.264 reports unsupported here
+          # while an H.264 fixture decodes fine in the tests, the software path
+          # is carrying it — and the intermediate is the thing that differs.
+          /usr/bin/python3 - <<'PY_INNER'
+          import ctypes, ctypes.util
+          vt = ctypes.CDLL(ctypes.util.find_library("VideoToolbox"))
+          core = ctypes.CDLL(ctypes.util.find_library("CoreFoundation"))
+          try:
+              fn = vt.VTIsHardwareDecodeSupported
+              fn.restype = ctypes.c_bool
+              fn.argtypes = [ctypes.c_uint32]
+              for name, fourcc in (("H.264", 0x61766331), ("HEVC", 0x68766331)):
+                  print(f"  {name}: {'supported' if fn(fourcc) else 'NOT supported'}")
+          except AttributeError:
+              print("  VTIsHardwareDecodeSupported unavailable")
+          PY_INNER
