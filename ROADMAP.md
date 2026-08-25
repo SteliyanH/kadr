@@ -246,6 +246,60 @@ A minor (not a patch) because removing public API is breaking — the correct pr
 
 Mechanical floor bump to **iOS 17 / macOS 14 / tvOS 17 / visionOS 1** (`Package.swift` platforms + two redundant `@available(iOS 16…)` annotations dropped). No API or behavior change. Lifts the ecosystem baseline so `kadr-reels-studio` can adopt the iOS 17 `@Observable` macro — part of a coordinated stack-wide move (kadr v0.15 → kadr-ui v0.12 → reels-studio). Breaking only at the deployment-target level; consumers needing iOS 16 stay on `0.14.x`. The last manifest change before the v1.0 lock.
 
+## v0.15.1 — CI and documentation ✓ shipped
+
+Housekeeping, no API or behaviour change.
+
+- **CI runs again on `main`.** The workflow there carried only `on: workflow_dispatch`, disabled during v0.13 for a stated reason — "CI minutes limit" — that does not apply here: `macos-15` is a *standard* GitHub-hosted runner, and standard runners are free and unlimited on public repositories. Branch protection meanwhile required a `test` check the workflow could never produce, so pull requests were landing by admin override, and v0.15.0 was cut under that regime.
+- **README rewritten around capabilities rather than version history.** 120 lines duplicating the CHANGELOG were why it went stale — it still headlined "v0.14 (current)" after v0.15.0 shipped. 378 → 293 lines.
+- **The install snippet stopped recommending an unsafe pin.** It suggested `from:` and described the range as a feature. That is the hazard, not the benefit.
+
+## v0.16.0 — Readable errors and a benchmark harness ✓ shipped
+
+Minor rather than patch: `KadrError` gains a protocol conformance and `localizedDescription` changes observably.
+
+- **`KadrError` conforms to `LocalizedError`.** An export failure previously reached users as `The operation couldn't be completed. (Kadr.KadrError error 6.)`. The wording deliberately carries no file paths — a path is not something a person can act on, and it leaks a sandbox layout into the interface.
+- **The benchmark harness the ROADMAP had promised.** Reports the *minimum* rather than the mean, flags runs above 25% spread as noisy, and supports `--json` / `--compare` with a non-zero exit so a regression fails a build. Verified green → red → green against a doctored baseline. First findings: 120 keyframes cost ~3%; the multi-track compositor costs ~3×.
+
+## v0.17.0 — Every subsystem verified ✓ shipped
+
+**No public API change** — the library surface is identical to 0.16.0.
+
+- **The 15 tests skipped since v0.13 now run everywhere.** Filters, audio mixing and reverse were gated behind `KADR_SKIP_REENCODE_TESTS`, on the diagnosis that CI runners were VMs without a media engine. That diagnosis was wrong. `swift-testing` parallelises by default and the suite exhausted VideoToolbox's concurrent sessions, which surfaces as an opaque `-11821 "Cannot Decode"` wrapping `-16977`. CI now runs `swift test --no-parallel` and all 562 pass on the same runners that used to fail 15.
+
+  The giveaway was nondeterminism: the same tests passed in one run and failed in the next on one machine, and a missing capability does not come and go. Four hypotheses were killed on the way — a smaller fixture, an AAC fixture, a third-party runner, and an export-preset check — and `Tests/KadrTests/TestEnvironment.swift` keeps the record so nobody repeats them.
+
+- **`Examples/` is a build target, so the examples cannot rot.** They had rotted: `V080Showcase` passed `Transform`'s arguments in an order the initialiser no longer accepted, and two showcases each declared a colliding `MultiplyBlend`.
+- **Six cycles of undemonstrated API gained showcases** — v0.9 speed curves and the caption bridge, v0.10 track opacity, v0.11 keyed filters, v0.12 text stroke and shadow, v0.14 `ThumbnailGenerator`.
+
+## v0.18.0 — Audio reaches the clip ✓ shipped
+
+First of the pre-1.0 cycles closing gaps a consuming editor had been working
+around. All additive; an existing caller upgrades without edits.
+
+- **`VideoClip.volume(_:)`** — per-clip audio level, mirroring
+  `AudioTrack.volume(_:)`. The most conspicuous hole in the audio surface: a clip
+  could be muted or have its audio replaced, but "play this one at 30%" was
+  unreachable. Crossfades ramp to and from the clip's level rather than full
+  scale, so a quiet clip does not jump to full volume mid-dissolve.
+- **`AudioWaveform` / `AudioWaveformLoader` moved from kadr-ui into core.**
+  Reading an audio file's peaks required importing a SwiftUI view package. Core
+  already ships `ThumbnailGenerator`; waveform is its audio twin. The SwiftUI
+  `Shape` that draws the peaks stays in kadr-ui.
+
+  The one item in the pre-1.0 plan that could not have waited — every other
+  addition ships fine as a 1.x minor, but a *move* after the freeze means
+  duplicating the type or a major bump on both packages.
+- **Fixed: appending a filter re-identified the existing ones**, orphaning any
+  animation bound with `filterAnimation(for:)`. Silent — nothing threw, and the
+  14 existing FilterID tests asserted counts and lookups, both of which stay
+  correct while the identities change underneath.
+- **`VideoClip` copies through one `with(_:)` helper** instead of 18
+  hand-written re-invocations of a 17-argument initialiser. No API change; the
+  point is that every later addition costs one line instead of eighteen edits.
+
+Suite: 562 → 582 swift-testing tests, 45 → 49 XCTest.
+
 ## v1.0.0 — Production Ready (pure lock)
 
 Semver stability guarantee. **No code changes** — every public surface is frozen as of v0.14; this release is the commitment plus docs. (All deprecations are already removed in v0.14, so there is nothing left to delete here.)
