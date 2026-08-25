@@ -47,6 +47,17 @@ public struct VideoClip: Clip, Sendable {
     /// `true` if the source asset's audio is dropped from the timeline. Set via ``muted()``.
     public internal(set) var isMuted: Bool
 
+    /// Playback volume for this clip's audio. `1.0` (the default) is the source's own
+    /// level, `0.5` is half, `0.0` is silence. Set via ``volume(_:)``.
+    ///
+    /// Independent of ``isMuted``: muting drops the audio track from the composition
+    /// entirely, while a volume of `0` keeps it and plays it silently. Prefer
+    /// ``muted()`` when the audio is not wanted at all — it is cheaper, because there
+    /// is no track to mix.
+    ///
+    /// Added in v0.18.
+    public internal(set) var volumeLevel: Double
+
     /// External audio file replacing the source asset's audio, or `nil`. Set via ``withAudio(_:)``.
     public internal(set) var replacementAudioURL: URL?
 
@@ -173,6 +184,7 @@ public struct VideoClip: Clip, Sendable {
         self.trimRange = nil
         self.isReversed = false
         self.isMuted = false
+        self.volumeLevel = 1.0
         self.replacementAudioURL = nil
         self.speedRate = 1.0
         self.speedCurve = nil
@@ -193,6 +205,7 @@ public struct VideoClip: Clip, Sendable {
         trimRange: CMTimeRange?,
         isReversed: Bool,
         isMuted: Bool,
+        volumeLevel: Double = 1.0,
         replacementAudioURL: URL?,
         speedRate: Double = 1.0,
         filters: [Filter] = [],
@@ -211,6 +224,7 @@ public struct VideoClip: Clip, Sendable {
         self.trimRange = trimRange
         self.isReversed = isReversed
         self.isMuted = isMuted
+        self.volumeLevel = volumeLevel
         self.replacementAudioURL = replacementAudioURL
         self.speedRate = speedRate
         self.speedCurve = speedCurve
@@ -332,6 +346,25 @@ public struct VideoClip: Clip, Sendable {
             $0.filterIDs.append(FilterID.generate())
             $0.filterAnimations.append(animation)
         }
+    }
+
+    /// Set this clip's audio volume. `1.0` (the default) is the source's own level,
+    /// `0.5` is half, `0.0` is silence. Values outside `0.0...` are clamped by
+    /// AVFoundation, matching ``AudioTrack/volume(_:)``.
+    ///
+    /// Applies to whichever audio the clip contributes — the source asset's, or the
+    /// replacement supplied by ``withAudio(_:)``.
+    ///
+    /// ```swift
+    /// VideoClip(url: interview)          // keep the dialogue
+    /// VideoClip(url: broll).volume(0.3)  // duck the b-roll under it
+    /// ```
+    ///
+    /// Composes with transitions: a crossfade over a clip at `0.3` ramps to and from
+    /// `0.3` rather than to full scale, so the clip does not jump to full volume in
+    /// the middle of a dissolve. Added in v0.18.
+    public func volume(_ level: Double) -> VideoClip {
+        with { $0.volumeLevel = level }
     }
 
     /// Replace the source's audio with the audio from `audioURL` (mutes the original).

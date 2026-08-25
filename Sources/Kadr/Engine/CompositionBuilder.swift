@@ -71,6 +71,7 @@ internal enum CompositionBuilder {
         // below — earlier layer instruction = lower (background); later = on top.
         var videoTracks: [AVMutableCompositionTrack] = []
         var clipAudioRanges: [CMTimeRange] = []
+        var clipVolumes: [ClipVolume] = []
         var totalDuration: CMTime = .zero
 
         // Per-track animation info, indexed parallel to `videoTracks`. Each entry is a
@@ -109,7 +110,8 @@ internal enum CompositionBuilder {
                     videoTrack: mainTrack,
                     audioTrack: compositionAudioTrack,
                     at: &insertion,
-                    preset: preset
+                    preset: preset,
+                    volumes: &clipVolumes
                 )
                 clipAudioRanges.append(CMTimeRange(start: beforeIP, duration: CMTimeSubtract(insertion, beforeIP)))
             } else {
@@ -120,7 +122,8 @@ internal enum CompositionBuilder {
                         videoTrack: mainTrack,
                         audioTrack: compositionAudioTrack,
                         at: &insertion,
-                        preset: preset
+                        preset: preset,
+                        volumes: &clipVolumes
                     )
                     if contributesAudio {
                         clipAudioRanges.append(CMTimeRange(start: beforeIP, duration: CMTimeSubtract(insertion, beforeIP)))
@@ -172,6 +175,8 @@ internal enum CompositionBuilder {
                         preset: preset
                     )
                     let beforeIP = insertion
+                    // Pre-rendered piece: the inner clips' volumes are already baked
+                    // into these frames, so this insertion carries no volume record.
                     try await insertVideoClip(
                         VideoClip(url: preRenderedURL),
                         videoTrack: parallelTrack,
@@ -200,7 +205,8 @@ internal enum CompositionBuilder {
                             videoTrack: parallelTrack,
                             audioTrack: compositionAudioTrack,
                             at: &insertion,
-                            preset: preset
+                            preset: preset,
+                            volumes: &clipVolumes
                         )
                         if contributesAudio {
                             clipAudioRanges.append(CMTimeRange(start: beforeIP, duration: CMTimeSubtract(insertion, beforeIP)))
@@ -229,7 +235,8 @@ internal enum CompositionBuilder {
                     videoTrack: parallelTrack,
                     audioTrack: compositionAudioTrack,
                     at: &insertion,
-                    preset: preset
+                    preset: preset,
+                    volumes: &clipVolumes
                 )
                 if contributesAudio {
                     clipAudioRanges.append(CMTimeRange(start: beforeIP, duration: CMTimeSubtract(insertion, beforeIP)))
@@ -298,12 +305,20 @@ internal enum CompositionBuilder {
         videoComposition.instructions = [instruction]
 
         // 4. Audio mix from background music — same pipeline as buildSimple/Transitions.
-        let audioMix = try await buildBackgroundAudioMix(
+        var mixParams = try await buildBackgroundAudioMixParameters(
             composition: composition,
             audioTracks: audioTracks,
             totalDuration: totalDuration,
             clipAudioRanges: clipAudioRanges
         )
+        mixParams.append(contentsOf: buildClipVolumeParams(clipVolumes))
+
+        var audioMix: AVMutableAudioMix?
+        if !mixParams.isEmpty {
+            let mix = AVMutableAudioMix()
+            mix.inputParameters = mixParams
+            audioMix = mix
+        }
 
         return CompositionResult(composition: composition, audioMix: audioMix, videoComposition: videoComposition)
     }
@@ -399,10 +414,12 @@ internal enum CompositionBuilder {
         videoTrack: AVMutableCompositionTrack,
         audioTrack: AVMutableCompositionTrack?,
         at insertionPoint: inout CMTime,
-        preset: Preset
+        preset: Preset,
+        volumes: inout [ClipVolume]
     ) async throws -> Bool {
         if let videoClip = clip as? VideoClip {
-            try await insertVideoClip(videoClip, videoTrack: videoTrack, audioTrack: audioTrack, at: &insertionPoint, preset: preset)
+            let placed = try await insertVideoClip(videoClip, videoTrack: videoTrack, audioTrack: audioTrack, at: &insertionPoint, preset: preset)
+            if let placed { volumes.append(placed) }
             return !videoClip.isMuted || videoClip.replacementAudioURL != nil
         }
         if let imageClip = clip as? ImageClip {
@@ -441,17 +458,19 @@ internal enum CompositionBuilder {
         )
 
         var clipAudioRanges: [CMTimeRange] = []
+        var clipVolumes: [ClipVolume] = []
 
         for clip in clips {
             let beforeIP = insertionPoint
             if let videoClip = clip as? VideoClip {
-                try await insertVideoClip(
+                let placed = try await insertVideoClip(
                     videoClip,
                     videoTrack: compositionVideoTrack,
                     audioTrack: compositionAudioTrack,
                     at: &insertionPoint,
                     preset: preset
                 )
+                if let placed { clipVolumes.append(placed) }
                 if !videoClip.isMuted || videoClip.replacementAudioURL != nil {
                     clipAudioRanges.append(CMTimeRange(start: beforeIP, duration: CMTimeSubtract(insertionPoint, beforeIP)))
                 }
@@ -481,12 +500,20 @@ internal enum CompositionBuilder {
             }
         }
 
-        let audioMix = try await buildBackgroundAudioMix(
+        var mixParams = try await buildBackgroundAudioMixParameters(
             composition: composition,
             audioTracks: audioTracks,
             totalDuration: insertionPoint,
             clipAudioRanges: clipAudioRanges
         )
+        mixParams.append(contentsOf: buildClipVolumeParams(clipVolumes))
+
+        var audioMix: AVMutableAudioMix?
+        if !mixParams.isEmpty {
+            let mix = AVMutableAudioMix()
+            mix.inputParameters = mixParams
+            audioMix = mix
+        }
 
         return CompositionResult(composition: composition, audioMix: audioMix, videoComposition: nil)
     }
@@ -522,6 +549,7 @@ internal enum CompositionBuilder {
         var cursor: CMTime = .zero
 
         var clipAudioRanges: [CMTimeRange] = []
+        var clipVolumes: [ClipVolume] = []
 
         for (index, item) in plan.items.enumerated() {
             let trackIndex = index % 2
@@ -534,7 +562,8 @@ internal enum CompositionBuilder {
             let durationBefore = insertionPoint
             var contributesAudio = false
             if let videoClip = item.clip as? VideoClip {
-                try await insertVideoClip(videoClip, videoTrack: videoTrack, audioTrack: audioTrack, at: &insertionPoint, preset: preset)
+                let placed = try await insertVideoClip(videoClip, videoTrack: videoTrack, audioTrack: audioTrack, at: &insertionPoint, preset: preset)
+                if let placed { clipVolumes.append(placed) }
                 contributesAudio = !videoClip.isMuted || videoClip.replacementAudioURL != nil
             } else if let imageClip = item.clip as? ImageClip {
                 try await insertImageClip(imageClip, videoTrack: videoTrack, audioTrack: audioTrack, at: &insertionPoint, preset: preset)
@@ -570,7 +599,11 @@ internal enum CompositionBuilder {
         )
 
         // 5. Audio crossfade ramps for clip audio on alternating tracks
-        var audioMixParameters = buildClipAudioCrossfadeParams(placements: placements, audioTracks: audioTracksAB)
+        var audioMixParameters = buildClipAudioCrossfadeParams(
+            placements: placements,
+            audioTracks: audioTracksAB,
+            clipVolumes: clipVolumes
+        )
 
         // 6. Background audio tracks (same as simple path)
         let bgParams = try await buildBackgroundAudioMixParameters(
@@ -978,22 +1011,74 @@ internal enum CompositionBuilder {
         }
     }
 
+    // MARK: - Per-clip volume
+
+    /// One clip's audio, where it landed, and how loud it should play.
+    ///
+    /// Collected by ``insertVideoClip(_:videoTrack:audioTrack:at:preset:volumes:)``
+    /// rather than by each build path, because that function is the single place
+    /// that knows both the clip and the composition track its audio went into.
+    /// The three build paths differ in how they lay clips out; none of them should
+    /// have to re-derive this.
+    struct ClipVolume {
+        let track: AVMutableCompositionTrack
+        let range: CMTimeRange
+        let volume: Double
+    }
+
+    /// Mix parameters applying each clip's volume to the track its audio occupies.
+    ///
+    /// `setVolume(_:at:)` is a step, not a ramp: it holds until the next instruction
+    /// on the same track. Clips sharing one composition track therefore need a step
+    /// at each clip's start — including a step back to `1.0` for full-volume clips
+    /// that follow a quieter one, which is why segments at `1.0` are not filtered out
+    /// here. Filtering them is what would make the quiet clip's level bleed into its
+    /// neighbour.
+    private static func buildClipVolumeParams(_ volumes: [ClipVolume]) -> [AVMutableAudioMixInputParameters] {
+        guard volumes.contains(where: { $0.volume != 1.0 }) else { return [] }
+
+        var byTrack: [ObjectIdentifier: (track: AVMutableCompositionTrack, segments: [ClipVolume])] = [:]
+        for v in volumes {
+            byTrack[ObjectIdentifier(v.track), default: (v.track, [])].segments.append(v)
+        }
+
+        return byTrack.values.map { entry in
+            let p = AVMutableAudioMixInputParameters(track: entry.track)
+            for segment in entry.segments.sorted(by: { $0.range.start < $1.range.start }) {
+                p.setVolume(Float(segment.volume), at: segment.range.start)
+            }
+            return p
+        }
+    }
+
     // MARK: - Audio crossfade for clip audio during transitions
 
     private static func buildClipAudioCrossfadeParams(
         placements: [Placement],
-        audioTracks: [AVMutableCompositionTrack?]
+        audioTracks: [AVMutableCompositionTrack?],
+        clipVolumes: [ClipVolume] = []
     ) -> [AVMutableAudioMixInputParameters] {
         var params: [AVMutableAudioMixInputParameters] = []
         for (idx, placement) in placements.enumerated() {
             guard let track = audioTracks[placement.trackIndex] else { continue }
             let p = AVMutableAudioMixInputParameters(track: track)
 
+            // This clip's own level, if it set one. Crossfades ramp to and from this
+            // rather than to full scale — otherwise a clip at 0.3 would jump to full
+            // volume in the middle of a dissolve, which is the opposite of what a
+            // crossfade is for.
+            let level = Float(
+                clipVolumes.first { $0.range.start == placement.timeRange.start }?.volume ?? 1.0
+            )
+            if level != 1.0 {
+                p.setVolume(level, at: placement.timeRange.start)
+            }
+
             // Fade in over this clip's head if the previous clip had an outgoing transition
             if idx > 0, let incoming = placements[idx - 1].transitionAfter {
                 let inDur = incomingHead(of: incoming)
                 let inRange = CMTimeRange(start: placement.timeRange.start, duration: inDur)
-                p.setVolumeRamp(fromStartVolume: 0, toEndVolume: 1, timeRange: inRange)
+                p.setVolumeRamp(fromStartVolume: 0, toEndVolume: level, timeRange: inRange)
             }
 
             // Fade out over this clip's tail if it has an outgoing transition
@@ -1001,7 +1086,7 @@ internal enum CompositionBuilder {
                 let outDur = outgoingTail(of: outgoing)
                 let outStart = CMTimeSubtract(placement.timeRange.end, outDur)
                 let outRange = CMTimeRange(start: outStart, duration: outDur)
-                p.setVolumeRamp(fromStartVolume: 1, toEndVolume: 0, timeRange: outRange)
+                p.setVolumeRamp(fromStartVolume: level, toEndVolume: 0, timeRange: outRange)
             }
 
             params.append(p)
@@ -1292,13 +1377,20 @@ internal enum CompositionBuilder {
 
     // MARK: - VideoClip insertion
 
+    /// Insert a clip, returning where its audio landed and how loud it should play.
+    ///
+    /// `@discardableResult` so the paths that do not mix audio are untouched. This is
+    /// the only function that knows both the clip and the composition track its audio
+    /// went into, which is why the volume record is produced here rather than
+    /// re-derived by each of the three build paths.
+    @discardableResult
     private static func insertVideoClip(
         _ clip: VideoClip,
         videoTrack: AVMutableCompositionTrack,
         audioTrack: AVMutableCompositionTrack?,
         at insertionPoint: inout CMTime,
         preset: Preset
-    ) async throws {
+    ) async throws -> ClipVolume? {
         var assetURL = clip.url
 
         if clip.isReversed {
@@ -1391,7 +1483,14 @@ internal enum CompositionBuilder {
             advance = sourceRange.duration
         }
 
+        let placedRange = CMTimeRange(start: insertionPoint, duration: advance)
         insertionPoint = CMTimeAdd(insertionPoint, advance)
+
+        // Only clips that actually contributed audio get a volume record. A muted clip
+        // with no replacement has no track segment to attenuate.
+        let contributesAudio = !clip.isMuted || clip.replacementAudioURL != nil
+        guard contributesAudio, let audioTrack else { return nil }
+        return ClipVolume(track: audioTrack, range: placedRange, volume: clip.volumeLevel)
     }
 
     // MARK: - ImageClip insertion (multi-clip context)
