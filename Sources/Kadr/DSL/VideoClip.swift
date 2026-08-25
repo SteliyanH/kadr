@@ -302,11 +302,11 @@ public struct VideoClip: Clip, Sendable {
     public func filter(_ filters: Filter...) -> VideoClip {
         with {
             $0.filters += filters
-            // Faithful to the pre-refactor behaviour: the old call site omitted
-            // `filterIDs`, and the initialiser regenerates the whole array when the
-            // supplied count does not match. See `filterIDs` — this regenerates ids
-            // for filters that already had one, which is worth revisiting separately.
-            $0.filterIDs = $0.filters.map { _ in FilterID.generate() }
+            // Append ids for the new filters only. Regenerating the whole array —
+            // which is what happened before v0.18 — handed every existing filter a
+            // new identity on each append, so an animation bound with
+            // `filterAnimation(for:)` was orphaned by the next `.filter(_:)` call.
+            $0.filterIDs += filters.map { _ in FilterID.generate() }
             $0.filterAnimations += Array(repeating: nil, count: filters.count)
         }
     }
@@ -329,7 +329,7 @@ public struct VideoClip: Clip, Sendable {
     public func filter(_ filter: Filter, animation: Animation<Double>) -> VideoClip {
         with {
             $0.filters.append(filter)
-            $0.filterIDs = $0.filters.map { _ in FilterID.generate() }
+            $0.filterIDs.append(FilterID.generate())
             $0.filterAnimations.append(animation)
         }
     }

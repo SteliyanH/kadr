@@ -172,4 +172,63 @@ final class FilterIDTests: XCTestCase {
         XCTAssertEqual(result.filters.count, 1)
         XCTAssertEqual(result.filterIDs.count, 1)
     }
+
+    // MARK: - Ids survive a later append (v0.18 regression guard)
+    //
+    // Before v0.18, `.filter(_:)` regenerated the *whole* `filterIDs` array on
+    // every append, because the call site omitted `filterIDs` and the
+    // initialiser regenerates when the supplied count does not match. That
+    // handed every existing filter a new identity, which defeats the entire
+    // point of `FilterID`: an editor binds an animation to a filter, the user
+    // adds a second filter, and the binding is silently orphaned.
+    //
+    // The existing tests could not see it — they assert counts and lookups, and
+    // both stay correct while the identities underneath change.
+
+    func testExistingFilterIDSurvivesAppendingAnotherFilter() {
+        let one = VideoClip(url: url).filter(.brightness(0.2))
+        let firstID = one.filterIDs[0]
+
+        let two = one.filter(.contrast(1.2))
+
+        XCTAssertEqual(two.filterIDs[0], firstID, "Appending a filter must not re-identify the existing one")
+        XCTAssertEqual(two.filterIDs.count, 2)
+        XCTAssertNotEqual(two.filterIDs[0], two.filterIDs[1])
+    }
+
+    func testAnimationBoundByIDSurvivesAppendingAnotherFilter() {
+        let clip = VideoClip(url: url).filter(.brightness(0.2))
+        let id = clip.filterIDs[0]
+        let animated = clip.filterAnimation(for: id, Animation<Double>.keyframes([.at(0.0, value: 0.0), .at(1.0, value: 1.0)], timing: .linear))
+        XCTAssertNotNil(animated.filterAnimation(for: id))
+
+        let withSecondFilter = animated.filter(.contrast(1.2))
+
+        XCTAssertNotNil(
+            withSecondFilter.filterAnimation(for: id),
+            "The animation bound to the first filter must still resolve after a second filter is added"
+        )
+    }
+
+    func testVariadicAppendPreservesEveryExistingID() {
+        let clip = VideoClip(url: url).filter(.brightness(0.2), .contrast(1.1))
+        let before = clip.filterIDs
+
+        let after = clip.filter(.saturation(1.4), .exposure(0.3)).filterIDs
+
+        XCTAssertEqual(Array(after.prefix(2)), before)
+        XCTAssertEqual(after.count, 4)
+        XCTAssertEqual(Set(after).count, 4, "Every id must still be distinct")
+    }
+
+    func testFilterWithAnimationAppendPreservesExistingID() {
+        let clip = VideoClip(url: url).filter(.brightness(0.2))
+        let firstID = clip.filterIDs[0]
+
+        let after = clip.filter(.contrast(1.2), animation: Animation<Double>.keyframes([.at(0.0, value: 1.0)], timing: .linear))
+
+        XCTAssertEqual(after.filterIDs[0], firstID)
+        XCTAssertEqual(after.filterIDs.count, 2)
+    }
 }
+
