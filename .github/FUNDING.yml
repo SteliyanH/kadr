@@ -1,0 +1,15 @@
+# Renders the Sponsor button at the top of this repository.
+#
+# Must live on the default branch to take effect, AND "Sponsorships" must be
+# ticked under Settings > General > Features — with that box clear, GitHub
+# ignores this file entirely and no button appears.
+#
+# One-off only, and deliberately so: nothing here promises that any particular
+# feature will be built. If you want specific work done, open an issue or get
+# in touch — that is a conversation, not a tip.
+#
+# `github:` stays inert until a Sponsors profile exists at
+# github.com/sponsors/SteliyanH. It is listed anyway because GitHub charges no
+# platform fee there, against Buy Me a Coffee's 5%.
+buy_me_a_coffee: steliyanh
+github: [SteliyanH]
