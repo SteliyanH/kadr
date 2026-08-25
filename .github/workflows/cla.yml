@@ -1,0 +1,62 @@
+name: CLA
+
+# Turns CLA.md from a document into a gate. Without this, someone can open a
+# pull request and never see it — which is the situation the CLA exists to
+# prevent.
+#
+# This is CLA Assistant *Lite*: the action runs inside this repository and
+# stores signatures here, so there is no third-party service holding the record
+# and no OAuth app to authorise. Signatures live on the `cla-signatures`
+# branch, not on `main`, because `main` is protected and a bot cannot push to
+# it.
+#
+# `pull_request_target` rather than `pull_request`: the check needs write
+# access to comment and set a status, and `pull_request` runs without it for
+# forks — which is exactly where outside contributors come from. No fork code
+# is checked out or executed here, which is the condition that makes
+# `pull_request_target` safe to use.
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, synchronize, closed]
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+  statuses: write
+
+jobs:
+  cla:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check or record the CLA signature
+        if: >-
+          github.event_name == 'pull_request_target' ||
+          github.event.comment.body == 'recheck' ||
+          contains(github.event.comment.body, 'I have read the Contributor License Agreement')
+        uses: contributor-assistant/github-action@v2.6.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          path-to-document: https://github.com/SteliyanH/kadr/blob/main/CLA.md
+          path-to-signatures: signatures/version1/cla.json
+          branch: cla-signatures
+          # The owner does not sign their own agreement; bots cannot.
+          allowlist: SteliyanH,dependabot[bot],github-actions[bot]
+          custom-pr-sign-comment: >-
+            I have read the Contributor License Agreement and I hereby agree to its
+            terms for all my present and future contributions to this project.
+          custom-notsigned-prcomment: >-
+            Thanks for the pull request. Before it can be merged, please read the
+            [Contributor License Agreement](https://github.com/SteliyanH/kadr/blob/main/CLA.md)
+            and post the sentence below as a comment on this pull request.
+
+            You sign once and it covers every repository in the project and all
+            your future contributions. **It does not transfer ownership** — you
+            keep the copyright in your work and stay free to use it anywhere
+            else, including commercially.
+          custom-allsigned-prcomment: >-
+            All contributors have signed the CLA. Thank you.
