@@ -4,6 +4,97 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.18.0] - 2026-08-25
+
+Audio reaches the clip. `VideoClip` gains a volume control, waveform extraction
+moves out of the view package into core, and a long-standing identity bug in the
+filter surface is fixed.
+
+First of the pre-1.0 cycles closing the gaps a consuming editor had been working
+around. Everything here is additive — an existing caller upgrades without edits.
+
+### Added
+
+- **`VideoClip.volume(_:)`.** A clip could be muted wholesale or have its audio
+  replaced, and that was the entire audio surface on a clip. Every volume control
+  lived on `AudioTrack` — background audio, not the clips themselves — so "play
+  this one at 30%" had no expression at all.
+
+  ```swift
+  Video {
+      VideoClip(url: interview)          // keep the dialogue
+      VideoClip(url: broll).volume(0.3)  // duck the b-roll under it
+  }
+  ```
+
+  The contract mirrors ``AudioTrack/volume(_:)``: `1.0` is the source's own
+  level, values outside `0.0...` are clamped by AVFoundation, nothing throws.
+
+  Two behaviours worth knowing. **Volume is a step, not a ramp** — clips sharing
+  a composition audio track each get one at their own start, including
+  full-volume clips following a quieter one, because otherwise the quiet clip's
+  level bleeds into its neighbour. And **crossfades ramp to and from the clip's
+  level rather than full scale**, so a clip at `0.3` under a dissolve does not
+  jump to full volume mid-transition.
+
+  `volume(0)` and `muted()` remain different: muting drops the track from the
+  composition, volume 0 keeps a silent track in the mix. Muted clips contribute
+  no volume parameters, so a composition that needs no mix still builds none.
+
+- **`AudioWaveform` and `AudioWaveformLoader` are part of core.** They lived in
+  kadr-ui, so reading the peaks of an audio file meant importing a SwiftUI view
+  package — a headless consumer had to depend on views it would never
+  instantiate.
+
+  The argument is stronger than "it only needs AVFoundation": core already ships
+  `ThumbnailGenerator`, whose entire job is a visual peek at the media. Waveform
+  is its exact audio twin. Offering one and withholding the other was arbitrary,
+  and it is how this ended up stranded in a view package.
+
+  `AudioWaveformShape`, the SwiftUI `Shape` that draws the peaks, stays in
+  kadr-ui. Drawing is the view package's job; producing the values is not.
+
+  **This is the one item in the pre-1.0 plan that could not have waited.** Every
+  other addition ships fine as a 1.x minor; a *move* after the freeze means
+  duplicating the type or a major bump on both packages.
+
+### Fixed
+
+- **Appending a filter no longer re-identifies the existing ones.** `.filter(_:)`
+  regenerated the whole `filterIDs` array on every append, because the call site
+  omitted `filterIDs` and the initialiser regenerates on a count mismatch. Every
+  filter already on the clip was handed a new identity each time another was
+  added.
+
+  That defeats what `FilterID` was introduced for in v0.11. An editor binds an
+  animation with `filterAnimation(for:)`, the user adds a second filter, and the
+  binding is silently orphaned — `filterAnimation(for:)` looks the id up in
+  `filterIDs`, and after the append that id is gone. Nothing throws and nothing
+  logs.
+
+  The 14 existing `FilterID` tests could not see it: they assert counts and
+  lookups, and both stay correct while the identities underneath change, because
+  each test reads an id back out of the same clip it then queries. Four tests
+  added that read an id from one clip and assert against a later one, which is
+  the only shape that catches it.
+
+### Changed
+
+- **`VideoClip` copies through one `with(_:)` helper.** Every modifier is a
+  copy-with-one-change, and each re-invoked the 17-argument initialiser
+  positionally — 18 such call sites across `VideoClip.swift` and `Modifiers/`.
+  Adding a property meant editing all 18, and missing one silently dropped that
+  property's value rather than failing to compile.
+
+  The stored properties change from `let` to `internal(set) var` for this reason
+  and no other; they remain read-only outside the module. 197 lines deleted, 85
+  added, no public API or behaviour change — and `volume(_:)` then landed with
+  zero edits outside its own file.
+
+### Tests
+
+562 → 582 swift-testing tests, 45 → 49 XCTest tests.
+
 ## [0.17.0] - 2026-08-22
 
 Three engine subsystems go from unverified to verified on every pull request,
