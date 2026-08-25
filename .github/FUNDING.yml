@@ -1,0 +1,7 @@
+# Renders the Sponsor button at the top of this repository.
+#
+# Must live on the default branch to take effect. One-off only, and
+# deliberately so: nothing here promises that any particular feature will be
+# built. If you want specific work done, open an issue or get in touch —
+# that is a conversation, not a tip.
+buy_me_a_coffee: steliyanh
