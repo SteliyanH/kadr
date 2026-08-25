@@ -45,7 +45,13 @@ jobs:
           path-to-signatures: signatures/version1/cla.json
           branch: cla-signatures
           # The owner does not sign their own agreement; bots cannot.
-          allowlist: SteliyanH,dependabot[bot],github-actions[bot]
+          # Both forms deliberately. The action resolves a committer to
+          # `commit.author.user.login` when the email is linked to a GitHub
+          # account and falls back to the raw git `author.name` when it is
+          # not — and those differ here: the login is `SteliyanH`, the git
+          # name is `shadzhidenev`. Listing only the login let the gate fire
+          # on the owner's own pull requests.
+          allowlist: SteliyanH,shadzhidenev,dependabot[bot],github-actions[bot]
           custom-pr-sign-comment: >-
             I have read the Contributor License Agreement and I hereby agree to its
             terms for all my present and future contributions to this project.
