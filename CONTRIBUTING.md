@@ -74,4 +74,14 @@ Kadr follows a strict scope policy. Before starting work on a new feature, check
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the Apache 2.0 License.
+Kadr is released under the Apache License 2.0.
+
+Contributions are accepted under the [Contributor License Agreement](CLA.md). You
+sign it once, on your first pull request, and it covers everything you contribute
+afterwards.
+
+**It does not transfer ownership.** You keep the copyright in your work and stay
+free to use it anywhere else, including in your own commercial products. What it
+grants is the right to offer your contribution under other licence terms in
+future — something the Apache 2.0 licence alone does not provide, and which
+cannot practically be obtained retroactively once a project has contributors.
