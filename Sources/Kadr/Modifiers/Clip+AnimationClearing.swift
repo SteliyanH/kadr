@@ -23,49 +23,17 @@ extension VideoClip {
     /// animation while keeping the static base value untouched.
     /// Added in v0.10.1.
     public func transformAnimation(_ animation: Animation<Transform>?) -> VideoClip {
-        VideoClip(
-            url: url,
-            trimRange: trimRange,
-            isReversed: isReversed,
-            isMuted: isMuted,
-            replacementAudioURL: replacementAudioURL,
-            speedRate: speedRate,
-            filters: filters,
-            filterIDs: filterIDs,
-            filterAnimations: filterAnimations,
-            compositors: compositors,
-            clipID: clipID,
-            startTime: startTime,
-            transform: transform,
-            transformAnimation: animation,
-            opacity: opacity,
-            opacityAnimation: opacityAnimation,
-            speedCurve: speedCurve
-        )
+        with {
+    $0.transformAnimation = animation
+}
     }
 
     /// Replace the opacity animation, preserving the static base opacity.
     /// Pass `nil` to clear. Added in v0.10.1.
     public func opacityAnimation(_ animation: Animation<Double>?) -> VideoClip {
-        VideoClip(
-            url: url,
-            trimRange: trimRange,
-            isReversed: isReversed,
-            isMuted: isMuted,
-            replacementAudioURL: replacementAudioURL,
-            speedRate: speedRate,
-            filters: filters,
-            filterIDs: filterIDs,
-            filterAnimations: filterAnimations,
-            compositors: compositors,
-            clipID: clipID,
-            startTime: startTime,
-            transform: transform,
-            transformAnimation: transformAnimation,
-            opacity: opacity,
-            opacityAnimation: animation,
-            speedCurve: speedCurve
-        )
+        with {
+    $0.opacityAnimation = animation
+}
     }
 
 }
