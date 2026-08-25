@@ -272,6 +272,34 @@ Minor rather than patch: `KadrError` gains a protocol conformance and `localized
 - **`Examples/` is a build target, so the examples cannot rot.** They had rotted: `V080Showcase` passed `Transform`'s arguments in an order the initialiser no longer accepted, and two showcases each declared a colliding `MultiplyBlend`.
 - **Six cycles of undemonstrated API gained showcases** — v0.9 speed curves and the caption bridge, v0.10 track opacity, v0.11 keyed filters, v0.12 text stroke and shadow, v0.14 `ThumbnailGenerator`.
 
+## v0.18.0 — Audio reaches the clip ✓ shipped
+
+First of the pre-1.0 cycles closing gaps a consuming editor had been working
+around. All additive; an existing caller upgrades without edits.
+
+- **`VideoClip.volume(_:)`** — per-clip audio level, mirroring
+  `AudioTrack.volume(_:)`. The most conspicuous hole in the audio surface: a clip
+  could be muted or have its audio replaced, but "play this one at 30%" was
+  unreachable. Crossfades ramp to and from the clip's level rather than full
+  scale, so a quiet clip does not jump to full volume mid-dissolve.
+- **`AudioWaveform` / `AudioWaveformLoader` moved from kadr-ui into core.**
+  Reading an audio file's peaks required importing a SwiftUI view package. Core
+  already ships `ThumbnailGenerator`; waveform is its audio twin. The SwiftUI
+  `Shape` that draws the peaks stays in kadr-ui.
+
+  The one item in the pre-1.0 plan that could not have waited — every other
+  addition ships fine as a 1.x minor, but a *move* after the freeze means
+  duplicating the type or a major bump on both packages.
+- **Fixed: appending a filter re-identified the existing ones**, orphaning any
+  animation bound with `filterAnimation(for:)`. Silent — nothing threw, and the
+  14 existing FilterID tests asserted counts and lookups, both of which stay
+  correct while the identities change underneath.
+- **`VideoClip` copies through one `with(_:)` helper** instead of 18
+  hand-written re-invocations of a 17-argument initialiser. No API change; the
+  point is that every later addition costs one line instead of eighteen edits.
+
+Suite: 562 → 582 swift-testing tests, 45 → 49 XCTest.
+
 ## v1.0.0 — Production Ready (pure lock)
 
 Semver stability guarantee. **No code changes** — every public surface is frozen as of v0.14; this release is the commitment plus docs. (All deprecations are already removed in v0.14, so there is nothing left to delete here.)

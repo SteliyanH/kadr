@@ -41,45 +41,14 @@ extension VideoClip {
     public func speed(_ value: Speed) -> VideoClip {
         switch value {
         case .flat(let rate):
-            return VideoClip(
-                url: url,
-                trimRange: trimRange,
-                isReversed: isReversed,
-                isMuted: isMuted,
-                replacementAudioURL: replacementAudioURL,
-                speedRate: rate,
-                filters: filters,
-            filterIDs: filterIDs,
-                filterAnimations: filterAnimations,
-                compositors: compositors,
-                clipID: clipID,
-                startTime: startTime,
-                transform: transform,
-                transformAnimation: transformAnimation,
-                opacity: opacity,
-                opacityAnimation: opacityAnimation,
-                speedCurve: nil
-            )
+            return with {
+    $0.speedRate = rate
+    $0.speedCurve = nil
+}
         case .curved(let curve):
-            return VideoClip(
-                url: url,
-                trimRange: trimRange,
-                isReversed: isReversed,
-                isMuted: isMuted,
-                replacementAudioURL: replacementAudioURL,
-                speedRate: speedRate,
-                filters: filters,
-            filterIDs: filterIDs,
-                filterAnimations: filterAnimations,
-                compositors: compositors,
-                clipID: clipID,
-                startTime: startTime,
-                transform: transform,
-                transformAnimation: transformAnimation,
-                opacity: opacity,
-                opacityAnimation: opacityAnimation,
-                speedCurve: curve
-            )
+            return with {
+    $0.speedCurve = curve
+}
         }
     }
 

@@ -39,25 +39,9 @@ extension VideoClip {
         guard let i = filterIDs.firstIndex(of: id) else { return self }
         var newAnimations = filterAnimations
         newAnimations[i] = animation
-        return VideoClip(
-            url: url,
-            trimRange: trimRange,
-            isReversed: isReversed,
-            isMuted: isMuted,
-            replacementAudioURL: replacementAudioURL,
-            speedRate: speedRate,
-            filters: filters,
-            filterIDs: filterIDs,
-            filterAnimations: newAnimations,
-            compositors: compositors,
-            clipID: clipID,
-            startTime: startTime,
-            transform: transform,
-            transformAnimation: transformAnimation,
-            opacity: opacity,
-            opacityAnimation: opacityAnimation,
-            speedCurve: speedCurve
-        )
+        return with {
+    $0.filterAnimations = newAnimations
+}
     }
 
     /// Replace the filter with the given ``FilterID`` while preserving its
@@ -79,25 +63,9 @@ extension VideoClip {
         guard let i = filterIDs.firstIndex(of: id) else { return self }
         var newFilters = filters
         newFilters[i] = filter
-        return VideoClip(
-            url: url,
-            trimRange: trimRange,
-            isReversed: isReversed,
-            isMuted: isMuted,
-            replacementAudioURL: replacementAudioURL,
-            speedRate: speedRate,
-            filters: newFilters,
-            filterIDs: filterIDs,
-            filterAnimations: filterAnimations,
-            compositors: compositors,
-            clipID: clipID,
-            startTime: startTime,
-            transform: transform,
-            transformAnimation: transformAnimation,
-            opacity: opacity,
-            opacityAnimation: opacityAnimation,
-            speedCurve: speedCurve
-        )
+        return with {
+    $0.filters = newFilters
+}
     }
 
     /// Remove the filter with the given ``FilterID``, along with any bound
@@ -116,24 +84,10 @@ extension VideoClip {
         newFilters.remove(at: i)
         newIDs.remove(at: i)
         newAnimations.remove(at: i)
-        return VideoClip(
-            url: url,
-            trimRange: trimRange,
-            isReversed: isReversed,
-            isMuted: isMuted,
-            replacementAudioURL: replacementAudioURL,
-            speedRate: speedRate,
-            filters: newFilters,
-            filterIDs: newIDs,
-            filterAnimations: newAnimations,
-            compositors: compositors,
-            clipID: clipID,
-            startTime: startTime,
-            transform: transform,
-            transformAnimation: transformAnimation,
-            opacity: opacity,
-            opacityAnimation: opacityAnimation,
-            speedCurve: speedCurve
-        )
+        return with {
+    $0.filters = newFilters
+    $0.filterIDs = newIDs
+    $0.filterAnimations = newAnimations
+}
     }
 }
