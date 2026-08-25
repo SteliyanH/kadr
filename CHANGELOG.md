@@ -4,6 +4,25 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.19.0] - 2026-08-25
+
+### Added
+
+- **`AudioWaveform.resampled(to:)`.** A waveform is extracted once at some sample
+  count and then drawn into whatever width a view happens to have, which is rarely
+  the same number. Decimates when there are more peaks than buckets, stretches when
+  there are fewer, and always returns exactly `bucketCount` entries.
+
+  **This closes a gap 0.18.0 opened.** That release moved `AudioWaveform` into core
+  and left `bucketPeaks` — the only helper that reshapes it — internal. The move
+  was correct and the omission was not: kadr-ui's waveform `Shape` calls it on every
+  draw, so the package the type was moved *out of* could no longer render what core
+  had just handed it. It failed at compile time rather than silently, which is the
+  one merciful part.
+
+  Minor rather than patch because it is new public surface, even though its purpose
+  is to complete something already shipped.
+
 ## [0.18.0] - 2026-08-25
 
 Audio reaches the clip. `VideoClip` gains a volume control, waveform extraction
