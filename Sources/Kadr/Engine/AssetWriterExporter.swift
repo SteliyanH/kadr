@@ -83,15 +83,19 @@ internal enum AssetWriterExporter {
                     // AVMutableComposition fails at startReading with an opaque
                     // -11800/-12710, because the reader snapshots internally and the
                     // track objects it is given no longer belong to what it is reading.
-                    guard let asset = config.composition.copy() as? AVComposition else {
-                        throw KadrError.exportFailed(underlying: NSError(
-                            domain: "Kadr", code: -9,
-                            userInfo: [NSLocalizedDescriptionKey: "Could not snapshot the composition for re-encoding."]
-                        ))
-                    }
+                    let asset = config.composition
                     let duration = try await asset.load(.duration)
                     let videoTracks = try await asset.loadTracks(withMediaType: .video)
-                    let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+                    // The composition builders always create an audio track, even when
+                    // nothing is inserted into it — a muted clip, or a composition with
+                    // no audio at all, still leaves an empty track behind. Handing an
+                    // empty track to AVAssetReaderAudioMixOutput makes startReading()
+                    // fail, and the error names neither audio nor emptiness.
+                    var audioTracks: [AVAssetTrack] = []
+                    for track in try await asset.loadTracks(withMediaType: .audio) {
+                        let range = try await track.load(.timeRange)
+                        if range.duration.seconds > 0 { audioTracks.append(track) }
+                    }
 
                     guard !videoTracks.isEmpty else {
                         throw KadrError.exportFailed(underlying: NSError(
@@ -163,8 +167,15 @@ internal enum AssetWriterExporter {
                     var audioOutput: AVAssetReaderAudioMixOutput?
                     var audioInput: AVAssetWriterInput?
                     if !audioTracks.isEmpty {
+                        // Every one of these keys is required. Omitting the sample
+                        // rate and channel count made `reader.startReading()` fail with
+                        // an opaque -11800 / -12710 — an error that names neither audio
+                        // nor the missing keys, and which looks exactly like a video
+                        // problem because the video output is the one you added first.
                         let out = AVAssetReaderAudioMixOutput(audioTracks: audioTracks, audioSettings: [
                             AVFormatIDKey: kAudioFormatLinearPCM,
+                            AVSampleRateKey: 44_100,
+                            AVNumberOfChannelsKey: 2,
                             AVLinearPCMBitDepthKey: 16,
                             AVLinearPCMIsFloatKey: false,
                             AVLinearPCMIsBigEndianKey: false,
