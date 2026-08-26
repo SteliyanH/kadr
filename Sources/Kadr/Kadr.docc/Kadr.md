@@ -102,6 +102,7 @@ let url = try await Video {
 - ``Video/thumbnailGenerator()``
 - ``ThumbnailGenerator``
 - ``AudioWaveform``
+- ``AudioWaveform/resampled(to:)``
 - ``AudioWaveformLoader``
 - ``Layout``
 - ``Layout/resolveFrame(position:size:anchor:in:)``

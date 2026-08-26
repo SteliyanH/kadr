@@ -32,6 +32,25 @@ public struct AudioWaveform: Sendable, Equatable {
     public static let empty = AudioWaveform(peaks: [])
 }
 
+extension AudioWaveform {
+
+    /// This waveform resampled to exactly `bucketCount` peaks.
+    ///
+    /// Renderers need this: a waveform is extracted once at some sample count and
+    /// then drawn into whatever width the view happens to have, which is rarely the
+    /// same number. Decimates when the waveform has more peaks than buckets and
+    /// stretches when it has fewer, so the result always has `bucketCount` entries.
+    ///
+    /// Returns an empty waveform for `bucketCount <= 0`.
+    ///
+    /// Added in v0.19. Before it, the only way to resample was an internal helper —
+    /// which is why the move of this type into core in v0.18 left kadr-ui unable to
+    /// draw what it had just been handed.
+    public func resampled(to bucketCount: Int) -> AudioWaveform {
+        AudioWaveform(peaks: AudioWaveform.bucketPeaks(samples: peaks, bucketCount: bucketCount))
+    }
+}
+
 /// Pure helpers for waveform sample math. Surface as nonisolated statics so they
 /// can run inside an `AVAssetReader` background queue without actor hops.
 extension AudioWaveform {
