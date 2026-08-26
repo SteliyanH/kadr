@@ -300,6 +300,13 @@ around. All additive; an existing caller upgrades without edits.
 
 Suite: 562 → 582 swift-testing tests, 45 → 49 XCTest.
 
+## v0.19.0 — Waveform resampling ✓ shipped
+
+- **`AudioWaveform.resampled(to:)`** — reshape a waveform to a target bucket count.
+  Closes a gap v0.18.0 opened: that release moved the type into core and left the
+  only helper that reshapes it internal, so kadr-ui's `Shape` could not draw what
+  core had just handed it.
+
 ## v1.0.0 — Production Ready (pure lock)
 
 Semver stability guarantee. **No code changes** — every public surface is frozen as of v0.14; this release is the commitment plus docs. (All deprecations are already removed in v0.14, so there is nothing left to delete here.)

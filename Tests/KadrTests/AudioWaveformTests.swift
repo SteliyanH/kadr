@@ -85,4 +85,32 @@ struct AudioWaveformTests {
         #expect(a == b)
         #expect(a != c)
     }
+
+    // MARK: - resampled(to:) — v0.19
+    //
+    // The move in v0.18 put the value type in core and left the only helper that
+    // reshapes it internal, so kadr-ui's Shape could not draw the waveform core
+    // had just handed it. This is the public surface that closes that.
+
+    @Test func resampledProducesExactlyTheRequestedCount() {
+        let w = AudioWaveform(peaks: [0.1, 0.9, 0.4, 0.6, 0.2])
+        #expect(w.resampled(to: 3).peaks.count == 3)
+        #expect(w.resampled(to: 12).peaks.count == 12)
+    }
+
+    @Test func resampledToZeroOrNegativeIsEmpty() {
+        let w = AudioWaveform(peaks: [0.1, 0.9])
+        #expect(w.resampled(to: 0).peaks.isEmpty)
+        #expect(w.resampled(to: -4).peaks.isEmpty)
+    }
+
+    @Test func resamplingKeepsThePeakOfEachBucket() {
+        let w = AudioWaveform(peaks: [0.1, 0.9, 0.2, 0.8])
+        #expect(w.resampled(to: 2).peaks == [0.9, 0.8])
+    }
+
+    @Test func resamplingAnEmptyWaveformPadsWithZeros() {
+        #expect(AudioWaveform.empty.resampled(to: 3).peaks == [0, 0, 0])
+    }
 }
+
