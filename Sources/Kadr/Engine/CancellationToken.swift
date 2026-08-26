@@ -28,6 +28,14 @@ internal final class CancellationToken: @unchecked Sendable {
     /// Guarded by `lock`.
     private var _exportSession: AVAssetExportSession?
 
+    /// Guarded by `lock`. Run once when the token is cancelled.
+    ///
+    /// v0.20: the writer-based export path has no `AVAssetExportSession` to
+    /// register — it owns an `AVAssetReader` / `AVAssetWriter` pair instead. Rather
+    /// than teach this type about those, it takes a closure and stays ignorant of
+    /// what it is tearing down.
+    private var _onCancel: (() -> Void)?
+
     var isCancelled: Bool {
         lock.lock()
         defer { lock.unlock() }
@@ -51,13 +59,26 @@ internal final class CancellationToken: @unchecked Sendable {
         }
     }
 
+    /// Register work to tear down on cancellation. Fires immediately if the token
+    /// is already cancelled, so the caller does not have to branch on the race.
+    func onCancel(_ handler: @escaping () -> Void) {
+        lock.lock()
+        let alreadyCancelled = _isCancelled
+        if !alreadyCancelled { _onCancel = handler }
+        lock.unlock()
+        if alreadyCancelled { handler() }
+    }
+
     /// Mark the token cancelled and cancel any registered session.
     /// Idempotent; safe to call from any thread.
     func cancel() {
         lock.lock()
         _isCancelled = true
         let session = _exportSession
+        let handler = _onCancel
+        _onCancel = nil
         lock.unlock()
         session?.cancelExport()
+        handler?()
     }
 }

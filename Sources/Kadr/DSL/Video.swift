@@ -335,6 +335,7 @@ public struct Video: Sendable {
             crop: crop,
             preset: preset,
             captions: captions,
+            quality: quality,
             to: url
         )
 
@@ -348,7 +349,7 @@ public struct Video: Sendable {
     /// progress reporting via `AsyncThrowingStream<ExportProgress, Error>`,
     /// estimated time remaining, or cancellation. Otherwise prefer ``export(to:)``.
     public func exporter(to url: URL) -> Exporter {
-        Exporter(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor, compositorWindow: compositorWindow, captions: captions, outputURL: url)
+        Exporter(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor, compositorWindow: compositorWindow, captions: captions, quality: quality, outputURL: url)
     }
 
     // MARK: - Preview
