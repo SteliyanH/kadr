@@ -80,3 +80,13 @@ jobs:
       # Serialised, all 562 pass on a machine that previously failed 9 of them.
       # Cost is wall-clock: ~25s parallel against ~60s serialised.
       - run: swift test --no-parallel
+
+      # `swift test` runs on macOS, where every `#if os(iOS)` and
+      # `#if canImport(UIKit)` body is excluded — 192 lines here. This package
+      # compiles for iOS today; nothing was checking that it stayed that way.
+      #
+      # kadr-audio had the identical gap and its iOS slice did not compile at all,
+      # through six releases, with a green suite the whole time. Prevention here,
+      # not a fix.
+      - name: Build for iOS
+        run: xcodebuild -scheme Kadr -destination 'generic/platform=iOS' -quiet build
