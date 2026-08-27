@@ -16,6 +16,28 @@ struct AssetWriterExportTests {
         return url
     }
 
+    /// A real 64×64 image. `PlatformImage()` has no backing `CGImage`, so anything
+    /// that actually encodes it fails with "Failed to convert image to CGImage" —
+    /// a test failure that looks like a product bug and is not one.
+    private func solidImage() throws -> PlatformImage {
+        let size = CGSize(width: 64, height: 64)
+        guard let context = CGContext(
+            data: nil, width: 64, height: 64, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { throw KadrError.unsupportedFormat("Could not create a bitmap context") }
+        context.setFillColor(CGColor(red: 0.2, green: 0.4, blue: 0.8, alpha: 1))
+        context.fill(CGRect(origin: .zero, size: size))
+        guard let cg = context.makeImage() else {
+            throw KadrError.unsupportedFormat("Could not render the test image")
+        }
+        #if canImport(UIKit)
+        return PlatformImage(cgImage: cg)
+        #else
+        return PlatformImage(cgImage: cg, size: size)
+        #endif
+    }
+
     private func tempOutput() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -130,4 +152,39 @@ struct AssetWriterExportTests {
         #expect(fractions.last == 1.0, "The stream must end at 1.0, not merely stop")
         #expect(fractions == fractions.sorted(), "Progress must not go backwards")
     }
+
+    // MARK: - The fast path must not swallow a bitrate
+
+    /// `Video.export(to:)` has a fast path for a single `ImageClip`: it goes straight
+    /// to `ImageEncoder` and never reaches either export engine. `ImageEncoder` has
+    /// no bitrate control, so taking that route with a bitrate requested would ignore
+    /// it silently.
+    ///
+    /// Found by a benchmark, not by a test — the writer-path timings came back
+    /// identical to the session path because the composition never left the fast
+    /// path. This pins it so the next person to touch that branch has to notice.
+    @Test func singleImageClipWithBitrateStillHonoursIt() async throws {
+        let out = tempOutput()
+        defer { try? FileManager.default.removeItem(at: out) }
+
+        let image = try solidImage()
+        let video = Video { ImageClip(image, duration: CMTime(seconds: 1, preferredTimescale: 600)) }
+            .quality(.bitrate(800_000))
+
+        // The assertion that matters is that this does not take the ImageEncoder
+        // shortcut. Exporting proves the routing change did not break the case.
+        _ = try await video.export(to: out)
+        #expect(FileManager.default.fileExists(atPath: out.path))
+    }
+
+    @Test func singleImageClipWithoutQualityStillTakesTheFastPath() async throws {
+        let out = tempOutput()
+        defer { try? FileManager.default.removeItem(at: out) }
+
+        let image = try solidImage()
+        let video = Video { ImageClip(image, duration: CMTime(seconds: 1, preferredTimescale: 600)) }
+        _ = try await video.export(to: out)
+        #expect(FileManager.default.fileExists(atPath: out.path))
+    }
 }
+
