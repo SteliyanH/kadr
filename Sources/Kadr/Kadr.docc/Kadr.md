@@ -19,6 +19,13 @@ let url = try await Video {
 
 ## Topics
 
+### Guides
+
+- <doc:Slideshows>
+- <doc:MultiTrackComposition>
+- <doc:KeyframeAnimation>
+- <doc:CustomCompositors>
+
 ### Essentials
 
 - <doc:FrameAccuracy>
