@@ -101,6 +101,7 @@ let url = try await Video {
 - ``Video/thumbnail(at:)-(TimeInterval)``
 - ``Video/thumbnailGenerator()``
 - ``ThumbnailGenerator``
+- ``SampleMedia``
 - ``AudioWaveform``
 - ``AudioWaveform/resampled(to:)``
 - ``AudioWaveformLoader``

@@ -307,6 +307,23 @@ Suite: 562 → 582 swift-testing tests, 45 → 49 XCTest.
   only helper that reshapes it internal, so kadr-ui's `Shape` could not draw what
   core had just handed it.
 
+## v0.20.0 — Export control ✓ shipped
+
+- **`Video.quality(_:)`** — `.automatic` / `.bitrate(_:)` / `.fileSize(bytes:)`.
+  `AVAssetExportSession` cannot express a bitrate, so "export under 25 MB" needed
+  a pipeline that writes the samples itself.
+- **`AVAssetReader` / `AVAssetWriter` backend**, used when a bitrate is asked for.
+  Overlays disqualify it — they render through a tool only the export session
+  has, and dropping them silently to gain bitrate control would be the wrong
+  trade. Costs roughly 1.5× wall-clock, measured.
+- **`SampleMedia`** — generated media so a newcomer has something to point the API
+  at. Nothing bundled.
+- **Fixed:** a bitrate on a single-`ImageClip` composition was silently ignored,
+  because that shape takes a fast path to `ImageEncoder`. Found by a benchmark
+  whose writer numbers were suspiciously identical to the session path.
+
+Suite: 586 → 618 swift-testing tests.
+
 ## v1.0.0 — Production Ready (pure lock)
 
 Semver stability guarantee. **No code changes** — every public surface is frozen as of v0.14; this release is the commitment plus docs. (All deprecations are already removed in v0.14, so there is nothing left to delete here.)

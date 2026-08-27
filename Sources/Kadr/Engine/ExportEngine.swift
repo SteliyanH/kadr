@@ -17,6 +17,24 @@ private struct ExportConfig: @unchecked Sendable {
 
 internal enum ExportEngine {
 
+    /// Whether a composition can be encoded by the writer path.
+    ///
+    /// Two conditions, and the second is the interesting one.
+    ///
+    /// A bitrate must actually have been asked for — `.automatic` has nothing the
+    /// session path cannot do, and routing it through a hand-written encoder would
+    /// trade a well-tested code path for no gain.
+    ///
+    /// And there must be no overlays. Overlays are rendered by
+    /// `AVVideoCompositionCoreAnimationTool`, which is an export-session facility —
+    /// a reader/writer pipeline cannot use it. **An overlay-bearing composition sent
+    /// down the writer path would export successfully with the overlays missing**,
+    /// which is a far worse outcome than not honouring the bitrate. Until the writer
+    /// path composites overlays itself, they pin the export to the session.
+    static func shouldUseWriter(bitrate: Int?, overlays: [any Overlay]) -> Bool {
+        bitrate != nil && overlays.isEmpty
+    }
+
     static func export(
         composition: AVMutableComposition,
         audioMix: AVMutableAudioMix?,
@@ -25,9 +43,26 @@ internal enum ExportEngine {
         crop: CropRegion? = nil,
         preset: Preset,
         captions: [Caption] = [],
+        quality: ExportQuality = .automatic,
         to outputURL: URL,
         cancellationToken: CancellationToken = CancellationToken()
     ) -> AsyncThrowingStream<ExportProgress, Error> {
+        let requestedBitrate = quality.resolvedBitrate(forDuration: composition.duration)
+        if shouldUseWriter(bitrate: requestedBitrate, overlays: overlays), let requestedBitrate {
+            let cropRect = crop?.resolved(in: preset.resolution)
+            return AssetWriterExporter.export(
+                composition: composition,
+                audioMix: audioMix,
+                videoComposition: videoComposition
+                    ?? PlaybackComposer.buildSimpleVideoComposition(for: composition, preset: preset, cropRect: cropRect),
+                preset: preset,
+                bitrate: requestedBitrate,
+                captions: captions,
+                to: outputURL,
+                cancellationToken: cancellationToken
+            )
+        }
+
         let config = ExportConfig(
             composition: composition,
             audioMix: audioMix,

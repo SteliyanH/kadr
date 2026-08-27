@@ -26,28 +26,28 @@ import AppKit
 public struct Video: Sendable {
     /// The ordered clips that make up this composition, including any ``Transition`` markers
     /// between media clips. Iterate to inspect the timeline (e.g. for a custom timeline UI).
-    public let clips: [any Clip]
+    public internal(set) var clips: [any Clip]
 
     /// Background audio tracks added via ``audio(_:)`` or ``audio(url:)``. Drawn over the
     /// composition's full duration, mixed with each clip's own audio.
-    public let audioTracks: [AudioTrack]
+    public internal(set) var audioTracks: [AudioTrack]
 
     /// The export preset (resolution / frame rate / codec). Defaults to ``Preset/auto``.
-    public let preset: Preset
+    public internal(set) var preset: Preset
 
     /// Overlays drawn on top of the composition for its full duration, in declaration order
     /// (later entries render above earlier ones). Each overlay carries an optional
     /// ``LayerID`` that callers can use for hit-testing in custom UI.
-    public let overlays: [any Overlay]
+    public internal(set) var overlays: [any Overlay]
 
     /// The active crop region, or `nil` if no crop is applied. Set via ``crop(at:size:anchor:)``.
-    public let crop: CropRegion?
+    public internal(set) var crop: CropRegion?
 
     /// Optional multi-track blender. Set via ``compositor(_:)-(any)`` /
     /// ``compositor(_:)-(closure)``. `nil` (default) means the engine will use its
     /// built-in alpha-composite later-over-earlier blender when the composition has
     /// multiple parallel tracks.
-    public let multiInputCompositor: (any MultiInputCompositor)?
+    public internal(set) var multiInputCompositor: (any MultiInputCompositor)?
 
     /// Optional time window during which the ``multiInputCompositor`` is active. When
     /// `nil` (default), the compositor runs for the entire composition. When set, the
@@ -55,12 +55,17 @@ public struct Video: Sendable {
     /// compositor runs; outside it, the default alpha-composite blender runs. Set via
     /// ``compositor(_:during:)-(CMTimeRange)`` / ``compositor(_:during:)-(closedrange)``.
     /// Added in v0.7.
-    public let compositorWindow: CMTimeRange?
+    public internal(set) var compositorWindow: CMTimeRange?
 
     /// Caption cues attached to this composition. The engine bakes them as
     /// `AVMetadataItem` group at export. `nil` / empty (default) means no captions.
     /// Set via ``captions(_:)``. Added in v0.9.2.
-    public let captions: [Caption]
+    /// How many bits to spend on the export, independent of ``preset``. `.automatic`
+    /// (the default) leaves it to the encoder, which is what every export did before
+    /// v0.20. Set via ``quality(_:)``.
+    public internal(set) var quality: ExportQuality
+
+    public internal(set) var captions: [Caption]
 
     /// The total media-timeline duration of the composition.
     ///
@@ -72,7 +77,7 @@ public struct Video: Sendable {
     /// value is fully determined by `clips` at init time; storing it makes repeated reads
     /// (timeline UIs, the exporter, progress estimation) O(1) instead of re-walking the
     /// clip list on every access.
-    public let duration: CMTime
+    public internal(set) var duration: CMTime
 
     /// Sum of each clip's media-timeline contribution. The single source of truth for
     /// ``duration``; both initializers route through it so the walk happens exactly once
@@ -92,6 +97,7 @@ public struct Video: Sendable {
         self.multiInputCompositor = nil
         self.compositorWindow = nil
         self.captions = []
+        self.quality = .automatic
         self.duration = Self.totalDuration(of: clips)
     }
 
@@ -103,7 +109,8 @@ public struct Video: Sendable {
         crop: CropRegion? = nil,
         multiInputCompositor: (any MultiInputCompositor)? = nil,
         compositorWindow: CMTimeRange? = nil,
-        captions: [Caption] = []
+        captions: [Caption] = [],
+        quality: ExportQuality = .automatic
     ) {
         self.clips = clips
         self.audioTracks = audioTracks
@@ -113,7 +120,25 @@ public struct Video: Sendable {
         self.multiInputCompositor = multiInputCompositor
         self.compositorWindow = compositorWindow
         self.captions = captions
+        self.quality = quality
         self.duration = Self.totalDuration(of: clips)
+    }
+
+    // MARK: - Copy-with
+
+    /// A copy of this video with `mutate` applied.
+    ///
+    /// Same reasoning as `VideoClip.with(_:)`: every modifier here is a
+    /// copy-with-one-change, and each used to re-invoke the memberwise initialiser
+    /// by hand. Nine call sites, nine properties — and a missed argument dropped a
+    /// property's value silently rather than failing to compile.
+    ///
+    /// `internal(set)` on the stored properties exists for this and nothing else.
+    /// They stay read-only to every caller outside the module.
+    func with(_ mutate: (inout Video) -> Void) -> Video {
+        var copy = self
+        mutate(&copy)
+        return copy
     }
 
     /// Attach caption cues to this composition. The engine bakes them as `AVMetadataItem`
@@ -123,41 +148,51 @@ public struct Video: Sendable {
     /// [`kadr-captions`](https://github.com/SteliyanH/kadr-captions) adapter; this
     /// modifier only takes pre-built ``Caption`` values. Added in v0.9.2.
     public func captions(_ captions: [Caption]) -> Video {
-        Video(
-            clips: clips,
-            audioTracks: audioTracks,
-            preset: preset,
-            overlays: overlays,
-            crop: crop,
-            multiInputCompositor: multiInputCompositor,
-            compositorWindow: compositorWindow,
-            captions: self.captions + captions
-        )
+        with {
+    $0.captions = self.captions + captions
+}
     }
 
     /// Add one or more background audio tracks via the ``AudioBuilder`` DSL.
     /// Useful for chained modifiers like `.volume(_:)`, `.fadeIn(_:)`, `.ducking(_:)`.
     public func audio(@AudioBuilder _ tracks: () -> [AudioTrack]) -> Video {
-        Video(clips: clips, audioTracks: audioTracks + tracks(), preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor, compositorWindow: compositorWindow, captions: captions)
+        with { $0.audioTracks += tracks() }
     }
 
     /// Convenience: add a single background audio track from `url`. Equivalent to
     /// `.audio { AudioTrack(url: url) }` with default volume and no fades.
     public func audio(url: URL) -> Video {
-        Video(clips: clips, audioTracks: audioTracks + [AudioTrack(url: url)], preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor, compositorWindow: compositorWindow, captions: captions)
+        with { $0.audioTracks.append(AudioTrack(url: url)) }
     }
 
     /// Apply an export preset (resolution, frame rate, codec). Defaults to ``Preset/auto`` if
     /// unset. See ``Preset`` for the built-in choices and ``Preset/custom(width:height:frameRate:codec:)``.
+    /// Set how many bits the export spends, independent of ``preset``.
+    ///
+    /// ``Preset`` decides the output's shape — dimensions, frame rate, codec.
+    /// This decides how heavily it is compressed. A 1080×1920 reel can be a 12 MB
+    /// upload or a 60 MB master at identical dimensions.
+    ///
+    /// ```swift
+    /// video.quality(.bitrate(4_000_000))              // ~4 Mbps
+    /// video.quality(.fileSize(bytes: 25_000_000))     // aim for under 25 MB
+    /// ```
+    ///
+    /// `.automatic` (the default) leaves the choice to the encoder, which is what
+    /// every export did before v0.20. Added in v0.20.
+    public func quality(_ quality: ExportQuality) -> Video {
+        with { $0.quality = quality }
+    }
+
     public func preset(_ preset: Preset) -> Video {
-        Video(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor, compositorWindow: compositorWindow, captions: captions)
+        with { $0.preset = preset }
     }
 
     /// Add an overlay drawn on top of the composition for its full duration.
     /// Accepts any ``Overlay`` conformer — currently ``ImageOverlay`` and ``TextOverlay``.
     /// Each overlay is drawn above the previous one in declaration order.
     public func overlay<O: Overlay>(_ overlay: O) -> Video {
-        Video(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays + [overlay], crop: crop, multiInputCompositor: multiInputCompositor, compositorWindow: compositorWindow, captions: captions)
+        with { $0.overlays.append(overlay) }
     }
 
     /// Crop the composition to a rectangular region of the render canvas. The export's
@@ -188,16 +223,9 @@ public struct Video: Sendable {
     /// > Future: per-clip cropping (`VideoClip.crop(...)`) and alpha-mask cropping (any
     /// > shape, not just rectangles) are tracked for **v0.5** alongside custom compositors.
     public func crop(at position: Position, size: Size, anchor: Anchor = .center) -> Video {
-        Video(
-            clips: clips,
-            audioTracks: audioTracks,
-            preset: preset,
-            overlays: overlays,
-            crop: CropRegion(position: position, size: size, anchor: anchor),
-            multiInputCompositor: multiInputCompositor,
-            compositorWindow: compositorWindow,
-            captions: captions
-        )
+        with {
+    $0.crop = CropRegion(position: position, size: size, anchor: anchor)
+}
     }
 
     /// Attach a multi-track blender to this composition. The compositor is consulted
@@ -215,16 +243,9 @@ public struct Video: Sendable {
     /// Single-track compositions ignore the compositor entirely — the v0.5 fast-path
     /// pipeline doesn't engage it. See ``MultiInputCompositor``.
     public func compositor(_ compositor: any MultiInputCompositor) -> Video {
-        Video(
-            clips: clips,
-            audioTracks: audioTracks,
-            preset: preset,
-            overlays: overlays,
-            crop: crop,
-            multiInputCompositor: compositor,
-            compositorWindow: compositorWindow,
-            captions: captions
-        )
+        with {
+    $0.multiInputCompositor = compositor
+}
     }
 
     /// Attach a closure-backed multi-track blender. Convenient for one-off blends:
@@ -250,15 +271,10 @@ public struct Video: Sendable {
     ///     .compositor(MultiplyBlend(), during: CMTimeRange(start: t1, end: t2))
     /// ```
     public func compositor(_ compositor: any MultiInputCompositor, during range: CMTimeRange) -> Video {
-        Video(
-            clips: clips,
-            audioTracks: audioTracks,
-            preset: preset,
-            overlays: overlays,
-            crop: crop,
-            multiInputCompositor: compositor,
-            compositorWindow: range
-        )
+        with {
+    $0.multiInputCompositor = compositor
+    $0.compositorWindow = range
+}
     }
 
     /// Convenience overload accepting a `ClosedRange<TimeInterval>`. Added in v0.7.
@@ -290,7 +306,14 @@ public struct Video: Sendable {
         // full CompositionBuilder + ExportEngine path (overlays need an
         // AVVideoCompositionCoreAnimationTool; crop needs a videoComposition with
         // adjusted renderSize and offset transforms).
-        if clips.count == 1, let imageClip = clips.first as? ImageClip, overlays.isEmpty, crop == nil {
+        // `quality` disqualifies the fast path. ImageEncoder writes with its own
+        // settings and cannot honour a bitrate, so taking this route with a bitrate
+        // requested would ignore it silently — the user asked for 1 Mbps and got
+        // whatever the encoder felt like, with nothing to indicate the request was
+        // dropped. Found by a benchmark whose writer-path numbers came back
+        // identical to the session path, because it was never leaving this branch.
+        if clips.count == 1, let imageClip = clips.first as? ImageClip, overlays.isEmpty, crop == nil,
+           quality == .automatic {
             let audioURL = imageClip.audioURL ?? audioTracks.first?.url
             return try await ImageEncoder.encode(
                 image: imageClip.image,
@@ -319,6 +342,7 @@ public struct Video: Sendable {
             crop: crop,
             preset: preset,
             captions: captions,
+            quality: quality,
             to: url
         )
 
@@ -332,7 +356,7 @@ public struct Video: Sendable {
     /// progress reporting via `AsyncThrowingStream<ExportProgress, Error>`,
     /// estimated time remaining, or cancellation. Otherwise prefer ``export(to:)``.
     public func exporter(to url: URL) -> Exporter {
-        Exporter(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor, compositorWindow: compositorWindow, captions: captions, outputURL: url)
+        Exporter(clips: clips, audioTracks: audioTracks, preset: preset, overlays: overlays, crop: crop, multiInputCompositor: multiInputCompositor, compositorWindow: compositorWindow, captions: captions, quality: quality, outputURL: url)
     }
 
     // MARK: - Preview
