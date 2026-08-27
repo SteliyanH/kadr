@@ -40,6 +40,18 @@ enum Fixtures {
         return Video { ImageClip(img, duration: seconds) }
     }
 
+    /// Two clips, no overlays — the shape the writer path can take. A single
+    /// `ImageClip` cannot be used here: `Video.export` has a fast path for it, and a
+    /// benchmark built on that measures `ImageEncoder` rather than either export
+    /// engine. That is exactly what the first version of the writer benchmark did,
+    /// and its numbers came back indistinguishable from the session path.
+    static func writerEligible(seconds: Double) -> Video {
+        Video {
+            ImageClip(image(0.2), duration: seconds / 2)
+            ImageClip(image(0.6), duration: seconds / 2)
+        }
+    }
+
     /// Several clips plus overlays, so `KadrVideoCompositor` runs per frame.
     /// This is the path v0.13's colour-space hoist and overlay coalescing were
     /// meant to speed up.

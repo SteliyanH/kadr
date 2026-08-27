@@ -306,7 +306,14 @@ public struct Video: Sendable {
         // full CompositionBuilder + ExportEngine path (overlays need an
         // AVVideoCompositionCoreAnimationTool; crop needs a videoComposition with
         // adjusted renderSize and offset transforms).
-        if clips.count == 1, let imageClip = clips.first as? ImageClip, overlays.isEmpty, crop == nil {
+        // `quality` disqualifies the fast path. ImageEncoder writes with its own
+        // settings and cannot honour a bitrate, so taking this route with a bitrate
+        // requested would ignore it silently — the user asked for 1 Mbps and got
+        // whatever the encoder felt like, with nothing to indicate the request was
+        // dropped. Found by a benchmark whose writer-path numbers came back
+        // identical to the session path, because it was never leaving this branch.
+        if clips.count == 1, let imageClip = clips.first as? ImageClip, overlays.isEmpty, crop == nil,
+           quality == .automatic {
             let audioURL = imageClip.audioURL ?? audioTracks.first?.url
             return try await ImageEncoder.encode(
                 image: imageClip.image,

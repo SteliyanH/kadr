@@ -83,6 +83,26 @@ do {
     results.append(try await harness.measure("keyframe-heavy (120 keys, 5s)") {
         try await exportOnce(Fixtures.keyframeHeavy(keyframes: 120, seconds: 5))
     })
+
+    // v0.20 — the writer path. Paired deliberately with the session-path benchmark
+    // above on the same fixture, because the question a maintainer will ask is not
+    // "how fast is the writer" but "what does bitrate control cost". Reading the two
+    // lines against each other answers that; either alone does not.
+    results.append(try await harness.measure("session export, 2 clips (5s)") {
+        try await exportOnce(Fixtures.writerEligible(seconds: 5))
+    })
+    results.append(try await harness.measure("writer export (5s, 4 Mbps)") {
+        try await exportOnce(Fixtures.writerEligible(seconds: 5).quality(.bitrate(4_000_000)))
+    })
+    // A second, much lower bitrate. Expect this to be roughly the same wall-clock
+    // as the 4 Mbps line: encode time is dominated by per-frame work, not by how
+    // many bits come out the other end. It is here so a change that made bitrate
+    // expensive would show up, not as a check that bitrate is being honoured —
+    // that is a question about file size, and `lowerBitrateProducesASmallerFile`
+    // in the test suite is what answers it.
+    results.append(try await harness.measure("writer export (5s, 1 Mbps)") {
+        try await exportOnce(Fixtures.writerEligible(seconds: 5).quality(.bitrate(1_000_000)))
+    })
 } catch {
     FileHandle.standardError.write(
         """
