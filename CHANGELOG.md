@@ -4,6 +4,86 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.20.0] - 2026-08-27
+
+Export control. `AVAssetExportSession` cannot express a bitrate at all — its
+presets are the whole vocabulary, and the most specific thing they say is
+"highest quality". "Export this under 25 MB for upload" is not a preset, so this
+release adds a pipeline that writes the samples itself.
+
+### Added
+
+- **`Video.quality(_:)` with `ExportQuality`.** `.automatic` (the default, and
+  what every export did before now), `.bitrate(_:)`, and `.fileSize(bytes:)`.
+
+  ```swift
+  video.quality(.bitrate(4_000_000))            // ~4 Mbps
+  video.quality(.fileSize(bytes: 25_000_000))   // aim for under 25 MB
+  ```
+
+  `Preset` decides the output's *shape* — dimensions, frame rate, codec.
+  `ExportQuality` decides how many *bits* are spent on it. A 1080×1920 reel can
+  be a 12 MB upload or a 60 MB master at identical dimensions.
+
+  The size-to-bitrate arithmetic is deliberately followable rather than hidden,
+  because it is a division people will check by hand against the file they get:
+  `bytes × 8`, minus the audio allowance, over the duration.
+  ``ExportQuality/assumedAudioBitrate`` is public and documented at 128 kbps —
+  over-reserving costs less than under-reserving, since thin video looks bad but
+  thin audio is unlistenable. Degenerate inputs resolve to `nil` and hand the
+  choice back to the encoder rather than returning a bad number.
+
+- **An `AVAssetReader` / `AVAssetWriter` export backend**, used when a bitrate is
+  requested. Video and audio pump on separate queues, progress comes from
+  presentation timestamps, and cancellation runs through a new teardown hook on
+  the cancellation token.
+
+  **Overlays disqualify this path.** They render through
+  `AVVideoCompositionCoreAnimationTool`, which is an export-session facility a
+  reader/writer pipeline cannot use. An overlay-bearing composition sent down it
+  would export *successfully with the overlays missing* — a far worse outcome
+  than not honouring a bitrate — so such compositions stay on the session path
+  and the bitrate is what gets dropped. Per-frame overlay compositing is its own
+  piece of work.
+
+  Measured cost of bitrate control, same fixture, this machine: session export
+  0.758s against writer export 1.142s, so roughly 1.5× wall-clock. Both writer
+  bitrates take about the same time, because encode time is dominated by
+  per-frame work rather than by how many bits come out.
+
+- **`SampleMedia`** — generated colour-bar media, so a newcomer has something to
+  point `VideoPreview` or `export(to:)` at. Nothing is bundled: the package
+  carries no binary media and works offline and deterministically.
+  ``SampleMedia/movieFileURL(seconds:preset:)`` exists because `VideoClip` needs
+  a file URL and a `Video` is not one.
+
+### Fixed
+
+- **A bitrate on a single-`ImageClip` composition was silently ignored.**
+  `Video.export(to:)` has a fast path for that shape which goes straight to
+  `ImageEncoder` and never reaches either export engine, and `ImageEncoder` has
+  no bitrate control. An explicit quality now disqualifies the fast path.
+
+  Found by a benchmark rather than a test: the first writer-path measurements
+  came back indistinguishable from the session path because the composition never
+  left that branch. They were timing `ImageEncoder` three times over.
+
+- **Audio settings on the reader output were incomplete** — sample rate and
+  channel count were missing. A real bug, though not the one that made the
+  backend fail.
+
+### Changed
+
+- **`Video` copies through one `with(_:)` helper**, as `VideoClip` did in
+  v0.18.0. Nine stored properties, nine hand-written re-invocations of the
+  memberwise initialiser; adding `quality` otherwise cost nine edits with a
+  silent-drop failure mode rather than a compile error. `let` becomes
+  `internal(set) var` for that reason alone.
+
+### Tests
+
+586 → 618 swift-testing tests.
+
 ## [0.19.0] - 2026-08-25
 
 ### Added
