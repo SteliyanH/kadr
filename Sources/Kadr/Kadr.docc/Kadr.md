@@ -29,6 +29,7 @@ let url = try await Video {
 ### Essentials
 
 - <doc:FrameAccuracy>
+- <doc:MigrationGuide>
 
 ### Composing Videos
 
