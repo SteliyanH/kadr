@@ -290,8 +290,13 @@ internal enum AssetWriterExporter {
         onSample: @escaping @Sendable (Double) -> Void
     ) async throws {
         let queue = DispatchQueue(label: "com.kadr.export.\(label)")
-        let input = pair.input
-        let output = pair.output
+        // AVAssetWriterInput and AVAssetReaderOutput are NS_SWIFT_NONSENDABLE,
+        // and the block below is @Sendable. Safe here because both are touched
+        // only from inside that block, which `requestMediaDataWhenReady` runs
+        // serially on `queue` and nowhere else — the confinement the compiler
+        // cannot see.
+        nonisolated(unsafe) let input = pair.input
+        nonisolated(unsafe) let output = pair.output
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             input.requestMediaDataWhenReady(on: queue) {
                 while input.isReadyForMoreMediaData {

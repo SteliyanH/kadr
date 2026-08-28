@@ -32,6 +32,11 @@ internal enum FilterProcessor {
             animations = Array(animations.prefix(filters.count))
         }
         let hasAnyAnimation = animations.contains(where: { $0 != nil })
+        // Frozen before it crosses into the CI handler below, which runs
+        // concurrently per frame. Capturing the `var` itself is a data race the
+        // compiler is right to warn about, even though nothing mutates it after
+        // this point.
+        let resolvedAnimations = animations
 
         let asset = AVURLAsset(url: url)
 
@@ -49,7 +54,7 @@ internal enum FilterProcessor {
                     ? CMTimeSubtract(request.compositionTime, trimStart)
                     : request.compositionTime
                 for (i, filter) in filters.enumerated() {
-                    if let anim = animations[i],
+                    if let anim = resolvedAnimations[i],
                        let scalar = anim.value(at: clipRelativeTime) {
                         image = filter.withScalar(scalar).apply(to: image)
                     } else {
