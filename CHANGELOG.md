@@ -4,6 +4,43 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.0.0] - 2026-08-28
+
+Production ready. **No code changes** — this release is a commitment, not a
+feature. Every public symbol is exactly as it was in v0.22.0.
+
+### The promise
+
+From here, kadr follows semantic versioning without asterisks:
+
+- Nothing public is removed, renamed, or given a different meaning inside `1.x`.
+- Minors add. New filters, modifiers and overlay kinds stay source-compatible.
+- Anything on its way out is `@available(*, deprecated:)` for at least one minor,
+  with a named replacement, and can only disappear in a major.
+
+`from: "1.0.0"` is now the correct SwiftPM form. Before 1.0 the README told you
+to pin `.upToNextMinor`, because `from:` does not special-case `0.x` and minors
+here really did break — v0.15.0 raised the platform floor to iOS 17. If you are
+still pinned to a 0.x minor, you can move to `from: "1.0.0"` in one step.
+
+### Changed
+
+- **The stated freeze point is v0.22.0, not v0.14.** The roadmap had said v0.14
+  since the day it was written, and stayed there while v0.15–v0.22 added the
+  iOS 17 floor, per-clip volume, waveform resampling, export quality control,
+  `FilterKind` and the persistence hooks. Corrected rather than quietly left
+  wrong: a stability promise naming the wrong version is not a promise.
+
+### Documentation
+
+- An **API stability** section in the README, saying what is and is not covered.
+  Not covered: `internal` symbols, the exact bytes an export produces (encoders
+  change underneath us), and performance — which is tracked as a regression
+  baseline in `Benchmarks/README.md` rather than as a contract.
+- The v1.0 roadmap items are marked shipped: the task-based DocC articles
+  (slideshows, multi-track, custom compositors, keyframe animation), the
+  migration guide, and the benchmark baseline.
+
 ## [0.22.0] - 2026-08-28
 
 The last release before the lock. Two things that would have been awkward to

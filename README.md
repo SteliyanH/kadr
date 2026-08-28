@@ -255,21 +255,46 @@ Add to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/SteliyanH/kadr.git", .upToNextMinor(from: "0.15.0"))
+    .package(url: "https://github.com/SteliyanH/kadr.git", from: "1.0.0")
 ]
 ```
 
-**Pin to the next minor while kadr is pre-1.0.** SwiftPM's `from:` means
-`.upToNextMajor`, and it does not special-case `0.x` — so `from: "0.15.0"`
-would resolve as `>=0.15.0, <1.0.0` and accept every 0.x release, including
-breaking ones. Minors here do break: v0.15.0 raised the platform floor to
-iOS 17. `.upToNextMinor` resolves `>=0.15.0, <0.16.0`, so a breaking minor
-becomes a deliberate bump you review. Once v1.0 ships, `from: "1.0.0"` is the
-correct and safe form.
+**`from:` is now the correct form.** It means `.upToNextMajor` — `>=1.0.0,
+<2.0.0` — and from v1.0.0 onward nothing in that range breaks you. That is the
+whole content of the 1.0 promise; see [API stability](#api-stability).
+
+Before 1.0 this README told you to pin `.upToNextMinor`, because `from:` does
+not special-case `0.x`: `from: "0.15.0"` resolved as `>=0.15.0, <1.0.0` and
+accepted every 0.x release, breaking ones included — and minors did break, as
+when v0.15.0 raised the platform floor to iOS 17. That advice is no longer
+needed, and if you are still pinned to a `0.x` minor you can move to `from:
+"1.0.0"` in one step.
 
 Or in Xcode: File > Add Package Dependencies > enter the repository URL.
 
 **Requires:** Xcode 16+ / Swift 6.0+
+
+## API stability
+
+From **v1.0.0**, kadr follows semantic versioning without asterisks:
+
+- **No breaking change without a major bump.** Nothing public is removed,
+  renamed, or given a different meaning inside `1.x`.
+- **Minors add.** New filters, new modifiers, new overlay kinds — all additive,
+  all source-compatible.
+- **Deprecation before removal.** Anything on its way out is marked
+  `@available(*, deprecated:)` for at least one minor with a named replacement,
+  and can only actually disappear in a major.
+
+The surface frozen here is the one as of v0.22.0, not v0.14 as an earlier
+roadmap said — v0.15 through v0.22 added the platform floor, per-clip volume,
+waveform resampling, export quality, and the filter catalogue, and all of that
+is inside the commitment.
+
+What this does *not* promise: `internal` symbols, the exact bytes an export
+produces (encoders change under us), and performance figures — those are tracked
+as a regression baseline in [`Benchmarks/README.md`](Benchmarks/README.md), not
+as a contract.
 
 ## Platform Support
 
