@@ -55,6 +55,26 @@ public struct ChromaKey: Sendable, Equatable {
         self.cubeData = ChromaKey.buildCube(target: comp, threshold: threshold)
     }
 
+    /// Build a chroma-key configuration from components already in `[0, 1]`.
+    ///
+    /// The `PlatformColor` initialiser above is the one to reach for when a
+    /// person picked the colour. This one exists because ``color`` is exposed as
+    /// ``ColorComponents`` and, without it, a `ChromaKey` could not be rebuilt
+    /// from its own public properties — a caller restoring a saved one had to
+    /// round-trip through `PlatformColor`, which is lossy on macOS for any
+    /// colour outside sRGB and simply indirect everywhere else.
+    ///
+    /// ```swift
+    /// let restored = ChromaKey(color: saved.color, threshold: saved.threshold)
+    /// ```
+    ///
+    /// Added in v0.22.
+    public init(color: ColorComponents, threshold: Double) {
+        self.color = color
+        self.threshold = threshold
+        self.cubeData = ChromaKey.buildCube(target: color, threshold: threshold)
+    }
+
     /// Pure: build the chroma-key color cube. Internal so the math is unit-testable
     /// without going through a `PlatformColor`.
     internal static func buildCube(target: ColorComponents, threshold: Double) -> Data {

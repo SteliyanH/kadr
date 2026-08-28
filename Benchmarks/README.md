@@ -56,3 +56,34 @@ a meaningful cost at that density** — the export is dominated by encode. Worth
 knowing before optimising the sampler: the roadmap names this scenario, but the
 first measurement suggests the multi-track compositor path is where the time
 actually goes, at roughly 3× the single-track figure.
+
+## v1.0 baseline
+
+Recorded 2026-08-28 on an **Apple M2 Max**, macOS 26.5.2, Swift 6.3.3, release
+build, 5 iterations each. Medians:
+
+| Scenario | Median |
+|---|---:|
+| single-track export (5s) | 0.539 s |
+| multi-track + compositor (4×3s) | 1.585 s |
+| keyframe-heavy (120 keys, 5s) | 0.538 s |
+| session export, 2 clips (5s) | 0.759 s |
+| writer export (5s, 4 Mbps) | 1.142 s |
+| writer export (5s, 1 Mbps) | 1.144 s |
+
+Two things worth reading off this table.
+
+**Keyframes are free.** 120 keyframes cost 0.538 s against a plain single-track
+0.539 s — inside the noise. The per-frame animation evaluation is not where
+export time goes, so optimising it would be optimising nothing.
+
+**The writer path costs about 2×** what the export-session path does (1.142 s vs
+0.539 s) and is flat in bitrate — 1 Mbps and 4 Mbps land within 2 ms of each
+other. That is the price of `AVAssetWriter` reading and re-encoding samples
+itself, and it is the trade for being able to express a bitrate at all, which
+`AVAssetExportSession` cannot. `ExportEngine` only takes that path when a
+bitrate or file-size target is set, so the default export is unaffected.
+
+These are a baseline for *regression*, not a cross-machine promise: hardware
+encode varies enormously between chips. Re-record on the same machine before and
+after a performance change, and compare with `--compare`.

@@ -4,6 +4,68 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.22.0] - 2026-08-28
+
+The last release before the lock. Two things that would have been awkward to
+enshrine at 1.0, and the benchmark numbers 1.0 promises.
+
+### Added
+
+- **`ChromaKey(color:threshold:)` taking `ColorComponents`.** `ChromaKey`
+  exposed `color` as `ColorComponents` but only initialised from a
+  `PlatformColor`, so it could not be rebuilt from its own public properties.
+  A caller restoring a saved key had to round-trip through `PlatformColor`,
+  which is lossy on macOS for anything outside sRGB.
+
+  ```swift
+  let restored = ChromaKey(color: saved.color, threshold: saved.threshold)
+  ```
+
+- **`FilterKind` — the filter catalogue, as a value you can enumerate.**
+  `Filter` has associated values, so it cannot be `CaseIterable`: there is no
+  `.brightness` to list, only `.brightness(0.2)`. Every UI offering "add a
+  filter" therefore hard-codes its menu, and every hard-coded menu goes stale
+  the moment a filter is added here — silently, because nothing fails.
+
+  ```swift
+  ForEach(FilterKind.insertable, id: \.self) { kind in
+      Button(kind.displayName) { add(kind.defaultFilter!) }
+  }
+  ```
+
+  `Filter.kind` switches exhaustively over `Filter`, so a new filter case fails
+  the build until it is classified — which is what keeps `allCases` honest.
+  `defaultFilter` is `nil` for `.lut` and `.chromaKey`, the two that need a
+  payload; `insertable` is the rest. `hasIntensity` says whether to draw a
+  slider.
+
+### Fixed
+
+- **Two Swift 6.3 concurrency warnings in the export path.** `FilterProcessor`
+  captured a `var` in the per-frame Core Image handler, and
+  `AssetWriterExporter.pump` captured two non-`Sendable` AVFoundation objects in
+  a `@Sendable` block. The first is now frozen to a `let` before it crosses the
+  boundary; the second is `nonisolated(unsafe)` with the queue confinement
+  spelled out. Neither was a live race, but a 1.0 that ships with concurrency
+  warnings in its own engine is not a stability commitment.
+
+### Documentation
+
+- **The v1.0 performance baseline is recorded** in `Benchmarks/README.md`. The
+  harness shipped in v0.16 and had never had its numbers written down. Measured
+  on an M2 Max, release build, 5 iterations:
+
+  | Scenario | Median |
+  |---|---:|
+  | single-track export (5s) | 0.539 s |
+  | multi-track + compositor (4×3s) | 1.585 s |
+  | keyframe-heavy (120 keys, 5s) | 0.538 s |
+  | writer export (5s, 4 Mbps) | 1.142 s |
+
+  Keyframes turn out to be free — 120 of them cost the same as none, within
+  noise — and the writer path costs about 2× the session path while being flat
+  in bitrate, which is the price of expressing a bitrate at all.
+
 ## [0.21.0] - 2026-08-28
 
 The doors that were only open from the inside. Building `kadr-persistence`
