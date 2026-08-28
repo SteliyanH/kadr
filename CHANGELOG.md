@@ -21,6 +21,24 @@ enshrine at 1.0, and the benchmark numbers 1.0 promises.
   let restored = ChromaKey(color: saved.color, threshold: saved.threshold)
   ```
 
+- **`FilterKind` — the filter catalogue, as a value you can enumerate.**
+  `Filter` has associated values, so it cannot be `CaseIterable`: there is no
+  `.brightness` to list, only `.brightness(0.2)`. Every UI offering "add a
+  filter" therefore hard-codes its menu, and every hard-coded menu goes stale
+  the moment a filter is added here — silently, because nothing fails.
+
+  ```swift
+  ForEach(FilterKind.insertable, id: \.self) { kind in
+      Button(kind.displayName) { add(kind.defaultFilter!) }
+  }
+  ```
+
+  `Filter.kind` switches exhaustively over `Filter`, so a new filter case fails
+  the build until it is classified — which is what keeps `allCases` honest.
+  `defaultFilter` is `nil` for `.lut` and `.chromaKey`, the two that need a
+  payload; `insertable` is the rest. `hasIntensity` says whether to draw a
+  slider.
+
 ### Fixed
 
 - **Two Swift 6.3 concurrency warnings in the export path.** `FilterProcessor`
