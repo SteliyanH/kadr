@@ -41,6 +41,15 @@ what a save/reopen cycle has to do.
   clip.filter(.sepia(intensity: 0.4), id: savedID)
   ```
 
+- **`Video { }` compiles.** An empty block was ambiguous between `VideoBuilder`'s
+  two variadic `buildBlock` overloads, so the empty composition — a new project,
+  or one whose last clip was just deleted — could not be written as a literal at
+  all. `AudioBuilder` gets the same overload, for `.audio { }`.
+
+- **`Preset` is `Equatable`.** It is an enum with associated values and had no
+  conformance, so `preset == .tiktok` did not compile. `ExportQuality` has been
+  `Equatable` since it shipped; this closes the asymmetry.
+
 ### Notes
 
 - Neither gap was reachable from the existing tests. The audio tests build their

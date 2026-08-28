@@ -13,6 +13,11 @@
 /// ```
 @resultBuilder
 public enum AudioBuilder {
+    /// The empty block — `.audio { }`, or a loop that yielded nothing.
+    public static func buildBlock() -> [AudioTrack] {
+        []
+    }
+
     public static func buildBlock(_ tracks: AudioTrack...) -> [AudioTrack] {
         Array(tracks)
     }

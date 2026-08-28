@@ -90,6 +90,12 @@ struct AudioBuilderTests {
         #expect(names(video) == ["one", "two"])
     }
 
+    @Test("An empty block compiles and yields no tracks")
+    func emptyBlock() {
+        let video = Video { clip }.audio { }
+        #expect(video.audioTracks.isEmpty)
+    }
+
     @Test("Repeated `audio` calls append rather than replace")
     func repeatedCallsAppend() {
         let video = Video { clip }

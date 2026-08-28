@@ -13,7 +13,7 @@ public enum Codec: Sendable, Equatable {
 ///
 /// The built-in cases target common social-media formats. For other dimensions or
 /// frame rates, use ``custom(width:height:frameRate:codec:)``.
-public enum Preset: Sendable {
+public enum Preset: Sendable, Equatable {
     /// 1080×1920, 30fps, H.264 (vertical). Default when no preset is set.
     case auto
     /// 1080×1920, 30fps, HEVC (vertical). Tuned for Instagram Reels and YouTube Shorts.
