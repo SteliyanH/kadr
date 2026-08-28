@@ -6,17 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [0.21.0] - 2026-08-28
 
-Audio, from a runtime array. `AudioBuilder` only ever had `buildBlock`, so its
-closure accepted a literal list of tracks and nothing else. Any caller holding
-`[AudioTrack]` — a saved document, a user-reordered list, a filtered set — had
-no way to hand them to `Video`, because `audioTracks` is `internal(set)` and the
-builder was the only public door. `VideoBuilder` has supported `for` and `if`
-since the start; this brings audio to parity.
+The doors that were only open from the inside. Building `kadr-persistence`
+against the *published* API — rather than from within the package, where the
+internal initialisers are in reach — walked into two walls. Both are cases where
+kadr can produce a value it gives you no way to reconstruct, which is precisely
+what a save/reopen cycle has to do.
 
 ### Added
 
-- **Control flow in `Video.audio { }`.** `for`, `if`, `if/else`, and `switch`,
-  via `buildArray`, `buildOptional`, `buildEither`, and `buildExpression`.
+- **Control flow in `Video.audio { }`.** `AudioBuilder` had only `buildBlock`,
+  so the closure took a literal list of tracks and nothing else. A caller holding
+  `[AudioTrack]` had no way in: `audioTracks` is `internal(set)`, and the builder
+  was the only public door. `VideoBuilder` has supported `for` and `if` since the
+  start; audio now matches, via `buildArray`, `buildOptional`, `buildEither`, and
+  `buildExpression`.
 
   ```swift
   let beds: [AudioTrack] = document.audioTracks    // from anywhere
@@ -28,12 +31,24 @@ since the start; this brings audio to parity.
 
   The literal form is unchanged and still compiles exactly as before.
 
+- **`VideoClip.filter(_:id:animation:)`.** Every other `filter` modifier calls
+  `FilterID.generate()`, and the only initialiser accepting explicit `filterIDs`
+  is internal. So a filter identity could be read but never written back: a
+  caller restoring a clip it saved earlier got fresh ids, orphaning any animation
+  bound with `filterAnimation(for:)` and dropping any UI selection keyed to them.
+
+  ```swift
+  clip.filter(.sepia(intensity: 0.4), id: savedID)
+  ```
+
 ### Notes
 
-- Found while building `kadr-persistence` against the published API rather than
-  from inside the package. Every existing audio test constructs its tracks as
-  literals, so none of them could see the gap — `@testable` and literal fixtures
-  hid a wall that only a downstream module walks into.
+- Neither gap was reachable from the existing tests. The audio tests build their
+  tracks as literals, so none exercised the array path; the filter-id tests use
+  the internal memberwise initialiser, which is exactly the door a downstream
+  module does not have. Both new test files therefore use a plain `import Kadr`
+  rather than `@testable`, so they see what a client sees. This is the same shape
+  of blind spot as the `-only-testing:` filters and the macOS-only CI.
 
 ## [0.20.0] - 2026-08-27
 
