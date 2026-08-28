@@ -28,7 +28,7 @@ likely to bite silently.
 .package(url: "...kadr.git", from: "0.14.0")
 
 // Right, until 1.0
-.package(url: "...kadr.git", .upToNextMinor(from: "0.20.0"))
+.package(url: "...kadr.git", .upToNextMinor(from: "0.21.0"))
 ```
 
 `from:` means `.upToNextMajor`, and **SwiftPM does not special-case `0.x`**. So

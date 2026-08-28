@@ -4,6 +4,37 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.21.0] - 2026-08-28
+
+Audio, from a runtime array. `AudioBuilder` only ever had `buildBlock`, so its
+closure accepted a literal list of tracks and nothing else. Any caller holding
+`[AudioTrack]` — a saved document, a user-reordered list, a filtered set — had
+no way to hand them to `Video`, because `audioTracks` is `internal(set)` and the
+builder was the only public door. `VideoBuilder` has supported `for` and `if`
+since the start; this brings audio to parity.
+
+### Added
+
+- **Control flow in `Video.audio { }`.** `for`, `if`, `if/else`, and `switch`,
+  via `buildArray`, `buildOptional`, `buildEither`, and `buildExpression`.
+
+  ```swift
+  let beds: [AudioTrack] = document.audioTracks    // from anywhere
+  video.audio {
+      for bed in beds { bed }
+      if includeVoiceover { AudioTrack(url: voiceoverURL) }
+  }
+  ```
+
+  The literal form is unchanged and still compiles exactly as before.
+
+### Notes
+
+- Found while building `kadr-persistence` against the published API rather than
+  from inside the package. Every existing audio test constructs its tracks as
+  literals, so none of them could see the gap — `@testable` and literal fixtures
+  hid a wall that only a downstream module walks into.
+
 ## [0.20.0] - 2026-08-27
 
 Export control. `AVAssetExportSession` cannot express a bitrate at all — its
