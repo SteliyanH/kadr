@@ -4,6 +4,61 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.21.0] - 2026-08-28
+
+The doors that were only open from the inside. Building `kadr-persistence`
+against the *published* API — rather than from within the package, where the
+internal initialisers are in reach — walked into two walls. Both are cases where
+kadr can produce a value it gives you no way to reconstruct, which is precisely
+what a save/reopen cycle has to do.
+
+### Added
+
+- **Control flow in `Video.audio { }`.** `AudioBuilder` had only `buildBlock`,
+  so the closure took a literal list of tracks and nothing else. A caller holding
+  `[AudioTrack]` had no way in: `audioTracks` is `internal(set)`, and the builder
+  was the only public door. `VideoBuilder` has supported `for` and `if` since the
+  start; audio now matches, via `buildArray`, `buildOptional`, `buildEither`, and
+  `buildExpression`.
+
+  ```swift
+  let beds: [AudioTrack] = document.audioTracks    // from anywhere
+  video.audio {
+      for bed in beds { bed }
+      if includeVoiceover { AudioTrack(url: voiceoverURL) }
+  }
+  ```
+
+  The literal form is unchanged and still compiles exactly as before.
+
+- **`VideoClip.filter(_:id:animation:)`.** Every other `filter` modifier calls
+  `FilterID.generate()`, and the only initialiser accepting explicit `filterIDs`
+  is internal. So a filter identity could be read but never written back: a
+  caller restoring a clip it saved earlier got fresh ids, orphaning any animation
+  bound with `filterAnimation(for:)` and dropping any UI selection keyed to them.
+
+  ```swift
+  clip.filter(.sepia(intensity: 0.4), id: savedID)
+  ```
+
+- **`Video { }` compiles.** An empty block was ambiguous between `VideoBuilder`'s
+  two variadic `buildBlock` overloads, so the empty composition — a new project,
+  or one whose last clip was just deleted — could not be written as a literal at
+  all. `AudioBuilder` gets the same overload, for `.audio { }`.
+
+- **`Preset` is `Equatable`.** It is an enum with associated values and had no
+  conformance, so `preset == .tiktok` did not compile. `ExportQuality` has been
+  `Equatable` since it shipped; this closes the asymmetry.
+
+### Notes
+
+- Neither gap was reachable from the existing tests. The audio tests build their
+  tracks as literals, so none exercised the array path; the filter-id tests use
+  the internal memberwise initialiser, which is exactly the door a downstream
+  module does not have. Both new test files therefore use a plain `import Kadr`
+  rather than `@testable`, so they see what a client sees. This is the same shape
+  of blind spot as the `-only-testing:` filters and the macOS-only CI.
+
 ## [0.20.0] - 2026-08-27
 
 Export control. `AVAssetExportSession` cannot express a bitrate at all — its

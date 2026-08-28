@@ -348,6 +348,28 @@ public struct VideoClip: Clip, Sendable {
         }
     }
 
+    /// Apply a single ``Filter`` under an identity you choose, rather than a
+    /// generated one.
+    ///
+    /// Every other `filter` modifier calls ``FilterID/generate()``, which is right
+    /// when the filter is new and wrong when it is not. A caller restoring a clip
+    /// it saved earlier — or rebuilding one across an undo boundary — already holds
+    /// the identity that its animations and its UI selection are keyed to, and
+    /// generating a fresh one silently breaks both.
+    ///
+    /// ```swift
+    /// clip.filter(.sepia(intensity: 0.4), id: savedID)
+    /// ```
+    ///
+    /// Added in v0.21.
+    public func filter(_ filter: Filter, id: FilterID, animation: Animation<Double>? = nil) -> VideoClip {
+        with {
+            $0.filters.append(filter)
+            $0.filterIDs.append(id)
+            $0.filterAnimations.append(animation)
+        }
+    }
+
     /// Set this clip's audio volume. `1.0` (the default) is the source's own level,
     /// `0.5` is half, `0.0` is silence. Values outside `0.0...` are clamped by
     /// AVFoundation, matching ``AudioTrack/volume(_:)``.
