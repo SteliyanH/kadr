@@ -76,6 +76,59 @@ extension VideoClip {
     /// to bind to the same filters.
     ///
     /// Added in v0.11.
+    /// Move filters within the stack, preserving each one's ``FilterID`` and
+    /// any animation bound to it.
+    ///
+    /// Filter order is render order, so moving one changes the picture — a blur
+    /// before a vignette is not the same image as a vignette before a blur.
+    ///
+    /// ``filters``, ``filterIDs`` and ``filterAnimations`` are three parallel
+    /// arrays, and that is exactly why this exists. Reordering them by hand
+    /// means moving all three by the same offsets and then rebuilding the clip,
+    /// which is seventeen lines that fail *silently* when they drift: the
+    /// arrays stay the same length, so nothing complains, and an animation
+    /// simply starts driving the wrong filter.
+    ///
+    /// ```swift
+    /// // Honouring KadrUI's `onFilterMove` callback:
+    /// clip.moveFilters(fromOffsets: from, toOffset: to)
+    /// ```
+    ///
+    /// Offsets follow the same convention as `Array.move(fromOffsets:toOffset:)`
+    /// and SwiftUI's `onMove`, so a callback's values pass straight through.
+    ///
+    /// Added in v1.1.
+    public func moveFilters(fromOffsets source: IndexSet, toOffset destination: Int) -> VideoClip {
+        guard !source.isEmpty,
+              source.allSatisfy({ $0 >= 0 && $0 < filters.count }),
+              destination >= 0, destination <= filters.count
+        else { return self }
+
+        return with {
+            $0.filters = VideoClip.moving(filters, from: source, to: destination)
+            $0.filterIDs = VideoClip.moving(filterIDs, from: source, to: destination)
+            $0.filterAnimations = VideoClip.moving(filterAnimations, from: source, to: destination)
+        }
+    }
+
+    /// `Array.move(fromOffsets:toOffset:)` without SwiftUI.
+    ///
+    /// That method is a SwiftUI extension, and kadr core deliberately does not
+    /// import SwiftUI — a headless consumer should not have to, to trim a clip.
+    /// The semantics are matched exactly so a value from an `onMove` callback
+    /// passes straight through: `destination` is an index into the array
+    /// *before* anything is removed.
+    nonisolated static func moving<T>(_ array: [T], from source: IndexSet, to destination: Int) -> [T] {
+        let moving = source.sorted().map { array[$0] }
+        var result = array
+        // Highest first, so an earlier removal does not shift a later index.
+        for index in source.sorted(by: >) { result.remove(at: index) }
+        // The destination slides down by however many removed items preceded it.
+        let insertion = destination - source.filter { $0 < destination }.count
+        result.insert(contentsOf: moving, at: max(0, min(insertion, result.count)))
+        return result
+    }
+
     public func removeFilter(for id: FilterID) -> VideoClip {
         guard let i = filterIDs.firstIndex(of: id) else { return self }
         var newFilters = filters
