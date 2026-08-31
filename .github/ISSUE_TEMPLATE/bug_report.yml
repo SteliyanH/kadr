@@ -1,0 +1,47 @@
+name: Bug report
+description: Something behaves differently from what the documentation says.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. The most useful bug report is one someone
+        else can reproduce, so the fields below ask for that rather than for a
+        description of the symptom.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: And what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: composition
+    attributes:
+      label: The composition
+      description: >
+        The smallest `Video { … }` that shows it. A composition is usually
+        shorter than the prose describing it, and never ambiguous.
+      render: swift
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Kadr version
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform and OS
+      placeholder: "iOS 18.2, iPhone 15 Pro — or 'Simulator'"
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        **If it involves export**, please say whether it reproduces on device.
+        The Simulator has no hardware encoder, and a handful of export paths
+        behave differently there.
