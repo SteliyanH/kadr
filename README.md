@@ -8,17 +8,27 @@
 
 **SwiftUI for video. Compose, transform, export — in Swift you actually want to write.**
 
+> **v1.0 — the API is frozen.** Nothing public is removed, renamed or redefined
+> inside `1.x`. See [API stability](#api-stability).
+
 A modern, declarative Swift library for video composition on Apple platforms. Build videos using a result-builder DSL with async/await throughout. Multi-track timelines, transitions, overlays, filters with keyframe animation, custom per-frame compositors, time-anchored audio with crossfades — all on top of AVFoundation, no third-party dependencies.
 
 **[API documentation →](https://swiftpackageindex.com/SteliyanH/kadr/documentation/kadr)**  ·  built and hosted by the Swift Package Index for every release.
 
-> **Companion packages.** Kadr is the engine; three adapter packages consume its public surface for specific use cases. Pull them in separately as you need them — none are required for core composition / export.
+> **Companion packages.** Kadr is the engine. Five packages consume its public
+> surface for specific jobs — pull in only what you need; none are required for
+> composition or export.
 >
 > | Package | Purpose |
 > |---|---|
-> | [`kadr-ui`](https://github.com/SteliyanH/kadr-ui) | SwiftUI components — `VideoPreview`, `ThumbnailStrip`, multi-lane `TimelineView` (selection / reorder / trim / scrub / audio waveforms), `OverlayHost` with gesture-routed `LayerID` hit-testing, `InspectorPanel`, `KeyframeEditor`, animated `TextOverlay` preview, audio crossfade glyphs. |
-> | [`kadr-captions`](https://github.com/SteliyanH/kadr-captions) | Caption file parsing + authoring for SRT, VTT, iTT, ASS, and SSA. Plus a styled-VTT bridge that maps a parsed cue onto kadr's `TextOverlay` + `textAnimation` for burned-in animated captions. |
-> | [`kadr-photos`](https://github.com/SteliyanH/kadr-photos) | Photos library integration — resolves video / image / Live Photo `PHAsset`s into kadr clip types, ships a `PHPickerViewController` SwiftUI wrapper, surfaces PHAsset metadata, and bridges PHAssets to `ImageOverlay` / `StickerOverlay`. |
+> | [`kadr-ui`](https://github.com/SteliyanH/kadr-ui) | SwiftUI components — `VideoPreview`, `ThumbnailStrip`, multi-lane `TimelineView` (selection / reorder / trim / scrub / audio waveforms), `OverlayHost` with gesture-routed `LayerID` hit-testing, `InspectorPanel` with filter authoring, `TransitionPicker`, `ClipSplitter`, `KeyframeEditor`. |
+> | [`kadr-persistence`](https://github.com/SteliyanH/kadr-persistence) | Save a composition to a file and open it again — refusing, rather than silently dropping, whatever a file cannot hold. Content-addressed image storage; a completeness guard that fails when kadr grows a field. |
+> | [`kadr-audio`](https://github.com/SteliyanH/kadr-audio) | Music-library resolution, in-app voiceover recording, audio session policy, and ITU-R BS.1770-4 (LUFS) loudness measurement. |
+> | [`kadr-captions`](https://github.com/SteliyanH/kadr-captions) | Caption parsing and authoring for SRT, VTT, iTT, ASS and SSA, plus a styled-VTT bridge onto `TextOverlay` + `textAnimation` for burned-in animated captions. |
+> | [`kadr-photos`](https://github.com/SteliyanH/kadr-photos) | Photos library integration — resolves video / image / Live Photo `PHAsset`s into kadr clip types, wraps `PHPickerViewController` for SwiftUI, bridges assets to `ImageOverlay` / `StickerOverlay`. |
+>
+> And a reference application: [**Kadr Studio**](https://github.com/SteliyanH/kadr-reels-studio),
+> a short-form vertical video editor built on all six.
 
 ## Quick Start
 
