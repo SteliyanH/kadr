@@ -4,6 +4,22 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.0.1] - 2026-08-31
+
+### Documentation
+
+- **`Examples/` covers v0.15 through 1.0.** The directory had a showcase per
+  release up to `V140Showcase.swift` and then stopped, so five releases' worth
+  of API had no worked example: per-clip volume, waveform resampling, export
+  quality targets, `FilterKind`, `ChromaKey(color:threshold:)`, builder control
+  flow, `filter(_:id:)`, and `Preset` equality.
+
+  Worth noting what this caught immediately: the first draft called
+  `AudioWaveform.extract(from:samples:)`, which does not exist. `Examples/`
+  compiles as a target, so it failed the build rather than shipping as a
+  plausible-looking snippet — which is the entire argument for keeping examples
+  in a target instead of in a README.
+
 ## [1.0.0] - 2026-08-28
 
 Production ready. **No code changes** — this release is a commitment, not a
