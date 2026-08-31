@@ -4,6 +4,37 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-08-31
+
+### Added
+
+- **`VideoClip.moveFilters(fromOffsets:toOffset:)`.** Filter order is render
+  order — a blur before a vignette is not the same image as a vignette before a
+  blur — and there was no way to change it.
+
+  kadr-ui 0.19 shipped an `onFilterMove` callback, which made this a hole rather
+  than an absence: the UI package asked consumers to perform a move the engine
+  could not express. Doing it by hand meant moving three parallel arrays by the
+  same offsets and rebuilding the clip through a strip-and-re-add cycle —
+  seventeen lines that fail *silently* when they drift, because the arrays stay
+  the same length and an animation simply starts driving the wrong filter.
+
+  Offsets follow `onMove`'s convention, so a callback's values pass straight
+  through:
+
+  ```swift
+  clip.moveFilters(fromOffsets: from, toOffset: to)
+  ```
+
+### Notes
+
+- `Array.move(fromOffsets:toOffset:)` is a **SwiftUI** extension, not a standard
+  library one, so the reordering is implemented here rather than imported —
+  kadr core has no SwiftUI dependency, and a headless consumer should not
+  acquire one to reorder a filter. The tests use SwiftUI's version as an oracle
+  and compare against it exhaustively, which is a better check than trusting a
+  reimplementation.
+
 ## [1.0.1] - 2026-08-31
 
 ### Documentation
