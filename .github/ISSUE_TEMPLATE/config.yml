@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question about using kadr
+    url: https://github.com/SteliyanH/kadr/discussions
+    about: For "how do I…" — faster than an issue, and it stays findable for the next person.
+  - name: API documentation
+    url: https://swiftpackageindex.com/SteliyanH/kadr/documentation/kadr
+    about: Built and hosted for every release.
