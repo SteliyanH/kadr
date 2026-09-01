@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seven holes I found after freezing my library's API</title>
+<meta name="description" content="A year building a declarative video framework for Apple platforms, and the week after 1.0 that taught me the most.">
+<link rel="canonical" href="https://steliyanh.github.io/kadr/seven-holes-after-1-0.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Seven holes I found after freezing my library's API">
+<meta property="og:description" content="A year building a declarative video framework for Apple platforms, and the week after 1.0 that taught me the most.">
+<meta property="og:url" content="https://steliyanh.github.io/kadr/seven-holes-after-1-0.html">
+<meta property="og:image" content="https://raw.githubusercontent.com/SteliyanH/kadr/main/.github/branding/social-card.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+<nav class="sitenav">
+  <a class="brand" href="/kadr/">Kadr</a>
+  <a href="https://github.com/SteliyanH/kadr">GitHub</a>
+  <a href="https://swiftpackageindex.com/SteliyanH/kadr/documentation/kadr">Documentation</a>
+  <a href="/kadr/">Writing</a>
+</nav>
+</div>
+<div class="wrap article">
+
+<header class="masthead">
+  <p class="eyebrow">1 September 2026</p>
+  <h1>I froze the API on my video library. Then I found seven holes in it.</h1>
+  <p class="standfirst">A year building a declarative video framework for Apple platforms, and the week that taught me the most came after 1.0.</p>
+  <div class="meta">
+    <span><b>kadr</b> 1.1.0</span>
+    <span><b>Swift</b> 6 · iOS 17+</span>
+    <span><b>Apache 2.0</b> · no dependencies</span>
+  </div>
+</header>
+
+<section>
+<p class="lede">Last week I tagged 1.0 on a Swift video library I have been building for a year, and promised not to break its API. Six days later I had shipped 1.1, because building one more package against it turned up seven places where the library could hand you a value and then give you no way to get it back.</p>
+
+<p>None of them were bugs. Every test passed. That is the part worth writing about.</p>
+
+<h2>Why the library exists</h2>
+
+<p>AVFoundation can do almost anything to video and expresses almost none of it readably. Take the simplest possible edit — play clip A, dissolve into clip B:</p>
+
+<pre><code>let composition = AVMutableComposition()
+let trackA = composition.addMutableTrack(withMediaType: .video, ...)!
+let trackB = composition.addMutableTrack(withMediaType: .video, ...)!
+
+// A crossfade needs *two* tracks: one track cannot show two frames at once,
+// so the clips overlap in time and that overlap is the transition.
+let bStart = CMTimeSubtract(durationA, transition)
+try trackA.insertTimeRange(..., of: sourceA, at: .zero)
+try trackB.insertTimeRange(..., of: sourceB, at: bStart)
+
+let fading = AVMutableVideoCompositionLayerInstruction(assetTrack: trackA)
+fading.setOpacityRamp(fromStartOpacity: 1, toEndOpacity: 0, timeRange: overlap)
+
+videoComposition.instructions = [
+    instruction(CMTimeRange(start: .zero, duration: bStart), [layerA]),
+    instruction(overlap, [fading, layerB]),      // order is z-order
+    instruction(..., [layerB]),
+]</code></pre>
+
+<p>That is 48 lines by the time it compiles. And it renders phone video sideways, because a composition track does not inherit its source's preferred transform — so you add per-layer transforms, then scaling for mismatched resolutions, then an <code>AVMutableAudioMix</code> with volume ramps because otherwise the sound hard-cuts under a picture that dissolves.</p>
+
+<div class="count">
+  <div><b>48</b><span>lines, ignoring orientation, scale and audio</span></div>
+  <div><b>~120</b><span>once those work</span></div>
+  <div><b>9</b><span>to describe the same edit</span></div>
+</div>
+
+<p>Almost none of those 120 lines are about your video. They are bookkeeping — five objects that all have to agree about time, with nothing checking that they do.</p>
+
+<pre><code>let url = try await Video {
+    VideoClip(url: a)
+    Transition.dissolve(duration: 0.5)
+    VideoClip(url: b)
+}
+.preset(.reelsAndShorts)
+.export(to: output)</code></pre>
+
+<p>That is <a href="https://github.com/SteliyanH/kadr">kadr</a>: a result-builder DSL over AVFoundation, async/await throughout, no third-party dependencies. Multi-track timelines, transitions, overlays, filters with keyframe animation, custom per-frame Core Image compositors, chroma key, LUTs, time-anchored audio with crossfades and ducking, and export targeted at a bitrate or a file size — which <code>AVAssetExportSession</code> cannot express at all, its presets being the entire vocabulary.</p>
+
+<h2>Then I wrote the seventh package</h2>
+
+<p>An editor has to save projects. kadr's types cannot be <code>Codable</code> — they hold closures and platform images — so every consumer hand-writes a mirror of the DSL. I had already done it once in the reference app, badly, so I built it properly as a package.</p>
+
+<p>Writing it meant using kadr the way a stranger would: from outside, with only the public surface. Within an afternoon:</p>
+
+<ul>
+  <li><strong>The audio builder had no <code>buildArray</code>.</strong> <code>.audio { }</code> accepted a literal list of tracks written in source, and nothing else. A caller holding <code>[AudioTrack]</code> — from a file, from a reorder — had no way in, because the array property was <code>internal(set)</code> and the builder was the only public door.</li>
+  <li><strong>A filter's identity could be read but never written back.</strong> Restoring a saved clip generated fresh ids, silently rebinding every animation to the wrong filter.</li>
+  <li><strong><code>Video { }</code> did not compile.</strong> The empty composition — what a new project <em>is</em> — was ambiguous between two overloads.</li>
+  <li><strong><code>Preset</code> was not <code>Equatable</code></strong>, so <code>preset == .tiktok</code> was a compile error.</li>
+  <li><strong><code>ChromaKey</code> could not be rebuilt from its own public properties.</strong></li>
+  <li><strong>There was no way to enumerate the filters</strong>, so every "add filter" menu ever written against kadr was a hard-coded list that silently missed each new one.</li>
+  <li>And in the new package itself: Swift synthesises a memberwise initialiser for a <code>public struct</code>, but <strong>that initialiser is <code>internal</code></strong>. Twenty-seven document types were readable from outside and impossible to construct.</li>
+</ul>
+
+<p>Six hundred and fifty-eight tests, and not one could see any of it.</p>
+
+<h2>Why not</h2>
+
+<p>Because they were written from inside, by the person who wrote the code, testing the paths he had already thought of. Every audio test built its tracks as literals — so the array path was never exercised, because it never occurred to anyone to exercise it.</p>
+
+<div class="pull">A test suite written from inside a package tests the paths the author took. The holes are exactly where the author did not go.</div>
+
+<p>The fix is one line, and it is not a new test:</p>
+
+<pre><code>// Not @testable — this asserts the surface a client sees.
+import Kadr</code></pre>
+
+<p><code>@testable import</code> is excellent for testing internals and actively misleading for testing an API, because it hands your tests precisely the privileges your users lack. You never notice the door is locked when the key is in your pocket.</p>
+
+<h2>The bug no round-trip test can find</h2>
+
+<p>The persistence layer needed that mirror of the DSL, and hand-written mirrors have one characteristic failure:</p>
+
+<p>Add a field upstream, forget the mirror, and <strong>nothing fails</strong>. You encode, decode, compare — and a field missing from <em>both</em> sides of the comparison compares equal. It was never written, so it is never read, so nothing disagrees. Green, and the data is gone.</p>
+
+<p>I knew this. I was writing the documentation comment about it. My first draft dropped six of the composition's ten fields, including one that was an entire release's headline feature, already shipping and already being silently discarded.</p>
+
+<p>Knowing about a class of bug does not protect you from it. Only a mechanism does — so the mirror is now checked by shape rather than by value:</p>
+
+<pre><code>let actual = Set(Mirror(reflecting: video).children.compactMap(\.label))
+let known = encoded.union(deliberatelyNotEncoded)
+#expect(actual.subtracting(known).isEmpty)</code></pre>
+
+<p>Add a field upstream and the test fails <em>with the field's name in the message</em>. It caught all six on its first run, and it asserts nothing about behaviour at all.</p>
+
+<h2>The one I actually shipped</h2>
+
+<p>The format refuses, by default, to save anything it cannot represent — better a loud error than a project that reopens subtly wrong. Wiring it into the app I set encoding to strict, reasoning that the editor could not author any of the refusable things.</p>
+
+<p>It could. The overlay animation picker sets one. So adding a fade to a text overlay made autosave throw, the editor said "Couldn't save", and every edit after that lived only in memory. That shipped.</p>
+
+<p>The reasoning was sound and the conclusion was wrong, and the gap between them was that I had asserted it instead of testing it. The repair is four lines that check the <em>claim</em> rather than a case:</p>
+
+<pre><code>#expect(
+    KadrCoding.lossyContent(in: store.project.makeVideo()).isEmpty,
+    "the editor can author something the format refuses to save"
+)</code></pre>
+
+<p>Any future feature that violates it fails immediately — including features nobody has thought of yet.</p>
+
+<h2>What 1.0 actually means here</h2>
+
+<p>All seven holes are closed, additively, without breaking the promise. Nothing public is removed, renamed or redefined inside <code>1.x</code>; minors add; a deprecation runs at least one minor with a named replacement before a major can remove it.</p>
+
+<p>What the promise excludes, stated plainly: internal symbols, the exact bytes an export produces — encoders change underneath everyone — and performance, which is tracked as a regression baseline in the repository rather than promised. Measuring it turned up that keyframes are free: 120 of them cost 0.538 s against a plain single-track 0.539 s, inside the noise. Optimising keyframe evaluation would have been optimising nothing.</p>
+
+<h3>And what it does not do</h3>
+
+<p>It composes and exports. It is not an editor and it renders nothing on screen. There is no timeline UI, no gesture handling, no project format, no opinion about your architecture. Five companion packages cover those separately — SwiftUI components, persistence, audio, captions, Photos — and a full editor is built on all of them, which is how the holes above were found in the first place.</p>
+
+<pre><code>.package(url: "https://github.com/SteliyanH/kadr.git", from: "1.0.0")</code></pre>
+
+<p>Apache 2.0. Swift 6, strict concurrency, iOS 17 and up. 658 tests and zero dependencies.</p>
+
+<p>The design decision I would most like to be argued with about is that everything is an immutable value type, so an edit rebuilds the composition rather than mutating it. Undo is free, diffing is free, and a 200-clip timeline rebuilds an array on every keystroke. It has never been a problem in practice — but "not a problem for me" is not "fine", and the API is frozen now.</p>
+</section>
+</div>
+<div class="wrap">
+<footer class="site">
+  <p><a href="https://github.com/SteliyanH/kadr">kadr</a> is a declarative video
+  composition library for Apple platforms, by
+  <a href="https://github.com/SteliyanH">Steliyan Hadzhidenev</a>. Apache 2.0.</p>
+</footer>
+</div>
+</body>
+</html>
