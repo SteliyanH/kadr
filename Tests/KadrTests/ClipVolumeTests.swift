@@ -21,6 +21,34 @@ struct ClipVolumeTests {
         return url
     }
 
+    /// Short video WITH an audio track: sample.png for the picture, sample.wav
+    /// for the sound, encoded via the engine's own ImageEncoder.
+    private func createVideoWithAudio(duration: TimeInterval = 2.0) async throws -> URL {
+        guard let imageURL = Bundle.module.url(forResource: "sample", withExtension: "png"),
+              let audioURL = Bundle.module.url(forResource: "sample", withExtension: "wav") else {
+            throw KadrError.invalidURL(URL(fileURLWithPath: "sample"))
+        }
+        #if canImport(UIKit)
+        guard let image = PlatformImage(contentsOfFile: imageURL.path) else {
+            throw KadrError.invalidURL(imageURL)
+        }
+        #elseif canImport(AppKit)
+        guard let image = PlatformImage(contentsOf: imageURL) else {
+            throw KadrError.invalidURL(imageURL)
+        }
+        #endif
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("clip_volume_av_\(UUID().uuidString)")
+            .appendingPathExtension("mp4")
+        return try await ImageEncoder.encode(
+            image: image,
+            duration: CMTime(seconds: duration, preferredTimescale: 600),
+            preset: .square,
+            audioURL: audioURL,
+            to: outputURL
+        )
+    }
+
     // MARK: - The value
 
     @Test func defaultsToFullVolume() {
@@ -88,7 +116,11 @@ struct ClipVolumeTests {
     // MARK: - The engine
 
     @Test func compositionWithClipVolumeCarriesAnAudioMix() async throws {
-        let url = try sampleURL()
+        // Needs a clip whose source actually HAS an audio track — the mix
+        // attenuates that segment. sample.mov is video-only, so synthesize a
+        // short video+audio file (image + sample.wav) for this test.
+        let url = try await createVideoWithAudio()
+        defer { try? FileManager.default.removeItem(at: url) }
         let result = try await CompositionBuilder.build(
             from: [VideoClip(url: url).volume(0.3)],
             audioTracks: [],
@@ -96,6 +128,26 @@ struct ClipVolumeTests {
         )
         let mix = try #require(result.audioMix, "A clip at non-default volume must produce an audio mix")
         #expect(mix.inputParameters.isEmpty == false)
+    }
+
+    /// Counterpart to ``mutedClipContributesNoVolumeParameters``: a clip whose
+    /// source has no audio track has no segment to attenuate either. Recording
+    /// a volume for it anyway would attach mix parameters to an empty
+    /// composition audio track — and that empty track fails the export
+    /// preset compatibility check, silently routing the export through
+    /// passthrough (https://github.com/SteliyanH/kadr/issues/201).
+    @Test func audiolessClipVolumeProducesNoAudioMix() async throws {
+        let url = try sampleURL() // sample.mov is video-only
+        let result = try await CompositionBuilder.build(
+            from: [VideoClip(url: url).volume(0.3)],
+            audioTracks: [],
+            preset: preset
+        )
+        #expect(result.audioMix == nil, "An audio-less clip has no segment to attenuate")
+        #expect(
+            result.composition.tracks(withMediaType: .audio).isEmpty,
+            "No audio inserted ⇒ the composition must not keep an empty audio track"
+        )
     }
 
     /// The mix exists only when something asks for it. A composition of full-volume
