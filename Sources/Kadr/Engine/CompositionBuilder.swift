@@ -23,8 +23,9 @@ internal enum CompositionBuilder {
         // builder is the only one that produces a videoComposition with per-clip layer
         // instructions (which is where setTransform(_:at:) lives).
         let isMultiTrack = clips.contains { $0.startTime != nil || $0 is Track || $0.hasAnimationOrLayout }
+        let result: CompositionResult
         if isMultiTrack {
-            return try await buildMultiTrack(
+            result = try await buildMultiTrack(
                 clips: clips,
                 audioTracks: audioTracks,
                 preset: preset,
@@ -32,11 +33,36 @@ internal enum CompositionBuilder {
                 multiInputCompositor: multiInputCompositor,
                 compositorWindow: compositorWindow
             )
+        } else if clips.contains(where: { $0 is Transition }) {
+            result = try await buildWithTransitions(clips: clips, audioTracks: audioTracks, preset: preset, cropRect: cropRect)
+        } else {
+            result = try await buildSimple(clips: clips, audioTracks: audioTracks, preset: preset)
         }
-        if clips.contains(where: { $0 is Transition }) {
-            return try await buildWithTransitions(clips: clips, audioTracks: audioTracks, preset: preset, cropRect: cropRect)
+        removeEmptyAudioTracks(from: result)
+        return result
+    }
+
+    /// Drops composition audio tracks that ended up with no segments, plus any
+    /// audio-mix parameters that reference them.
+    ///
+    /// The build paths create their composition audio tracks up front, before
+    /// knowing whether any clip will actually insert audio. When none does
+    /// (video-only sources, all clips muted), the empty track makes
+    /// `AVAssetExportSession.compatibility(ofExportPreset:with:outputFileType:)`
+    /// return `false` for the re-encoding presets — sending the export down the
+    /// passthrough fallback, which cannot apply a `videoComposition` and silently
+    /// drops transitions, overlays, crop and the preset's resolution/codec.
+    /// See https://github.com/SteliyanH/kadr/issues/201
+    private static func removeEmptyAudioTracks(from result: CompositionResult) {
+        let emptyTracks = result.composition.tracks(withMediaType: .audio).filter { $0.segments.isEmpty }
+        guard !emptyTracks.isEmpty else { return }
+        let removedIDs = Set(emptyTracks.map(\.trackID))
+        for track in emptyTracks {
+            result.composition.removeTrack(track)
         }
-        return try await buildSimple(clips: clips, audioTracks: audioTracks, preset: preset)
+        if let mix = result.audioMix {
+            mix.inputParameters = mix.inputParameters.filter { !removedIDs.contains($0.trackID) }
+        }
     }
 
     // MARK: - Multi-track path (v0.6 Tier 4a)
@@ -1430,10 +1456,12 @@ internal enum CompositionBuilder {
             try videoTrack.insertTimeRange(sourceRange, of: sourceVideoTrack, at: insertionPoint)
         }
 
+        var didInsertAudio = false
         if !clip.isMuted, let audioTrack {
             let sourceAudioTracks = try await asset.loadTracks(withMediaType: .audio)
             if let sourceAudioTrack = sourceAudioTracks.first {
                 try audioTrack.insertTimeRange(sourceRange, of: sourceAudioTrack, at: insertionPoint)
+                didInsertAudio = true
             }
         }
 
@@ -1449,6 +1477,7 @@ internal enum CompositionBuilder {
                     of: sourceAudioTrack,
                     at: insertionPoint
                 )
+                didInsertAudio = true
             }
         }
 
@@ -1486,10 +1515,11 @@ internal enum CompositionBuilder {
         let placedRange = CMTimeRange(start: insertionPoint, duration: advance)
         insertionPoint = CMTimeAdd(insertionPoint, advance)
 
-        // Only clips that actually contributed audio get a volume record. A muted clip
-        // with no replacement has no track segment to attenuate.
-        let contributesAudio = !clip.isMuted || clip.replacementAudioURL != nil
-        guard contributesAudio, let audioTrack else { return nil }
+        // Only clips that actually put audio on the track get a volume record.
+        // A clip whose source has no audio track (or whose replacement file does)
+        // has no segment to attenuate — recording one anyway would attach mix
+        // parameters to an empty track. See removeEmptyAudioTracks / issue #201.
+        guard didInsertAudio, let audioTrack else { return nil }
         return ClipVolume(track: audioTrack, range: placedRange, volume: clip.volumeLevel)
     }
 
