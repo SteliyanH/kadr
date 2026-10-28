@@ -118,6 +118,77 @@ struct TextOverlayExportTests {
         #expect(fraction > 0.005 && fraction < 0.1, "bright fraction \(fraction)")
     }
 
+    // MARK: - Render sizes where the source frame equals renderSize
+
+    enum Shape: String, CaseIterable { case simple, multiTrack, transition }
+
+    /// At some render sizes (320×320, 560×560, 640×320 on macOS 27.0.1) an identity layer
+    /// transform made AVFoundation hand the source frame straight to the animation tool,
+    /// and the video layer rendered solid white under any overlay. Each composition path
+    /// builds its own layer instructions, so all three are covered.
+    @Test(arguments: [(320, 320), (560, 560), (640, 320)], Shape.allCases)
+    func overlayExportKeepsTheVideo(size: (Int, Int), shape: Shape) async throws {
+        let (w, h) = size
+        let preset = Preset.custom(width: w, height: h, frameRate: 30, codec: .h264)
+        let black = try solidImage(white: false)
+        let overlay = ImageOverlay(try solidImage(white: true))
+            .position(.center)
+            .size(.pixels(width: 32, height: 32))
+
+        let video: Video
+        switch shape {
+        case .simple:
+            video = Video { ImageClip(black, duration: 1.0) }
+        case .multiTrack:
+            video = Video {
+                ImageClip(black, duration: 1.0)
+                Track(at: 0) { ImageClip(black, duration: 1.0) }
+            }
+        case .transition:
+            video = Video {
+                ImageClip(black, duration: 1.0)
+                Transition.dissolve(duration: 0.5)
+                ImageClip(black, duration: 1.0)
+            }
+        }
+        let url = try await video.preset(preset).overlay(overlay)
+            .export(to: outputURL("render_size_\(w)x\(h)_\(shape.rawValue)"))
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        // Only the 32×32 overlay is bright; a whited-out frame reads as 1.0.
+        let expected = 32.0 * 32.0 / Double(w * h)
+        let fraction = try await brightFraction(of: url, at: 0.25)
+        #expect(fraction > expected * 0.5 && fraction < expected * 2, "bright fraction \(fraction), expected ≈ \(expected)")
+    }
+
+    @Test func identityStandInLeavesOtherTransformsAndOpacityAlone() throws {
+        let track = try #require(AVMutableComposition().addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid))
+        let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
+        let second = CMTime(seconds: 1, preferredTimescale: 600)
+        let moved = CGAffineTransform(translationX: 10, y: 0)
+        layer.setTransform(moved, at: second)        // identity before 1s is implicit
+        layer.setOpacity(0.5, at: .zero)
+
+        let instruction = AVMutableVideoCompositionInstruction()
+        instruction.timeRange = CMTimeRange(start: .zero, duration: CMTime(seconds: 2, preferredTimescale: 600))
+        instruction.layerInstructions = [layer]
+        let composition = AVMutableVideoComposition()
+        composition.instructions = [instruction]
+
+        ExportEngine.avoidIdentityTransforms(in: composition)
+
+        let rewritten = try #require((composition.instructions.first as? AVVideoCompositionInstruction)?.layerInstructions.first)
+        var start = CGAffineTransform.identity, end = CGAffineTransform.identity, range = CMTimeRange.invalid
+        #expect(rewritten.getTransformRamp(for: .zero, start: &start, end: &end, timeRange: &range))
+        #expect(start == ExportEngine.identityStandIn)
+        #expect(range.end == second)
+        #expect(rewritten.getTransformRamp(for: second, start: &start, end: &end, timeRange: &range))
+        #expect(start == moved)
+        var opacity: Float = 0, endOpacity: Float = 0, opacityRange = CMTimeRange.invalid
+        #expect(rewritten.getOpacityRamp(for: .zero, startOpacity: &opacity, endOpacity: &endOpacity, timeRange: &opacityRange))
+        #expect(opacity == 0.5)
+    }
+
     @Test func strokedTextOverlayReachesTheExport() async throws {
         // Stroke routes the string through NSAttributedString — a separate draw path.
         var style = TextStyle(fontSize: 96, alignment: .center, weight: .bold)
