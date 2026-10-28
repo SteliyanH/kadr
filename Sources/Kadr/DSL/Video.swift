@@ -297,6 +297,10 @@ public struct Video: Sendable {
     /// Export this composition to `url` as an `mp4`. Throws ``KadrError`` on validation
     /// or export failure. Use ``exporter(to:)`` instead if you need progress reporting,
     /// time estimation, or cancellation.
+    ///
+    /// > Important: On the iOS Simulator, exporting with overlays throws
+    /// > ``KadrError/exportFailed(underlying:)``: an Apple bug there crashes the app while
+    /// > overlays render. Export on a device or on macOS. See <doc:KnownPlatformIssues>.
     public func export(to url: URL) async throws -> URL {
         guard !clips.isEmpty else {
             throw KadrError.noClipsProvided

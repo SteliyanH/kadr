@@ -17,6 +17,35 @@ private struct ExportConfig: @unchecked Sendable {
 
 internal enum ExportEngine {
 
+    /// Whether this build runs on the iOS Simulator.
+    static var isIOSSimulator: Bool {
+        #if targetEnvironment(simulator) && os(iOS)
+        return true
+        #else
+        return false
+        #endif
+    }
+
+    /// The error thrown instead of an overlay export on the iOS Simulator, or `nil` when
+    /// the export can go ahead.
+    ///
+    /// Overlays are drawn by `AVVideoCompositionCoreAnimationTool`. On the iOS 26.5 and
+    /// 27.0 Simulators its renderer tries to wrap AVFoundation's `malloc`-backed video
+    /// frames in an IOSurface, and libxpc kills the app with *"Attempt to pass a
+    /// malloc(3)ed region to xpc_shmem_create()"*. That trap can't be caught, so an
+    /// overlay export there is refused with an error instead. Devices and macOS are not
+    /// affected. See the Known Platform Issues article.
+    static func simulatorOverlayError(hasOverlays: Bool, onIOSSimulator: Bool) -> KadrError? {
+        guard hasOverlays, onIOSSimulator else { return nil }
+        return KadrError.exportFailed(underlying: NSError(
+            domain: "Kadr", code: -1,
+            userInfo: [NSLocalizedDescriptionKey:
+                "Exporting with overlays isn't supported on the iOS Simulator: an Apple bug in "
+                + "the Simulator crashes the app while Core Animation renders the overlays. "
+                + "Export on a device or on macOS. See \"Known Platform Issues\" in the Kadr documentation."]
+        ))
+    }
+
     /// Whether a composition can be encoded by the writer path.
     ///
     /// Two conditions, and the second is the interesting one.
@@ -111,6 +140,9 @@ internal enum ExportEngine {
                 do {
                     if config.cancellationToken.isCancelled {
                         throw KadrError.cancelled
+                    }
+                    if let error = simulatorOverlayError(hasOverlays: !config.overlays.isEmpty, onIOSSimulator: isIOSSimulator) {
+                        throw error
                     }
 
                     try? FileManager.default.removeItem(at: config.outputURL)

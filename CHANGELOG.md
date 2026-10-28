@@ -37,6 +37,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   present, identity transforms are now replaced by a 1/1024 px shift, which is
   invisible.
 
+- **Overlay exports on the iOS Simulator throw instead of crashing the app.**
+  On the iOS 26.5 and 27.0 Simulators, any export with overlays was killed by an
+  Apple bug: Core Animation wraps `malloc`-backed video frames in an IOSurface,
+  and libxpc traps. The trap can't be caught, so on the iOS Simulator an export
+  with overlays now throws `KadrError.exportFailed` with a message pointing to
+  the Known Platform Issues article. Devices and macOS are unaffected. Tests
+  that export with overlays are skipped on the iOS Simulator.
+
 - **Parallel tracks now draw over the main chain.** A `Track { }` or a
   free-floating `.at(time:)` clip rendered *under* the implicit main chain, so a
   full-frame overlay was never visible. AVFoundation reads the first layer
@@ -56,10 +64,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Documentation
 
-- **Known Platform Issues** article. It covers two iOS Simulator bugs Kadr can't
-  work around yet: overlay exports crash on the iOS 26.5 / 27.0 Simulators
-  (Core Animation wraps `malloc`-backed frames in an IOSurface and libxpc
-  traps), and transition previews stall on the iOS 26 Simulator when the clip
+- **Known Platform Issues** article. It covers two iOS Simulator bugs: overlay
+  exports fail on the iOS 26.5 / 27.0 Simulators (Core Animation wraps
+  `malloc`-backed frames in an IOSurface and libxpc traps; Kadr now throws
+  instead), and transition previews stall on the iOS 26 Simulator when the clip
   size equals the render size
   ([#203](https://github.com/SteliyanH/kadr/issues/203)). Each entry has the
   symptom, cause and a workaround.
