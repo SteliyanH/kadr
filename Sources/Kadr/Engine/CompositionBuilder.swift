@@ -408,16 +408,23 @@ internal enum CompositionBuilder {
         try? FileManager.default.removeItem(at: outputURL)
 
         // Choose a compatible preset. HighestQuality is the right call for re-encoded
-        // multi-track compositions, but it can be incompatible with arbitrary AVMutableComposition
-        // shapes (synthetic image-only timelines, unusual dimensions, etc.) — falling
-        // back to Passthrough avoids the -11838 "Operation not supported" failure. The
-        // same fallback pattern lives in `ExportEngine.export`.
+        // multi-track compositions, but it can be incompatible with some
+        // AVMutableComposition shapes — falling back to Passthrough avoids the -11838
+        // "Operation not supported" failure. Passthrough can't apply a videoComposition,
+        // so when there is one the fallback would silently lose the transitions or
+        // tracks this pre-render exists for; throw instead. Same rule as
+        // `ExportEngine.export`.
         let preferred = AVAssetExportPresetHighestQuality
         let compatible = await AVAssetExportSession.compatibility(
             ofExportPreset: preferred,
             with: trackResult.composition,
             outputFileType: .mp4
         )
+        if !compatible, let lost = ExportEngine.passthroughLoss(
+            hasVideoComposition: trackResult.videoComposition != nil
+        ) {
+            throw ExportEngine.incompatiblePresetError(presetName: preferred, lost: lost)
+        }
         let presetName = compatible ? preferred : AVAssetExportPresetPassthrough
 
         guard let session = AVAssetExportSession(
