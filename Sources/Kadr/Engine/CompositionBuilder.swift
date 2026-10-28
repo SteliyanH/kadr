@@ -93,8 +93,9 @@ internal enum CompositionBuilder {
             preferredTrackID: kCMPersistentTrackID_Invalid
         )
 
-        // Per-piece video tracks, in declaration order. Used for layer instructions
-        // below — earlier layer instruction = lower (background); later = on top.
+        // Per-piece video tracks, in declaration order: earlier = lower (background),
+        // later = on top. AVFoundation reads layer instructions top-first, so step 3
+        // emits them in reverse.
         var videoTracks: [AVMutableCompositionTrack] = []
         var clipAudioRanges: [CMTimeRange] = []
         var clipVolumes: [ClipVolume] = []
@@ -291,8 +292,13 @@ internal enum CompositionBuilder {
         }
 
         // 3. Build the videoComposition with layer instructions for every track. One
-        // instruction spans 0..totalDuration; layer instructions in declaration order so
-        // AVFoundation's default compositor renders later tracks over earlier ones.
+        // instruction spans 0..totalDuration. AVFoundation treats the *first* layer
+        // instruction as the topmost layer, so they're emitted in reverse declaration
+        // order: later tracks render over earlier ones (issue #205).
+        //
+        // A track whose content ends before totalDuration would otherwise keep showing
+        // its last frame for the rest of the instruction, so each track is hidden from
+        // its content end onward (issue #206).
         //
         // When a user has set a multiInputCompositor on the Video, swap the default
         // AVFoundation compositor for KadrVideoCompositor (which calls into the user
@@ -306,26 +312,36 @@ internal enum CompositionBuilder {
         let cropOffset = cropRect?.origin ?? .zero
         let cropTransform = CGAffineTransform(translationX: -cropOffset.x, y: -cropOffset.y)
 
+        let contentRanges = videoTracks.map(contentRange(of:))
+
         let instruction: AVMutableVideoCompositionInstruction
         if multiInputCompositor != nil {
             let kadrInstruction = KadrVideoCompositionInstruction()
             kadrInstruction.multiInputCompositor = multiInputCompositor
             kadrInstruction.compositorWindow = compositorWindow
-            // Custom compositor needs to know which track IDs to pull source frames from.
+            // Custom compositor needs to know which track IDs to pull source frames from,
+            // in declaration order (the MultiInputCompositor contract: later = on top).
             kadrInstruction.setRequiredSourceTrackIDs(videoTracks.map { $0.trackID })
+            // It ignores layer instructions, so it gets the content windows directly and
+            // drops a track's input outside them.
+            kadrInstruction.contentRanges = Dictionary(
+                uniqueKeysWithValues: zip(videoTracks.map(\.trackID), contentRanges)
+            )
             instruction = kadrInstruction
             videoComposition.customVideoCompositorClass = KadrVideoCompositor.self
         } else {
             instruction = AVMutableVideoCompositionInstruction()
         }
         instruction.timeRange = CMTimeRange(start: .zero, duration: totalDuration)
-        instruction.layerInstructions = videoTracks.enumerated().map { (index, track) in
+        instruction.layerInstructions = videoTracks.indices.reversed().map { index in
             let infos = trackAnimations.indices.contains(index) ? trackAnimations[index] : []
+            let contentEnd = contentRanges[index].end
             return makeLayerInstruction(
-                for: track,
+                for: videoTracks[index],
                 preset: preset,
                 cropTransform: cropTransform,
-                clipAnimations: infos
+                clipAnimations: infos,
+                hiddenFrom: CMTimeCompare(contentEnd, totalDuration) < 0 ? contentEnd : nil
             )
         }
         videoComposition.instructions = [instruction]
@@ -870,7 +886,8 @@ internal enum CompositionBuilder {
         for track: AVMutableCompositionTrack,
         preset: Preset,
         cropTransform: CGAffineTransform = .identity,
-        clipAnimations: [ClipAnimationInfo] = []
+        clipAnimations: [ClipAnimationInfo] = [],
+        hiddenFrom: CMTime? = nil
     ) -> AVMutableVideoCompositionLayerInstruction {
         let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
         let base = baseTransform(for: track, preset: preset)
@@ -882,7 +899,33 @@ internal enum CompositionBuilder {
             } else if cropTransform != .identity {
                 layer.setTransform(cropTransform, at: .zero)
             }
-            return layer
+        } else {
+            applyClipAnimations(clipAnimations, to: layer, base: base, preset: preset,
+                                cropTransform: cropTransform, hiddenFrom: hiddenFrom)
+        }
+
+        // Past its content end AVFoundation would hold the track's last frame for the
+        // rest of the instruction; hide it instead (issue #206). Emitted last, and the
+        // opacity samples above stop short of this time, so nothing overrides it.
+        if let hiddenFrom {
+            layer.setOpacity(0, at: hiddenFrom)
+        }
+        return layer
+    }
+
+    /// Emits the per-clip setTransform / setOpacity calls for `makeLayerInstruction`.
+    /// Opacity samples at or after `hiddenFrom` are skipped so the track's hide wins.
+    private static func applyClipAnimations(
+        _ clipAnimations: [ClipAnimationInfo],
+        to layer: AVMutableVideoCompositionLayerInstruction,
+        base: CGAffineTransform?,
+        preset: Preset,
+        cropTransform: CGAffineTransform,
+        hiddenFrom: CMTime?
+    ) {
+        func beforeHide(_ t: CMTime) -> Bool {
+            guard let hiddenFrom else { return true }
+            return CMTimeCompare(t, hiddenFrom) < 0
         }
 
         // v0.8: per-clip transforms / animations / opacity. For each clip:
@@ -952,13 +995,13 @@ internal enum CompositionBuilder {
                 let animSpanStart = CMTimeAdd(info.clipStart, anim.startTime)
                 let animSpanEnd = CMTimeAdd(info.clipStart, anim.endTime)
                 var t = animSpanStart
-                while CMTimeCompare(t, animSpanEnd) <= 0 {
+                while CMTimeCompare(t, animSpanEnd) <= 0, beforeHide(t) {
                     let clipRelative = CMTimeSubtract(t, info.clipStart)
                     let value = anim.value(at: clipRelative) ?? info.opacity ?? 1.0
                     layer.setOpacity(Float(value * factor), at: t)
                     t = CMTimeAdd(t, frameDuration)
                 }
-                if CMTimeCompare(animSpanEnd, CMTimeAdd(info.clipStart, info.clipDuration)) < 0 {
+                if CMTimeCompare(animSpanEnd, CMTimeAdd(info.clipStart, info.clipDuration)) < 0, beforeHide(animSpanEnd) {
                     let final = anim.value(at: anim.endTime) ?? info.opacity ?? 1.0
                     layer.setOpacity(Float(final * factor), at: animSpanEnd)
                 }
@@ -969,7 +1012,16 @@ internal enum CompositionBuilder {
                 layer.setOpacity(Float(factor), at: info.clipStart)
             }
         }
-        return layer
+    }
+
+    /// The span of composition time a track actually has media for: from its first
+    /// non-empty segment's start to its last one's end. Leading empty edits (a parallel
+    /// track that starts later) are excluded.
+    private static func contentRange(of track: AVMutableCompositionTrack) -> CMTimeRange {
+        let filled = track.segments.filter { !$0.isEmpty }
+        guard let first = filled.first, let last = filled.last else { return .zero }
+        let start = first.timeMapping.target.start
+        return CMTimeRange(start: start, end: last.timeMapping.target.end)
     }
 
     /// Per-clip animation info collected during chain / parallel-track insertion.
