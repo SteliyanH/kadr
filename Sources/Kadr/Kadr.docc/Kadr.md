@@ -30,6 +30,7 @@ let url = try await Video {
 
 - <doc:FrameAccuracy>
 - <doc:MigrationGuide>
+- <doc:KnownPlatformIssues>
 
 ### Composing Videos
 

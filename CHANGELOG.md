@@ -54,6 +54,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   `MultiInputCompositor`, which no longer receives a stale frame from an ended
   track. ([#206](https://github.com/SteliyanH/kadr/issues/206))
 
+### Documentation
+
+- **Known Platform Issues** article. It covers two iOS Simulator bugs Kadr can't
+  work around yet: overlay exports crash on the iOS 26.5 / 27.0 Simulators
+  (Core Animation wraps `malloc`-backed frames in an IOSurface and libxpc
+  traps), and transition previews stall on the iOS 26 Simulator when the clip
+  size equals the render size
+  ([#203](https://github.com/SteliyanH/kadr/issues/203)). Each entry has the
+  symptom, cause and a workaround.
+
 ## [1.1.0] - 2026-08-31
 
 ### Added
