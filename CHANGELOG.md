@@ -24,6 +24,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   lost. The same rule applies to the internal pre-render of transitions and
   nested tracks. ([#201](https://github.com/SteliyanH/kadr/issues/201))
 
+- **`TextOverlay` renders in macOS exports.** On macOS the text layer was never
+  asked to draw before the export rendered it, so text overlays came out blank
+  while image overlays worked. The text is now drawn when the overlay is built.
+  ([#202](https://github.com/SteliyanH/kadr/issues/202))
+
 - **Parallel tracks now draw over the main chain.** A `Track { }` or a
   free-floating `.at(time:)` clip rendered *under* the implicit main chain, so a
   full-frame overlay was never visible. AVFoundation reads the first layer

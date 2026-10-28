@@ -338,6 +338,14 @@ internal enum OverlayRenderer {
         // 2x renders text crisply at most export resolutions; production pipelines often
         // bump this further but 2x is a sensible default that won't over-allocate.
         layer.contentsScale = 2.0
+        // Draw the text into the layer's contents now. CATextLayer draws lazily, and
+        // on macOS nothing triggers that draw before AVVideoCompositionCoreAnimationTool
+        // renders the tree, so the text came out blank (issue #202). Text animations
+        // only touch opacity / position / transform, so drawing once up front is
+        // enough. Other platforms already render text and are left as they were.
+        #if os(macOS)
+        layer.display()
+        #endif
         return layer
     }
 
