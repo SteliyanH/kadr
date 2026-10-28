@@ -35,6 +35,37 @@ internal enum ExportEngine {
         bitrate != nil && overlays.isEmpty
     }
 
+    /// What a passthrough export would drop, or `nil` when it would drop nothing the
+    /// caller asked for.
+    ///
+    /// Passthrough copies source samples and cannot apply a video composition, so
+    /// transitions, multi-track layout, clip transforms, crop and overlays all vanish
+    /// while the export still reports success — the failure behind
+    /// https://github.com/SteliyanH/kadr/issues/201. A composition with none of those
+    /// still falls back: it loses the preset's resolution and codec, but its content
+    /// is right.
+    static func passthroughLoss(
+        hasVideoComposition: Bool,
+        hasOverlays: Bool = false,
+        hasCrop: Bool = false
+    ) -> String? {
+        var lost: [String] = []
+        if hasVideoComposition { lost.append("video composition (transitions, track layout, clip transforms)") }
+        if hasOverlays { lost.append("overlays") }
+        if hasCrop { lost.append("crop") }
+        return lost.isEmpty ? nil : lost.joined(separator: ", ")
+    }
+
+    /// The error thrown instead of a passthrough export that would drop `lost`.
+    static func incompatiblePresetError(presetName: String, lost: String) -> KadrError {
+        KadrError.exportFailed(underlying: NSError(
+            domain: "Kadr", code: -1,
+            userInfo: [NSLocalizedDescriptionKey:
+                "The \(presetName) export preset is not compatible with this composition, "
+                + "and a passthrough copy would silently drop its \(lost)."]
+        ))
+    }
+
     static func export(
         composition: AVMutableComposition,
         audioMix: AVMutableAudioMix?,
@@ -84,13 +115,21 @@ internal enum ExportEngine {
 
                     try? FileManager.default.removeItem(at: config.outputURL)
 
-                    // Try preferred preset first, fall back to passthrough if incompatible
+                    // Try the preferred preset first. Fall back to passthrough only when
+                    // the copy would still be the movie that was asked for.
                     let preferredPreset = exportPresetName(for: config.preset)
                     let compatible = await AVAssetExportSession.compatibility(
                         ofExportPreset: preferredPreset,
                         with: config.composition,
                         outputFileType: .mp4
                     )
+                    if !compatible, let lost = passthroughLoss(
+                        hasVideoComposition: config.videoComposition != nil,
+                        hasOverlays: !config.overlays.isEmpty,
+                        hasCrop: config.crop != nil
+                    ) {
+                        throw incompatiblePresetError(presetName: preferredPreset, lost: lost)
+                    }
                     let presetName = compatible ? preferredPreset : AVAssetExportPresetPassthrough
 
                     guard let exportSession = AVAssetExportSession(asset: config.composition, presetName: presetName) else {
