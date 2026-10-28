@@ -4,6 +4,27 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Parallel tracks now draw over the main chain.** A `Track { }` or a
+  free-floating `.at(time:)` clip rendered *under* the implicit main chain, so a
+  full-frame overlay was never visible. AVFoundation reads the first layer
+  instruction as the topmost layer, and the builder emitted them in declaration
+  order. They are now reversed: later tracks stack above earlier ones, as the
+  docs and `MultiInputCompositor` always described.
+  ([#205](https://github.com/SteliyanH/kadr/issues/205))
+
+  **Visible change:** compositions that relied on the old order (main chain on
+  top) will now show their overlays.
+
+- **A track that ends early stops rendering.** AVFoundation kept painting such a
+  track's last frame for the rest of the movie. Each track is now hidden from
+  its content end, on both the default compositor and a custom
+  `MultiInputCompositor`, which no longer receives a stale frame from an ended
+  track. ([#206](https://github.com/SteliyanH/kadr/issues/206))
+
 ## [1.1.0] - 2026-08-31
 
 ### Added

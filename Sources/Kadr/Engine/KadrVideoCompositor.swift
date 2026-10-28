@@ -102,9 +102,15 @@ internal final class KadrVideoCompositor: NSObject, AVVideoCompositing, @uncheck
 
         // Pull each track's source frame in instruction declaration order. AVFoundation
         // returns the buffer in the format we requested via `sourcePixelBufferAttributes`.
+        // A track outside its content window is skipped: AVFoundation keeps handing out
+        // its last frame after the media ends (issue #206).
         var images: [CIImage] = []
         let trackIDs = (instruction?.requiredSourceTrackIDs ?? []).compactMap { $0 as? CMPersistentTrackID }
         for trackID in trackIDs {
+            if let range = instruction?.contentRanges[trackID],
+               !range.containsTime(request.compositionTime) {
+                continue
+            }
             guard let pixelBuffer = request.sourceFrame(byTrackID: trackID) else { continue }
             images.append(CIImage(cvPixelBuffer: pixelBuffer))
         }
@@ -150,6 +156,12 @@ internal final class KadrVideoCompositionInstruction: AVMutableVideoCompositionI
     /// When set, frames whose `compositionTime` falls outside the window are rendered
     /// via the default `AlphaCompositeBlender` instead. Added in v0.7.
     var compositorWindow: CMTimeRange?
+
+    /// Per-track span of composition time that has media. Frames outside a track's
+    /// span are left out of the compositor's inputs, so a track that ends early stops
+    /// contributing instead of repeating its last frame. Tracks without an entry are
+    /// always included.
+    var contentRanges: [CMPersistentTrackID: CMTimeRange] = [:]
 
     /// Track IDs whose source frames the custom compositor needs at request time.
     /// Backing storage for the read-only base-class `requiredSourceTrackIDs` property;
