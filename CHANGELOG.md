@@ -8,6 +8,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Fixed
 
+- **Exports of clips without audio keep their edits.** When no clip contributed
+  audio, the composition kept an empty audio track. The HEVC preset rejects that
+  shape, and the export fell back to a passthrough copy: it reported success but
+  contained only the first clip, with transitions, speed, crop and overlays
+  gone. Empty audio tracks are now removed before export. Thanks to
+  [@timehzy](https://github.com/timehzy) (#204).
+  ([#201](https://github.com/SteliyanH/kadr/issues/201))
+
+- **An export that can't be encoded fails instead of silently losing work.** If
+  the preset still can't encode a composition, the passthrough fallback is now
+  taken only when the copy would be the same movie. When it would drop a video
+  composition (transitions, track layout, clip transforms), crop or overlays,
+  the export throws `KadrError.exportFailed` naming the preset and what would be
+  lost. The same rule applies to the internal pre-render of transitions and
+  nested tracks. ([#201](https://github.com/SteliyanH/kadr/issues/201))
+
 - **Parallel tracks now draw over the main chain.** A `Track { }` or a
   free-floating `.at(time:)` clip rendered *under* the implicit main chain, so a
   full-frame overlay was never visible. AVFoundation reads the first layer
