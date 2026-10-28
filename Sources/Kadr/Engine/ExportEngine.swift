@@ -185,6 +185,7 @@ internal enum ExportEngine {
                                     postProcessingAsVideoLayer: tree.videoLayer,
                                     in: tree.parent
                                 )
+                                avoidIdentityTransforms(in: videoComposition)
                             }
                             exportSession.videoComposition = videoComposition
                         }
@@ -217,6 +218,64 @@ internal enum ExportEngine {
                 } catch {
                     continuation.finish(throwing: error)
                 }
+            }
+        }
+    }
+
+    /// The transform that stands in for identity under an animation tool: a shift of
+    /// 1/1024 px, far below anything a resampler can show.
+    static let identityStandIn = CGAffineTransform(translationX: 1.0 / 1024, y: 0)
+
+    /// Replaces every identity transform in `videoComposition`'s layer instructions with
+    /// ``identityStandIn``, including the implicit identity before a layer's first
+    /// explicit transform. Opacity and crop ramps are left untouched.
+    ///
+    /// Works around an AVFoundation bug. When a layer instruction's transform is exactly
+    /// identity and the source frame matches `renderSize`, AVFoundation hands the decoded
+    /// frame straight to `AVVideoCompositionCoreAnimationTool`, and for some sizes the
+    /// video layer then renders solid white — e.g. 320×320, 560×560 and 640×320 on macOS
+    /// 27.0.1, while 600×600, 640×640 and 320×640 are fine. It reproduces with plain
+    /// AVFoundation and no Kadr code. Any non-identity transform takes the regular
+    /// compositing path, so the stand-in avoids it at no visible cost. Only applied when
+    /// an animation tool is attached; without one, the identity fast path works.
+    static func avoidIdentityTransforms(in videoComposition: AVMutableVideoComposition) {
+        for case let instruction as AVMutableVideoCompositionInstruction in videoComposition.instructions {
+            for case let layer as AVMutableVideoCompositionLayerInstruction in instruction.layerInstructions {
+                replaceIdentityTransforms(in: layer)
+            }
+            // Reassign in case the composition copied the layer instructions on set.
+            instruction.layerInstructions = instruction.layerInstructions
+        }
+        videoComposition.instructions = videoComposition.instructions
+    }
+
+    private static func replaceIdentityTransforms(in layer: AVMutableVideoCompositionLayerInstruction) {
+        func standIn(_ t: CGAffineTransform) -> CGAffineTransform { t.isIdentity ? identityStandIn : t }
+
+        // Collect first, then rewrite: setting a transform (or ramp) at an existing time
+        // replaces that entry, so the rewrite keeps the same ramp layout.
+        var ramps: [(start: CGAffineTransform, end: CGAffineTransform, range: CMTimeRange)] = []
+        var time = CMTime.zero
+        while ramps.count < 100_000 {
+            var start = CGAffineTransform.identity, end = CGAffineTransform.identity
+            var range = CMTimeRange.invalid
+            guard layer.getTransformRamp(for: time, start: &start, end: &end, timeRange: &range),
+                  range.isValid else { break }
+            ramps.append((start, end, range))
+            // A query returns the ramp at or after `time`; stop at the open-ended last one.
+            guard range.end.isNumeric, CMTimeCompare(range.end, time) > 0 else { break }
+            time = range.end
+        }
+
+        // Before the first explicit transform a layer is identity.
+        if ramps.first.map({ CMTimeCompare($0.range.start, .zero) > 0 }) ?? true {
+            layer.setTransform(identityStandIn, at: .zero)
+        }
+        for ramp in ramps where ramp.start.isIdentity || ramp.end.isIdentity {
+            if ramp.start == ramp.end {
+                layer.setTransform(standIn(ramp.start), at: ramp.range.start)
+            } else {
+                layer.setTransformRamp(fromStart: standIn(ramp.start), toEnd: standIn(ramp.end), timeRange: ramp.range)
             }
         }
     }

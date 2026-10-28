@@ -29,6 +29,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   while image overlays worked. The text is now drawn when the overlay is built.
   ([#202](https://github.com/SteliyanH/kadr/issues/202))
 
+- **Overlay exports no longer turn white at some sizes.** At certain render
+  sizes (e.g. 320×320, 560×560, 640×320) where the clip matches the output
+  size, exporting with any overlay produced a solid white video. This is an
+  AVFoundation bug, triggered when a layer's transform is exactly identity
+  while the Core Animation overlay tool is attached. When overlays are
+  present, identity transforms are now replaced by a 1/1024 px shift, which is
+  invisible.
+
 - **Parallel tracks now draw over the main chain.** A `Track { }` or a
   free-floating `.at(time:)` clip rendered *under* the implicit main chain, so a
   full-frame overlay was never visible. AVFoundation reads the first layer
