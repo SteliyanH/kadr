@@ -200,7 +200,7 @@ struct CropTests {
         try? FileManager.default.removeItem(at: result)
     }
 
-    @Test func exportWithCropAndOverlaySucceeds() async throws {
+    @Test(.disabled(if: TestEnvironment.overlayExportsUnsupported, TestEnvironment.overlayExportsUnsupportedReason)) func exportWithCropAndOverlaySucceeds() async throws {
         let videoURL = try loadTestVideoURL()
         let img = try loadTestImage()
         let outputURL = testOutputURL("crop_overlay_smoke")
