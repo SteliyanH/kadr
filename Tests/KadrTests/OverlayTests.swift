@@ -206,7 +206,7 @@ struct OverlayTests {
 
     // MARK: - Export
 
-    @Test func exportWithImageOverlay() async throws {
+    @Test(.disabled(if: TestEnvironment.overlayExportsUnsupported, TestEnvironment.overlayExportsUnsupportedReason)) func exportWithImageOverlay() async throws {
         let videoURL = try loadTestVideoURL()
         let img = try loadTestImage()
         let outputURL = testOutputURL("overlay_export")
@@ -230,7 +230,7 @@ struct OverlayTests {
         try? FileManager.default.removeItem(at: result)
     }
 
-    @Test func exportWithMultipleOverlays() async throws {
+    @Test(.disabled(if: TestEnvironment.overlayExportsUnsupported, TestEnvironment.overlayExportsUnsupportedReason)) func exportWithMultipleOverlays() async throws {
         let videoURL = try loadTestVideoURL()
         let img = try loadTestImage()
         let outputURL = testOutputURL("multi_overlay")
@@ -327,7 +327,7 @@ struct OverlayTests {
 
     // MARK: - Export with text
 
-    @Test func exportWithTextOverlay() async throws {
+    @Test(.disabled(if: TestEnvironment.overlayExportsUnsupported, TestEnvironment.overlayExportsUnsupportedReason)) func exportWithTextOverlay() async throws {
         let videoURL = try loadTestVideoURL()
         let outputURL = testOutputURL("text_export")
 
@@ -346,7 +346,7 @@ struct OverlayTests {
         try? FileManager.default.removeItem(at: result)
     }
 
-    @Test func exportWithTextAndImageOverlays() async throws {
+    @Test(.disabled(if: TestEnvironment.overlayExportsUnsupported, TestEnvironment.overlayExportsUnsupportedReason)) func exportWithTextAndImageOverlays() async throws {
         let videoURL = try loadTestVideoURL()
         let img = try loadTestImage()
         let outputURL = testOutputURL("text_and_image")
@@ -446,7 +446,7 @@ struct OverlayTests {
 
     // MARK: - Export with sticker
 
-    @Test func exportWithSticker() async throws {
+    @Test(.disabled(if: TestEnvironment.overlayExportsUnsupported, TestEnvironment.overlayExportsUnsupportedReason)) func exportWithSticker() async throws {
         let videoURL = try loadTestVideoURL()
         let img = try loadTestImage()
         let outputURL = testOutputURL("sticker_export")
@@ -467,7 +467,7 @@ struct OverlayTests {
         try? FileManager.default.removeItem(at: result)
     }
 
-    @Test func exportWithMixedOverlayTypes() async throws {
+    @Test(.disabled(if: TestEnvironment.overlayExportsUnsupported, TestEnvironment.overlayExportsUnsupportedReason)) func exportWithMixedOverlayTypes() async throws {
         let videoURL = try loadTestVideoURL()
         let img = try loadTestImage()
         let outputURL = testOutputURL("mixed_overlays")
@@ -552,7 +552,7 @@ struct OverlayTests {
         #expect(video.overlays.count == 2)
     }
 
-    @Test func exportWithWatermark() async throws {
+    @Test(.disabled(if: TestEnvironment.overlayExportsUnsupported, TestEnvironment.overlayExportsUnsupportedReason)) func exportWithWatermark() async throws {
         let videoURL = try loadTestVideoURL()
         let img = try loadTestImage()
         let outputURL = testOutputURL("watermark_export")
@@ -567,7 +567,7 @@ struct OverlayTests {
         try? FileManager.default.removeItem(at: result)
     }
 
-    @Test func exportWithOverlayAndTransition() async throws {
+    @Test(.disabled(if: TestEnvironment.overlayExportsUnsupported, TestEnvironment.overlayExportsUnsupportedReason)) func exportWithOverlayAndTransition() async throws {
         let videoURL = try loadTestVideoURL()
         let img = try loadTestImage()
         let outputURL = testOutputURL("overlay_transition")

@@ -82,7 +82,7 @@ struct TextOverlayExportTests {
     }
 
     /// Control: the measuring harness sees an overlay that was never affected.
-    @Test func imageOverlayReachesTheExport() async throws {
+    @Test(.disabled(if: TestEnvironment.overlayExportsUnsupported, TestEnvironment.overlayExportsUnsupportedReason)) func imageOverlayReachesTheExport() async throws {
         let url = try await export(
             ImageOverlay(try solidImage(white: true)).position(.center).size(.pixels(width: 100, height: 100)),
             name: "image_overlay"
@@ -94,7 +94,7 @@ struct TextOverlayExportTests {
         #expect(fraction > 0.015 && fraction < 0.035, "bright fraction \(fraction)")
     }
 
-    @Test func textOverlayReachesTheExport() async throws {
+    @Test(.disabled(if: TestEnvironment.overlayExportsUnsupported, TestEnvironment.overlayExportsUnsupportedReason)) func textOverlayReachesTheExport() async throws {
         let url = try await export(
             TextOverlay("hello", style: TextStyle(fontSize: 64)),
             name: "text_overlay"
@@ -105,7 +105,7 @@ struct TextOverlayExportTests {
         #expect(fraction > 0.001 && fraction < 0.1, "bright fraction \(fraction)")
     }
 
-    @Test func positionedTextOverlayReachesTheExport() async throws {
+    @Test(.disabled(if: TestEnvironment.overlayExportsUnsupported, TestEnvironment.overlayExportsUnsupportedReason)) func positionedTextOverlayReachesTheExport() async throws {
         let url = try await export(
             TextOverlay("MMM", style: TextStyle(fontSize: 96, alignment: .center, weight: .bold))
                 .position(.center)
@@ -126,7 +126,7 @@ struct TextOverlayExportTests {
     /// transform made AVFoundation hand the source frame straight to the animation tool,
     /// and the video layer rendered solid white under any overlay. Each composition path
     /// builds its own layer instructions, so all three are covered.
-    @Test(arguments: [(320, 320), (560, 560), (640, 320)], Shape.allCases)
+    @Test(.disabled(if: TestEnvironment.overlayExportsUnsupported, TestEnvironment.overlayExportsUnsupportedReason), arguments: [(320, 320), (560, 560), (640, 320)], Shape.allCases)
     func overlayExportKeepsTheVideo(size: (Int, Int), shape: Shape) async throws {
         let (w, h) = size
         let preset = Preset.custom(width: w, height: h, frameRate: 30, codec: .h264)
@@ -189,7 +189,7 @@ struct TextOverlayExportTests {
         #expect(opacity == 0.5)
     }
 
-    @Test func strokedTextOverlayReachesTheExport() async throws {
+    @Test(.disabled(if: TestEnvironment.overlayExportsUnsupported, TestEnvironment.overlayExportsUnsupportedReason)) func strokedTextOverlayReachesTheExport() async throws {
         // Stroke routes the string through NSAttributedString — a separate draw path.
         var style = TextStyle(fontSize: 96, alignment: .center, weight: .bold)
         style.stroke = TextStroke(width: 4, color: .white)

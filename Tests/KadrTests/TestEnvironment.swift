@@ -1,4 +1,6 @@
 import Foundation
+import Testing
+@testable import Kadr
 
 /// Test-environment notes.
 ///
@@ -45,6 +47,15 @@ import Foundation
 /// A `--no-parallel` run that goes green is the fastest way to tell the two
 /// apart, and it is one flag rather than a machine.
 enum TestEnvironment {
+
+    /// Exports with overlays are refused on the iOS Simulator: an Apple bug there kills
+    /// the process while Core Animation renders overlays, so the engine throws instead
+    /// (see `ExportEngine.simulatorOverlayError`). Tests that export with overlays are
+    /// skipped there; `SimulatorOverlayExportTests` checks the refusal itself.
+    static var overlayExportsUnsupported: Bool { ExportEngine.isIOSSimulator }
+
+    static let overlayExportsUnsupportedReason: Comment =
+        "Overlay exports are refused on the iOS Simulator (Apple bug, see Known Platform Issues)"
 
     /// Retained so any straggling reference still compiles. Nothing is skipped:
     /// the media tests run everywhere now.

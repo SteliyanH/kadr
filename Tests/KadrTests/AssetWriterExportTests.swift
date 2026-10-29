@@ -122,7 +122,7 @@ struct AssetWriterExportTests {
 
     /// An overlay plus a bitrate must still export *with the overlay*. The bitrate is
     /// what gets dropped, and that is the correct half to drop.
-    @Test func overlayWithBitrateStillExports() async throws {
+    @Test(.disabled(if: TestEnvironment.overlayExportsUnsupported, TestEnvironment.overlayExportsUnsupportedReason)) func overlayWithBitrateStillExports() async throws {
         let out = tempOutput()
         defer { try? FileManager.default.removeItem(at: out) }
 
