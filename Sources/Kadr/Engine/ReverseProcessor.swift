@@ -13,6 +13,7 @@ internal enum ReverseProcessor {
 
         let naturalSize = try await videoTrack.load(.naturalSize)
         let nominalFrameRate = try await videoTrack.load(.nominalFrameRate)
+        let preferredTransform = try await videoTrack.load(.preferredTransform)
 
         // Read all video frames
         let reader = try AVAssetReader(asset: asset)
@@ -47,6 +48,9 @@ internal enum ReverseProcessor {
         ]
         let writerInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
         writerInput.expectsMediaDataInRealTime = false
+        // The frames are copied as stored, so the copy has to keep the source's
+        // orientation tag too, or a portrait clip comes back sideways.
+        writerInput.transform = preferredTransform
 
         let pixelBufferAttributes: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32ARGB,
