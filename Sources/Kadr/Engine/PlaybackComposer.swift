@@ -68,7 +68,8 @@ internal enum PlaybackComposer {
     static func buildSimpleVideoComposition(
         for composition: AVMutableComposition,
         preset: Preset,
-        cropRect: CGRect? = nil
+        cropRect: CGRect? = nil,
+        orientations: OrientationSchedule = .empty
     ) -> AVMutableVideoComposition? {
         let videoTracks = composition.tracks(withMediaType: .video)
         guard !videoTracks.isEmpty else { return nil }
@@ -85,18 +86,19 @@ internal enum PlaybackComposer {
 
         let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTracks[0])
 
-        let trackSize = videoTracks[0].naturalSize
-        if trackSize.width > 0 && trackSize.height > 0 {
-            let scaleX = preset.resolution.width / trackSize.width
-            let scaleY = preset.resolution.height / trackSize.height
-            let scale = max(scaleX, scaleY) // scale to fill
-            let scaledWidth = trackSize.width * scale
-            let scaledHeight = trackSize.height * scale
-            let tx = (preset.resolution.width - scaledWidth) / 2
-            let ty = (preset.resolution.height - scaledHeight) / 2
-            let transform = CGAffineTransform(scaleX: scale, y: scale)
-                .translatedBy(x: tx / scale, y: ty / scale)
-            layerInstruction.setTransform(transform.concatenating(cropTransform), at: .zero)
+        // Scale to fill and center. With an orientation schedule, each source is first
+        // turned upright and the layout is set again wherever the source changes, since
+        // a portrait clip and a landscape clip can share this one track.
+        let entries = orientations.entries(for: videoTracks[0].trackID)
+        if !entries.isEmpty {
+            var transforms = LayerTransformTimeline()
+            for (index, entry) in entries.enumerated() {
+                let base = entry.orientation.fill(preset.resolution) ?? .identity
+                transforms.set(base.concatenating(cropTransform), at: index == 0 ? .zero : entry.range.start)
+            }
+            transforms.apply(to: layerInstruction)
+        } else if let fill = OrientationSchedule.aspectFill(videoTracks[0].naturalSize, into: preset.resolution) {
+            layerInstruction.setTransform(fill.concatenating(cropTransform), at: .zero)
         } else if cropRect != nil {
             layerInstruction.setTransform(cropTransform, at: .zero)
         }

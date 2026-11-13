@@ -4,6 +4,30 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Portrait and rotated videos export upright.** A camera stores a portrait
+  recording as landscape pixels plus a rotation tag (the track's
+  `preferredTransform`), and the front camera may add a mirror. kadr never read
+  that tag, so every portrait iPhone clip exported and previewed sideways,
+  stretched to fill the frame. Each clip is now turned upright before it is scaled
+  to fill, in every path:
+  - plain chains
+  - transitions, including slide
+  - Tracks and free-floating clips
+  - clips with transforms or keyframes
+  - filters and compositors
+  - reversed clips
+  - the preview player and thumbnails
+
+  Clips with different orientations can share one video: each keeps its own.
+
+  A side effect of the same change: on the keyframe path, a plain clip that
+  follows a transformed clip on the same track now returns to its own layout
+  instead of keeping the previous clip's transform.
+
 ## [1.1.1] - 2026-10-28
 
 ### Fixed
