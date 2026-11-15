@@ -47,6 +47,10 @@ Hotfixes branch from `main` directly (e.g. `fix/v0.X.Y-something`), merge into `
 
 **Build:** `swift build`
 **Test:** `swift test`
+**README examples:** after editing a Swift block in `README.md`, run
+`Tools/readme-snippets.sh` and commit the regenerated
+`Examples/ReadmeSnippets.swift`. CI fails if the two disagree, and the build
+fails if an example does not compile.
 
 ## Guidelines
 
