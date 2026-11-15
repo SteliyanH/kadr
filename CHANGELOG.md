@@ -4,6 +4,17 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Documentation
+
+- **Every README example compiles.** Four did not: `Transform`'s arguments were
+  out of order, `.speed(0.5)` needed `.speed(.flat(0.5))`, the merge example
+  mapped an array inside `Video {}`, and the compositor example used a
+  `MultiplyBlend` it never defined. The Examples section is now one block per
+  recipe, and CI compiles every block, so a README change that breaks an
+  example fails the build.
+
 ## [1.1.2] - 2026-11-13
 
 ### Fixed

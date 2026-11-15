@@ -51,7 +51,7 @@ let url = try await Video {
     ImageClip(heroPhoto, duration: 5.0)
         .transform(.identity, animation: .keyframes([
             .at(0.0, value: Transform(scale: 1.0)),
-            .at(5.0, value: Transform(scale: 1.3, center: .normalized(x: 0.6, y: 0.4))),
+            .at(5.0, value: Transform(center: .normalized(x: 0.6, y: 0.4), scale: 1.3)),
         ], timing: .easeInOut))
 
     Transition.dissolve(duration: 0.5)
@@ -85,7 +85,7 @@ FFmpegKit retired in January 2025. Pixel SDK sunset in February 2025. AVFoundati
 | Before (imperative) | After (Kadr) |
 |---|---|
 | `generate(.single, image, audio)` | `Video { ImageClip(img) }.audio(url:).export(to:)` |
-| `mergeMovies(videoURLs:)` | `Video { urls.map { VideoClip(url: $0) } }.export(to:)` |
+| `mergeMovies(videoURLs:)` | `Video { for url in urls { VideoClip(url: url) } }.export(to:)` |
 | `reverseVideo(fromVideo:)` | `Video { VideoClip(url:).reversed() }.export(to:)` |
 | `splitVideo(at:)` | `Video { VideoClip(url:).trimmed(to: 5...20) }.export(to:)` |
 | `mergeVideoWithAudio(...)` | `Video { VideoClip(url:).muted() }.audio(url:).export(to:)` |
@@ -146,8 +146,9 @@ See [ROADMAP.md](ROADMAP.md) for the full version plan.
 
 ## Examples
 
+### Slideshow with background music
+
 ```swift
-// Slideshow with background music
 let url = try await Video {
     ImageClip(photo1)
     ImageClip(photo2)
@@ -155,34 +156,46 @@ let url = try await Video {
 }
 .audio(url: musicURL)
 .export(to: outputURL)
+```
 
-// Merge and trim video clips for Reels
+### Merge and trim video clips for Reels
+
+```swift
 let url = try await Video {
     VideoClip(url: clip1URL).trimmed(to: 0...10)
     VideoClip(url: clip2URL).trimmed(to: 5...15)
 }
 .preset(.reelsAndShorts)
 .export(to: outputURL)
+```
 
-// Replace audio on a video
+### Replace audio on a video
+
+```swift
 let url = try await Video {
     VideoClip(url: originalURL).muted()
 }
 .audio(url: newSoundtrackURL)
 .export(to: outputURL)
+```
 
-// Transitions, slow-mo, and ducking music (v0.2)
+### Transitions, slow-mo, and ducking music (v0.2)
+
+```swift
 let url = try await Video {
     VideoClip(url: introURL).trimmed(to: 0...3)
     Transition.dissolve(duration: 0.5)
-    VideoClip(url: actionURL).trimmed(to: 0...4).speed(0.5)  // half-speed slow-mo
+    VideoClip(url: actionURL).trimmed(to: 0...4).speed(.flat(0.5))  // half-speed slow-mo
     Transition.slide(direction: .fromRight, duration: 0.4)
     VideoClip(url: outroURL).trimmed(to: 0...3)
 }
 .audio { AudioTrack(url: musicURL).volume(0.8).ducking(0.2) }  // music dips when clips speak
 .export(to: outputURL)
+```
 
-// Title card, color-graded clip, watermark, and music (v0.3)
+### Title card, color-graded clip, watermark, and music (v0.3)
+
+```swift
 let url = try await Video {
     TitleSequence("MY MOVIE",
                   duration: 2.0,
@@ -200,8 +213,11 @@ let url = try await Video {
 .crop(at: .center, size: .normalized(width: 0.9, height: 0.9))
 .backgroundMusic(url: musicURL)  // defaults: 60% volume, fades, ducking
 .export(to: outputURL)
+```
 
-// Multi-track timeline with PiP and a parallel Track block (v0.6)
+### Multi-track timeline with PiP and a parallel Track block (v0.6)
+
+```swift
 let url = try await Video {
     VideoClip(url: mainURL).trimmed(to: 0...10)
     VideoClip(url: pipURL).trimmed(to: 0...3).at(time: 2.0)
@@ -212,8 +228,22 @@ let url = try await Video {
     }
 }
 .export(to: outputURL)
+```
 
-// Time-pinned sound effects + windowed multi-input compositor (v0.7)
+### Time-pinned sound effects + windowed multi-input compositor (v0.7)
+
+```swift
+// A custom blend: multiply the top layer onto the one below it.
+struct MultiplyBlend: MultiInputCompositor {
+    func process(images: [CIImage], context: CompositorContext) -> CIImage {
+        guard images.count >= 2 else { return images.first ?? .empty() }
+        let filter = CIFilter(name: "CIMultiplyBlendMode")
+        filter?.setValue(images[1], forKey: kCIInputImageKey)
+        filter?.setValue(images[0], forKey: kCIInputBackgroundImageKey)
+        return filter?.outputImage ?? images[0]
+    }
+}
+
 let url = try await Video {
     VideoClip(url: baseURL).trimmed(to: 0...8)
     VideoClip(url: overlayURL).trimmed(to: 0...8).at(time: 0)
@@ -224,8 +254,11 @@ let url = try await Video {
     AudioTrack(url: stingURL).at(time: 5.0).duration(0.5)  // SFX punches in
 }
 .export(to: outputURL)
+```
 
-// Animated filter sweep + animated text reveal + audio crossfade (v0.8)
+### Animated filter sweep + animated text reveal + audio crossfade (v0.8)
+
+```swift
 let url = try await Video {
     VideoClip(url: clipURL).trimmed(to: 0...4)
         .filter(.gaussianBlur(radius: 0), animation: .keyframes([
@@ -244,8 +277,11 @@ let url = try await Video {
     AudioTrack(url: musicBURL).at(time: 2.5)
 }
 .export(to: outputURL)
+```
 
-// Export with progress tracking
+### Export with progress tracking
+
+```swift
 let exporter = Video {
     VideoClip(url: longVideoURL)
 }
@@ -263,6 +299,7 @@ for try await progress in exporter.run() {
 
 Add to your `Package.swift`:
 
+<!-- readme-snippets: skip -->
 ```swift
 dependencies: [
     .package(url: "https://github.com/SteliyanH/kadr.git", from: "1.0.0")
