@@ -74,27 +74,51 @@ internal enum FilterProcessor {
             }
         )
 
-        let outputURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-            .appendingPathExtension("mp4")
-        try? FileManager.default.removeItem(at: outputURL)
+        // H.264 has no alpha channel. Before 1.2 every pre-render was H.264, so a
+        // chroma key's transparent pixels were written as black, and a keyed clip
+        // over another clip showed black instead of the clip beneath. When a filter
+        // can make pixels transparent, encode with alpha instead. Other filters keep
+        // H.264, which is faster and smaller.
+        let keepsAlpha = filters.contains { $0.producesTransparency }
+        var lastError: Error?
+        for presetName in presets(keepingAlpha: keepsAlpha) {
+            guard let exportSession = AVAssetExportSession(asset: asset, presetName: presetName) else {
+                continue
+            }
+            let outputURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension(keepsAlpha ? "mov" : "mp4")
+            exportSession.outputURL = outputURL
+            exportSession.outputFileType = keepsAlpha ? .mov : .mp4
+            exportSession.videoComposition = videoComposition
 
-        guard let exportSession = AVAssetExportSession(
-            asset: asset,
-            presetName: AVAssetExportPresetHighestQuality
-        ) else {
-            throw KadrError.exportFailed(underlying: NSError(domain: "Kadr", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create filter export session"]))
+            await exportSession.export()
+
+            if exportSession.status == .completed {
+                return outputURL
+            }
+            lastError = exportSession.error
+            try? FileManager.default.removeItem(at: outputURL)
         }
 
-        exportSession.outputURL = outputURL
-        exportSession.outputFileType = .mp4
-        exportSession.videoComposition = videoComposition
+        // No silent fallback to H.264 for a keyed clip: that is the black
+        // background this code exists to prevent.
+        let reason = keepsAlpha
+            ? "No encoder on this device can keep the transparency a chroma key needs"
+            : "Failed to create filter export session"
+        throw KadrError.exportFailed(underlying: lastError ?? NSError(domain: "Kadr", code: -1, userInfo: [NSLocalizedDescriptionKey: reason]))
+    }
 
-        await exportSession.export()
-
-        if exportSession.status == .completed {
-            return outputURL
-        }
-        throw KadrError.exportFailed(underlying: exportSession.error ?? NSError(domain: "Kadr", code: -1, userInfo: [NSLocalizedDescriptionKey: "Filter export failed: \(exportSession.status.rawValue)"]))
+    /// Export presets to try, in order.
+    ///
+    /// With alpha: HEVC with alpha first (every platform kadr supports, and
+    /// hardware-encoded on Apple silicon), then ProRes 4444 where the SDK has it.
+    static func presets(keepingAlpha: Bool) -> [String] {
+        guard keepingAlpha else { return [AVAssetExportPresetHighestQuality] }
+        #if os(macOS) || os(iOS)
+        return [AVAssetExportPresetHEVCHighestQualityWithAlpha, AVAssetExportPresetAppleProRes4444LPCM]
+        #else
+        return [AVAssetExportPresetHEVCHighestQualityWithAlpha]
+        #endif
     }
 }

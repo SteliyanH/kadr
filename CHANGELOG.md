@@ -23,6 +23,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 Both are additive: no existing call changes meaning. Measured on this package's
 own build, the extra builder overload adds no type-checking time.
 
+### Fixed
+
+- **Green screen shows what is behind it.** A clip with `.chromaKey` placed over
+  another clip exported black where the key colour had been, not the clip
+  beneath. Filtered clips are pre-rendered to a temporary file, and that file
+  was always H.264, which has no alpha channel. A clip with a chroma key is now
+  pre-rendered with alpha (HEVC with alpha, or ProRes 4444 where the system has
+  it), so export, preview and thumbnails all show the background. Clips with
+  other filters keep the faster H.264 pre-render. If no alpha encoder is
+  available, export throws `KadrError.exportFailed` rather than writing black.
+
 ### Documentation
 
 - **Every README example compiles.** Four did not: `Transform`'s arguments were
