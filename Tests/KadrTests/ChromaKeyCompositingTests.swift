@@ -13,6 +13,10 @@ import AppKit
 ///
 /// `ChromaKeyTests` covers the key's colour maths. This covers what a green-screen
 /// user actually sees: subject over background, in an exported file.
+///
+/// Time-limited so an encoder that stalls (for example HEVC with alpha on a
+/// virtualised CI runner) fails this suite by name instead of hanging the job.
+@Suite(.timeLimit(.minutes(1)))
 struct ChromaKeyCompositingTests {
 
     private let preset: Preset = .custom(width: 128, height: 64, frameRate: 30, codec: .h264)
