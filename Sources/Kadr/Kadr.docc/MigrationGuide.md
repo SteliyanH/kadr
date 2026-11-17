@@ -66,6 +66,9 @@ All three were deprecated in v0.11 and are mechanical:
 | `VideoClip.speed(curve: Animation<Double>)` | `speed(.curved(animation))` |
 | `VideoClip.filterAnimation(at: Int, _:)` | ``VideoClip/filterAnimation(for:_:)`` |
 
+Since 1.2, a number literal is a ``Speed`` again, so `.speed(2.0)` written with a
+literal compiles unchanged. A rate in a variable still needs `.speed(.flat(rate))`.
+
 The last one is not just a rename. Index-based access drifts the moment a filter
 is added or removed; ``FilterID`` is stable across reordering, which is why the
 index form was withdrawn rather than kept as a convenience.

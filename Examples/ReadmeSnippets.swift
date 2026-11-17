@@ -86,7 +86,7 @@ func readmeSnippet6() async throws {
     let url = try await Video {
         VideoClip(url: introURL).trimmed(to: 0...3)
         Transition.dissolve(duration: 0.5)
-        VideoClip(url: actionURL).trimmed(to: 0...4).speed(.flat(0.5))  // half-speed slow-mo
+        VideoClip(url: actionURL).trimmed(to: 0...4).speed(0.5)  // half-speed slow-mo
         Transition.slide(direction: .fromRight, duration: 0.4)
         VideoClip(url: outroURL).trimmed(to: 0...3)
     }

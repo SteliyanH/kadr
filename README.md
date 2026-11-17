@@ -85,7 +85,7 @@ FFmpegKit retired in January 2025. Pixel SDK sunset in February 2025. AVFoundati
 | Before (imperative) | After (Kadr) |
 |---|---|
 | `generate(.single, image, audio)` | `Video { ImageClip(img) }.audio(url:).export(to:)` |
-| `mergeMovies(videoURLs:)` | `Video { for url in urls { VideoClip(url: url) } }.export(to:)` |
+| `mergeMovies(videoURLs:)` | `Video { urls.map { VideoClip(url: $0) } }.export(to:)` |
 | `reverseVideo(fromVideo:)` | `Video { VideoClip(url:).reversed() }.export(to:)` |
 | `splitVideo(at:)` | `Video { VideoClip(url:).trimmed(to: 5...20) }.export(to:)` |
 | `mergeVideoWithAudio(...)` | `Video { VideoClip(url:).muted() }.audio(url:).export(to:)` |
@@ -131,7 +131,7 @@ cannot drift out of date here either.
 - Pitch-preserving speed from 0.25× to 4× via `AudioTimePitchAlgorithm` (`.spectral`, `.timeDomain`, `.varispeed`).
 
 **Timing**
-- `Speed` is `.flat(Double)` or `.curved(Animation<Double>)` — compile-time exclusivity, with non-linear playback rates integrated into a piecewise-linear time map that audio follows.
+- `Speed` is `.flat(Double)` or `.curved(Animation<Double>)`, so a clip is one or the other at compile time. A number literal is a flat rate: `.speed(0.5)` is half speed. Curved rates are integrated into a piecewise-linear time map that audio follows.
 
 **Captions**
 - `Caption` value type and `Video.captions(_:)` bake cues as an `AVMetadataItem` group at export. File parsing for SRT, VTT, iTT, ASS and SSA lives in [`kadr-captions`](https://github.com/SteliyanH/kadr-captions); the core stays a bridge.
@@ -185,7 +185,7 @@ let url = try await Video {
 let url = try await Video {
     VideoClip(url: introURL).trimmed(to: 0...3)
     Transition.dissolve(duration: 0.5)
-    VideoClip(url: actionURL).trimmed(to: 0...4).speed(.flat(0.5))  // half-speed slow-mo
+    VideoClip(url: actionURL).trimmed(to: 0...4).speed(0.5)  // half-speed slow-mo
     Transition.slide(direction: .fromRight, duration: 0.4)
     VideoClip(url: outroURL).trimmed(to: 0...3)
 }
