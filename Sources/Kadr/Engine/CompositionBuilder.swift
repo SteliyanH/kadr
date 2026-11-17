@@ -3,6 +3,13 @@ import CoreMedia
 
 internal enum CompositionBuilder {
 
+    /// How many pre-renders are nested inside the current one. Tracks inside
+    /// Tracks nest legitimately, a few levels at most; past `maxPreRenderDepth`
+    /// the composition is looping, and export throws instead of hanging. An
+    /// unbounded loop here once made a plain Ken Burns slideshow export forever.
+    @TaskLocal static var preRenderDepth = 0
+    static let maxPreRenderDepth = 32
+
     struct CompositionResult: @unchecked Sendable {
         let composition: AVMutableComposition
         let audioMix: AVMutableAudioMix?
@@ -396,6 +403,22 @@ internal enum CompositionBuilder {
         clips: [any Clip],
         preset: Preset
     ) async throws -> URL {
+        guard preRenderDepth < maxPreRenderDepth else {
+            throw KadrError.exportFailed(underlying: NSError(
+                domain: "Kadr", code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Composition nests more than \(maxPreRenderDepth) pre-renders deep; this is a kadr bug, please report it"]
+            ))
+        }
+        return try await $preRenderDepth.withValue(preRenderDepth + 1) {
+            try await preRenderClipsOnce(clips: clips, preset: preset)
+        }
+    }
+
+    private static func preRenderClipsOnce(
+        clips: [any Clip],
+        preset: Preset
+    ) async throws -> URL {
+        let clips = try await bakingLayout(in: clips, preset: preset)
         let trackResult = try await build(
             from: clips,
             audioTracks: [],
@@ -455,6 +478,37 @@ internal enum CompositionBuilder {
             domain: "Kadr", code: -1,
             userInfo: [NSLocalizedDescriptionKey: "Sub-composition pre-render failed: \(session.status.rawValue)"]
         ))
+    }
+
+    /// Renders each transformed or animated clip of a chain with transitions to its
+    /// own file, so the chain that comes back has no per-clip layout left.
+    ///
+    /// Why: `buildWithTransitions` does not apply per-clip transforms or opacity, so
+    /// `build` routes any chain with layout to `buildMultiTrack`. That path
+    /// pre-renders a chain with transitions by calling `build` on the same clips,
+    /// which routed to `buildMultiTrack` again, forever: a Ken Burns slideshow with
+    /// dissolves never finished exporting. Baking the layout first ends that loop,
+    /// because each baked clip is built alone (no transition, so no pre-render) and
+    /// the rebuilt chain has no layout, so it takes the transitions path.
+    ///
+    /// Costs one extra encode for each laid-out clip in such a chain. Chains without
+    /// transitions, and clips without layout, are returned untouched.
+    static func bakingLayout(in clips: [any Clip], preset: Preset) async throws -> [any Clip] {
+        guard clips.contains(where: { $0 is Transition }) else { return clips }
+        var baked: [any Clip] = []
+        baked.reserveCapacity(clips.count)
+        for clip in clips {
+            let isChainedClip = !(clip is Transition) && !(clip is Track) && clip.startTime == nil
+            if isChainedClip && clip.hasAnimationOrLayout {
+                let url = try await preRenderClipsToTempFile(clips: [clip], preset: preset)
+                // Trimmed to the original length: transitions need a known duration,
+                // and an untrimmed VideoClip reports zero until its asset loads.
+                baked.append(VideoClip(url: url).trimmed(to: CMTimeRange(start: .zero, duration: clip.duration)))
+            } else {
+                baked.append(clip)
+            }
+        }
+        return baked
     }
 
     /// Insert a single non-transition clip on the given video / audio tracks. Wraps
