@@ -46,7 +46,7 @@ let urls = [clip1URL, clip2URL]
 func readmeComparisonTable() async throws {
     let clipURL = clip1URL
     _ = try await Video { ImageClip(heroImage) }.audio(url: musicURL).export(to: outputURL)
-    _ = try await Video { for url in urls { VideoClip(url: url) } }.export(to: outputURL)
+    _ = try await Video { urls.map { VideoClip(url: $0) } }.export(to: outputURL)
     _ = try await Video { VideoClip(url: clipURL).reversed() }.export(to: outputURL)
     _ = try await Video { VideoClip(url: clipURL).trimmed(to: 5...20) }.export(to: outputURL)
     _ = try await Video { VideoClip(url: clipURL).muted() }.audio(url: musicURL).export(to: outputURL)

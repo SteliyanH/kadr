@@ -21,6 +21,22 @@ public enum Speed: Sendable {
     case curved(Animation<Double>)
 }
 
+/// A number literal is a flat rate: `.speed(0.5)` means `.speed(.flat(0.5))`.
+///
+/// Literals only: Swift does not convert a `Double` held in a variable, so
+/// `.speed(rate)` with a variable still needs `.flat(rate)`.
+extension Speed: ExpressibleByFloatLiteral, ExpressibleByIntegerLiteral {
+    /// `0.5` → `.flat(0.5)`.
+    public init(floatLiteral value: Double) {
+        self = .flat(value)
+    }
+
+    /// `2` → `.flat(2.0)`.
+    public init(integerLiteral value: Int) {
+        self = .flat(Double(value))
+    }
+}
+
 extension VideoClip {
 
     // MARK: - Canonical surface (v0.11+)
@@ -31,11 +47,13 @@ extension VideoClip {
     /// exclusivity type-level.
     ///
     /// ```swift
-    /// VideoClip(url: u).speed(.flat(2.0))                  // 2× playback
+    /// VideoClip(url: u).speed(0.5)                         // half speed
+    /// VideoClip(url: u).speed(.flat(rate))                 // a rate in a variable
     /// VideoClip(url: u).speed(.curved(animation))          // animated curve
     /// ```
     ///
-    /// - Parameter value: `.flat(rate)` or `.curved(animation)`.
+    /// - Parameter value: `.flat(rate)`, `.curved(animation)`, or a number
+    ///   literal, which is shorthand for `.flat`.
     /// - Returns: A new clip with the speed applied. The other speed slot is
     ///   cleared, matching the documented mutual exclusion.
     public func speed(_ value: Speed) -> VideoClip {

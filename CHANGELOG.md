@@ -6,11 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Added
+
+- **`.speed(0.5)`.** `Speed` conforms to `ExpressibleByFloatLiteral` and
+  `ExpressibleByIntegerLiteral`, so a number literal is a flat rate:
+  `.speed(0.5)` means `.speed(.flat(0.5))`, and `.speed(2)` means
+  `.speed(.flat(2.0))`. Literals only: a rate in a variable still needs
+  `.flat(rate)`. Validation is unchanged, so `.speed(10)` throws
+  `KadrError.invalidSpeed` at export, as `.flat(10)` does.
+- **Lists of clips inside `Video {}` and `Track {}`.**
+  `Video { urls.map { VideoClip(url: $0) } }` now compiles. A list splices in
+  place, between clips written one per line, and builds the same timeline as
+  writing those clips out. Any array of clips works, including `[VideoClip]`,
+  `[ImageClip]` and `[any Clip]` with transitions in it.
+
+Both are additive: no existing call changes meaning. Measured on this package's
+own build, the extra builder overload adds no type-checking time.
+
 ### Documentation
 
 - **Every README example compiles.** Four did not: `Transform`'s arguments were
-  out of order, `.speed(0.5)` needed `.speed(.flat(0.5))`, the merge example
-  mapped an array inside `Video {}`, and the compositor example used a
+  out of order, `.speed(0.5)` did not compile (it does now; see Added), the
+  merge example mapped an array inside `Video {}` (also fixed by Added; the
+  README used a `for` loop in between), and the compositor example used a
   `MultiplyBlend` it never defined. The Examples section is now one block per
   recipe, and CI compiles every block, so a README change that breaks an
   example fails the build.
