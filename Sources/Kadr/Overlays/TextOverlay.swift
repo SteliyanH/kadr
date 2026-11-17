@@ -26,7 +26,8 @@ public struct TextOverlay: Overlay, Sendable {
     public let style: TextStyle
     /// Where the overlay's anchor lands on the render canvas.
     public let position: Position
-    /// Explicit size, or `nil` to fill the full render area for edge-to-edge wrapping.
+    /// Explicit size, or `nil` to size the box to the text (see
+    /// ``naturalSize(in:)``), so ``position`` and ``anchor`` place the text itself.
     public let size: Size?
     /// Which point on the overlay aligns to its ``position``.
     public let anchor: Anchor
@@ -43,7 +44,7 @@ public struct TextOverlay: Overlay, Sendable {
     /// like kadr-ui v0.6 wire it up). Added in v0.8.
     public let textAnimation: (any TextAnimation)?
 
-    /// Build a text overlay. Defaults: full-render-area frame, centered position,
+    /// Build a text overlay. Defaults: a box that fits the text, centered position,
     /// `.center` anchor, full opacity, no layer ID, visible for the entire composition.
     public init(_ text: String, style: TextStyle = .default) {
         self.text = text

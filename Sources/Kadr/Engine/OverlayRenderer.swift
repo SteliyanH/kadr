@@ -85,7 +85,8 @@ internal enum OverlayRenderer {
                     to: sublayer,
                     overlay: overlay,
                     renderSize: renderSize,
-                    compositionDuration: compositionDuration
+                    compositionDuration: compositionDuration,
+                    fallbackSize: overlay.size ?? naturalSize(of: overlay, in: renderSize, cache: imageCache)
                 )
             }
             parent.addSublayer(sublayer)
@@ -108,7 +109,8 @@ internal enum OverlayRenderer {
         to layer: CALayer,
         overlay: any Overlay,
         renderSize: CGSize,
-        compositionDuration: CMTime
+        compositionDuration: CMTime,
+        fallbackSize: Size
     ) {
         let total = CMTimeGetSeconds(compositionDuration)
         guard total > 0 else { return }
@@ -135,8 +137,7 @@ internal enum OverlayRenderer {
             } else if let s = overlay.size {
                 resolvedSize = s
             } else {
-                // Fallback to FrameResolver's default for unknown sizes.
-                resolvedSize = .normalized(width: 0.25, height: 0.25)
+                resolvedSize = fallbackSize
             }
             return FrameResolver.resolve(
                 position: pos,
@@ -305,21 +306,10 @@ internal enum OverlayRenderer {
         layer.isWrapped = true
         layer.truncationMode = .none
 
-        let resolvedFont: CFTypeRef
-        if let fontName = style.fontName {
-            layer.font = fontName as CFString
-            resolvedFont = fontName as CFString
-        } else {
-            // System font at requested weight. CATextLayer.font accepts CFString (font
-            // family name) or CTFont. Use CTFont to honor weight cleanly.
-            let weight = ctFontWeight(for: style.weight)
-            let descriptor = CTFontDescriptorCreateWithAttributes([
-                kCTFontTraitsAttribute: [kCTFontWeightTrait: weight]
-            ] as CFDictionary)
-            let ctFont = CTFontCreateWithFontDescriptor(descriptor, CGFloat(style.fontSize), nil)
-            layer.font = ctFont
-            resolvedFont = ctFont
-        }
+        // The same CTFont that `TextOverlay.naturalSize(in:)` measures with, so a
+        // text box sized to its text is the box the text is drawn in.
+        let resolvedFont: CFTypeRef = TextMetrics.font(for: style)
+        layer.font = resolvedFont
 
         // v0.12: stroke routes through NSAttributedString because CATextLayer
         // doesn't natively honor stroke* properties on its `string` field.
@@ -416,40 +406,33 @@ internal enum OverlayRenderer {
         }
     }
 
-    private static func ctFontWeight(for weight: TextStyle.Weight) -> CGFloat {
-        // Values from kCTFontWeightRegular / kCTFontWeightMedium / kCTFontWeightBold
-        switch weight {
-        case .regular: return 0.0
-        case .medium:  return 0.23
-        case .bold:    return 0.4
-        }
-    }
-
     // MARK: - Frame resolution
 
     private static func resolvedFrame(for overlay: any Overlay, in renderSize: CGSize, cache: CGImageCache) -> CGRect {
-        let resolvedSize: Size
-        if let explicit = overlay.size {
-            resolvedSize = explicit
-        } else if let img = overlay as? ImageOverlay, let cg = cgImage(from: img.image, cache: cache) {
-            // ImageOverlay default: natural pixel size
-            resolvedSize = .pixels(width: Double(cg.width), height: Double(cg.height))
-        } else if let sticker = overlay as? StickerOverlay, let cg = cgImage(from: sticker.image, cache: cache) {
-            // StickerOverlay default: natural pixel size
-            resolvedSize = .pixels(width: Double(cg.width), height: Double(cg.height))
-        } else if overlay is TextOverlay {
-            // TextOverlay default: full render area so text can wrap edge-to-edge
-            resolvedSize = .normalized(width: 1.0, height: 1.0)
-        } else {
-            // Conservative default for unknown / un-resolvable overlays
-            resolvedSize = .normalized(width: 0.25, height: 0.25)
-        }
-        return FrameResolver.resolve(
+        FrameResolver.resolve(
             position: overlay.position,
-            size: resolvedSize,
+            size: overlay.size ?? naturalSize(of: overlay, in: renderSize, cache: cache),
             anchor: overlay.anchor,
             in: renderSize
         )
+    }
+
+    /// The size an overlay takes when it has no explicit ``Overlay/size``. Shared by
+    /// the static and the animated layout paths so the two agree.
+    private static func naturalSize(of overlay: any Overlay, in renderSize: CGSize, cache: CGImageCache) -> Size {
+        if let img = overlay as? ImageOverlay, let cg = cgImage(from: img.image, cache: cache) {
+            // The image's own pixel size.
+            return .pixels(width: Double(cg.width), height: Double(cg.height))
+        } else if let sticker = overlay as? StickerOverlay, let cg = cgImage(from: sticker.image, cache: cache) {
+            return .pixels(width: Double(cg.width), height: Double(cg.height))
+        } else if let text = overlay as? TextOverlay {
+            // Hugs the text, so position and anchor place the text itself. Before
+            // 1.2 this was the whole canvas, with the text drawn at its top.
+            let size = text.naturalSize(in: renderSize)
+            return .pixels(width: Double(size.width), height: Double(size.height))
+        }
+        // Unknown or unreadable overlays.
+        return .normalized(width: 0.25, height: 0.25)
     }
 
     // MARK: - Cross-platform CGImage extraction
