@@ -8,89 +8,286 @@
 
 **SwiftUI for video. Compose, transform, export — in Swift you actually want to write.**
 
-> **v1.0 — the API is frozen.** Nothing public is removed, renamed or redefined
-> inside `1.x`. See [API stability](#api-stability).
+A declarative Swift library for video on Apple platforms: a result-builder DSL,
+async/await throughout, and nothing underneath but AVFoundation.
 
-A modern, declarative Swift library for video composition on Apple platforms. Build videos using a result-builder DSL with async/await throughout. Multi-track timelines, transitions, overlays, filters with keyframe animation, custom per-frame compositors, time-anchored audio with crossfades — all on top of AVFoundation, no third-party dependencies.
+<p align="center">
+  <img src="docs/media/hero.gif" width="560" alt="An illustrated coastline slowly zooms in under a bouncing &quot;kadr&quot; title, dissolves into a flight over mountains, and a talking cartoon face pops into the top-right corner.">
+</p>
 
-**[API documentation →](https://swiftpackageindex.com/SteliyanH/kadr/documentation/kadr)**  ·  built and hosted by the Swift Package Index for every release.
+That video is the code below, rendered by kadr. Every GIF on this page comes
+from the snippet printed beside it. They are re-rendered by
+`swift run KadrReadmeMedia`, and CI compiles every snippet.
 
-> **Companion packages.** Kadr is the engine. Five packages consume its public
-> surface for specific jobs — pull in only what you need; none are required for
-> composition or export.
->
-> | Package | Purpose |
-> |---|---|
-> | [`kadr-ui`](https://github.com/SteliyanH/kadr-ui) | SwiftUI components — `VideoPreview`, `ThumbnailStrip`, multi-lane `TimelineView` (selection / reorder / trim / scrub / audio waveforms), `OverlayHost` with gesture-routed `LayerID` hit-testing, `InspectorPanel` with filter authoring, `TransitionPicker`, `ClipSplitter`, `KeyframeEditor`. |
-> | [`kadr-persistence`](https://github.com/SteliyanH/kadr-persistence) | Save a composition to a file and open it again — refusing, rather than silently dropping, whatever a file cannot hold. Content-addressed image storage; a completeness guard that fails when kadr grows a field. |
-> | [`kadr-audio`](https://github.com/SteliyanH/kadr-audio) | Music-library resolution, in-app voiceover recording, audio session policy, and ITU-R BS.1770-4 (LUFS) loudness measurement. |
-> | [`kadr-captions`](https://github.com/SteliyanH/kadr-captions) | Caption parsing and authoring for SRT, VTT, iTT, ASS and SSA, plus a styled-VTT bridge onto `TextOverlay` + `textAnimation` for burned-in animated captions. |
-> | [`kadr-photos`](https://github.com/SteliyanH/kadr-photos) | Photos library integration — resolves video / image / Live Photo `PHAsset`s into kadr clip types, wraps `PHPickerViewController` for SwiftUI, bridges assets to `ImageOverlay` / `StickerOverlay`. |
->
-> And a reference application: [**Kadr Studio**](https://github.com/SteliyanH/kadr-reels-studio),
-> a short-form vertical video editor built on all six.
+<!-- readme-snippet: hero -->
+```swift
+let video = Video {
+    ImageClip(coast, duration: 4)
+        .transform(.identity, animation: .keyframes([                 // Ken Burns
+            .at(0.0, value: Transform(scale: 1.0)),
+            .at(4.0, value: Transform(center: .normalized(x: 0.6, y: 0.45), scale: 1.3)),
+        ], timing: .easeInOut))
+    Transition.dissolve(duration: 0.8)
+    VideoClip(url: droneURL).trimmed(to: 0...5)
+    VideoClip(url: reactionURL).trimmed(to: 0...3)                    // picture-in-picture
+        .at(time: 4.5)
+        .transform(Transform(center: .normalized(x: 0.96, y: 0.06), scale: 0.32, anchor: .topRight))
+}
+.overlay(
+    TextOverlay("kadr", style: TextStyle(fontSize: 240, alignment: .center, weight: .bold))
+        .position(.center)
+        .visible(during: 0.4...3.2)
+        .animation(.scaleUp(duration: 0.6))
+)
+.audio(url: musicURL)
+.preset(.cinema)
+
+let url = try await video.export(to: outputURL)
+```
 
 ## Quick Start
 
-The simplest possible composition — slideshow with background music:
+This needs no media files: `SampleMedia` draws its own frames. There are no
+overlays either, so it also runs in the iOS Simulator.
 
 ```swift
 import Kadr
 
+let output = FileManager.default.temporaryDirectory.appendingPathComponent("hello.mp4")
+
 let url = try await Video {
-    ImageClip(heroImage, duration: 5.0)
+    ImageClip(SampleMedia.image(index: 0), duration: 2)
+    Transition.dissolve(duration: 0.5)
+    ImageClip(SampleMedia.image(index: 1), duration: 2)
+}
+.preset(.reelsAndShorts)          // 1080×1920, 30 fps
+.export(to: output)
+```
+
+Call it from any async context: a SwiftUI `.task`, a test, or a Playground. To
+use your own media, swap in `VideoClip(url:)` and `ImageClip(_:duration:)`.
+
+## Installation
+
+Add kadr to your `Package.swift`:
+
+<!-- readme-snippets: skip -->
+```swift
+dependencies: [
+    .package(url: "https://github.com/SteliyanH/kadr.git", from: "1.0.0")
+]
+```
+
+Or in Xcode: **File › Add Package Dependencies…** and enter the repository URL.
+
+**Requires** Xcode 26 or later (Swift 6.2), and iOS 17, macOS 14, tvOS 17 or
+visionOS 1. Xcode 16 cannot build kadr: the image types it stores are only
+`Sendable` in the Xcode 26 SDKs.
+
+> **Known issue: overlays in the iOS Simulator.** Exports with text or image
+> overlays throw on the iOS Simulator, because Core Animation export is broken
+> there. They work on devices and on macOS. Details and workarounds:
+> [Known Platform Issues](https://swiftpackageindex.com/SteliyanH/kadr/documentation/kadr/knownplatformissues).
+
+## Recipes
+
+Each recipe is under 20 lines. More are in [`Examples/`](Examples).
+
+### Slideshow with music
+
+<img src="docs/media/slideshow.gif" width="400" alt="Three illustrated landscapes, each slowly zooming in, dissolving into the next.">
+
+<!-- readme-snippet: slideshow -->
+```swift
+let kenBurns = Animation<Transform>.keyframes([
+    .at(0.0, value: Transform(scale: 1.0)),
+    .at(3.0, value: Transform(scale: 1.15)),
+])
+
+let url = try await Video {
+    ImageClip(coast, duration: 3).transform(.identity, animation: kenBurns)
+    Transition.dissolve(duration: 0.6)
+    ImageClip(mountains, duration: 3).transform(.identity, animation: kenBurns)
+    Transition.dissolve(duration: 0.6)
+    ImageClip(lake, duration: 3).transform(.identity, animation: kenBurns)
 }
 .audio(url: musicURL)
+.preset(.cinema)
 .export(to: outputURL)
 ```
 
-A more representative v0.8 composition — Ken Burns zoom-pan on a still, animated title reveal, picture-in-picture cutaway, and a music swap with a 1s crossfade:
+### Vertical video for Reels, Shorts and TikTok
 
+<img src="docs/media/vertical.gif" width="220" alt="Landscape mountain footage reframed to a tall 9:16 video with a title at the top.">
+
+<!-- readme-snippet: vertical -->
 ```swift
+// Landscape footage in, 1080×1920 out: the clip is scaled to fill the frame.
 let url = try await Video {
-    ImageClip(heroPhoto, duration: 5.0)
-        .transform(.identity, animation: .keyframes([
-            .at(0.0, value: Transform(scale: 1.0)),
-            .at(5.0, value: Transform(center: .normalized(x: 0.6, y: 0.4), scale: 1.3)),
-        ], timing: .easeInOut))
-
-    Transition.dissolve(duration: 0.5)
-    VideoClip(url: clipURL).trimmed(to: 0...10)
-
-    // PiP cutaway pinned at t=6s, 40% scale in the top-right
-    VideoClip(url: cutawayURL).trimmed(to: 0...3)
-        .at(time: 6.0)
-        .transform(Transform(center: .topRight, scale: 0.4, anchor: .topRight))
+    VideoClip(url: droneURL).trimmed(to: 0...6)
 }
 .overlay(
-    TextOverlay("MY MOVIE", style: TextStyle(fontSize: 80, alignment: .center, weight: .bold))
-        .position(.center)
-        .visible(during: 0.0...2.0)
-        .animation(.fadeIn(duration: 1.0))
+    TextOverlay("Above the Alps", style: TextStyle(fontSize: 104, alignment: .center,
+                                                   weight: .bold, shadow: TextShadow()))
+        .position(.normalized(x: 0.5, y: 0.14))
 )
-.audio {
-    AudioTrack(url: musicAURL).at(time: 0).duration(8.0).crossfade(1.0)
-    AudioTrack(url: musicBURL).at(time: 7.0)  // 1s overlap fades A → B
-}
 .preset(.reelsAndShorts)
 .export(to: outputURL)
 ```
 
-## Why Kadr?
+### Picture-in-picture reaction
+
+<img src="docs/media/pip.gif" width="400" alt="Mountain footage with a small talking cartoon face in the top-right corner.">
+
+<!-- readme-snippet: pip -->
+```swift
+let url = try await Video {
+    VideoClip(url: droneURL).trimmed(to: 0...6)
+    VideoClip(url: reactionURL).trimmed(to: 0...5)      // a second layer, from 0.5 s
+        .at(time: 0.5)
+        .transform(Transform(center: .normalized(x: 0.96, y: 0.06), scale: 0.35, anchor: .topRight))
+}
+.preset(.cinema)
+.export(to: outputURL)
+```
+
+### Green screen
+
+<img src="docs/media/greenScreen.gif" width="400" alt="A waving cartoon presenter, filmed on green, standing in front of a dusk landscape.">
+
+<!-- readme-snippet: greenScreen -->
+```swift
+let url = try await Video {
+    ImageClip(dusk, duration: 5)                        // the backdrop
+    VideoClip(url: presenterURL)                        // filmed on green
+        .filter(.chromaKey(color: .green, threshold: 0.35))
+        .at(time: 0)
+}
+.preset(.cinema)
+.export(to: outputURL)
+```
+
+### Speed ramp
+
+<img src="docs/media/speedRamp.gif" width="400" alt="A ball rolling across a field slows to a crawl, then speeds past the fence posts.">
+
+<!-- readme-snippet: speedRamp -->
+```swift
+let ramp = Animation<Double>.keyframes([
+    .at(0.0, value: 1.0),
+    .at(1.2, value: 0.25),      // into slow motion…
+    .at(2.4, value: 2.0),       // …then double speed
+    .at(4.0, value: 1.0),
+])
+
+let url = try await Video {
+    VideoClip(url: rollURL).speed(.curved(ramp))
+}
+.preset(.cinema)
+.export(to: outputURL)
+```
+
+### Animated titles
+
+<img src="docs/media/titles.gif" width="400" alt="Mountain footage with a bold outlined title sliding in from the left, then a subtitle fading in under it.">
+
+<!-- readme-snippet: titles -->
+```swift
+let title = TextStyle(fontSize: 132, weight: .bold, stroke: TextStroke(width: 4), shadow: TextShadow(blur: 8))
+let subtitle = TextStyle(fontSize: 64, weight: .medium, shadow: TextShadow(blur: 6))
+
+let url = try await Video {
+    VideoClip(url: droneURL).trimmed(to: 0...5)
+}
+.overlay(
+    TextOverlay("Chapter one", style: title)
+        .position(.normalized(x: 0.06, y: 0.72)).anchor(.bottomLeft)
+        .visible(during: 0.3...5.0)
+        .animation(.slideIn(from: .fromLeft, duration: 0.6))
+)
+.overlay(
+    TextOverlay("The long way up", style: subtitle)
+        .position(.normalized(x: 0.06, y: 0.82)).anchor(.bottomLeft)
+        .visible(during: 1.0...5.0)
+        .animation(.fadeIn(duration: 0.6))
+)
+.preset(.cinema)
+.export(to: outputURL)
+```
+
+## Why kadr?
 
 FFmpegKit retired in January 2025. Pixel SDK sunset in February 2025. AVFoundation is powerful but verbose. The Swift video ecosystem needs a modern, native, declarative library.
 
-**7 imperative functions become 3 DSL primitives + modifiers:**
+Here is a 9:16 export of one clip in kadr. If the camera stored the clip
+rotated, kadr turns it upright, then scales it to fill the frame and centres it:
 
-| Before (imperative) | After (Kadr) |
-|---|---|
-| `generate(.single, image, audio)` | `Video { ImageClip(img) }.audio(url:).export(to:)` |
-| `mergeMovies(videoURLs:)` | `Video { urls.map { VideoClip(url: $0) } }.export(to:)` |
-| `reverseVideo(fromVideo:)` | `Video { VideoClip(url:).reversed() }.export(to:)` |
-| `splitVideo(at:)` | `Video { VideoClip(url:).trimmed(to: 5...20) }.export(to:)` |
-| `mergeVideoWithAudio(...)` | `Video { VideoClip(url:).muted() }.audio(url:).export(to:)` |
+<!-- readme-snippet: kadrVertical -->
+```swift
+let url = try await Video { VideoClip(url: droneURL).trimmed(to: 0...6) }
+    .preset(.reelsAndShorts)
+    .export(to: outputURL)
+```
 
-## Comparison
+And here is the same export in AVFoundation. `swift run KadrReadmeMedia`
+runs both and checks that their frames match.
+
+<details>
+<summary><b>The same export in raw AVFoundation: 40 lines</b></summary>
+
+<!-- readme-snippet: rawAVFoundation -->
+```swift
+func exportVertical(source: URL, to output: URL) async throws {
+    let asset = AVURLAsset(url: source)
+    let composition = AVMutableComposition()
+    let range = CMTimeRange(start: .zero, duration: CMTime(seconds: 6, preferredTimescale: 600))
+
+    guard let sourceVideo = try await asset.loadTracks(withMediaType: .video).first,
+          let video = composition.addMutableTrack(withMediaType: .video,
+                                                  preferredTrackID: kCMPersistentTrackID_Invalid)
+    else { throw CocoaError(.fileReadCorruptFile) }
+    try video.insertTimeRange(range, of: sourceVideo, at: .zero)
+
+    if let sourceAudio = try await asset.loadTracks(withMediaType: .audio).first,
+       let audio = composition.addMutableTrack(withMediaType: .audio,
+                                               preferredTrackID: kCMPersistentTrackID_Invalid) {
+        try audio.insertTimeRange(range, of: sourceAudio, at: .zero)
+    }
+
+    // Turn the frame upright, scale it to fill 1080×1920, and centre it.
+    let renderSize = CGSize(width: 1080, height: 1920)
+    let (naturalSize, preferred) = try await sourceVideo.load(.naturalSize, .preferredTransform)
+    let upright = CGRect(origin: .zero, size: naturalSize).applying(preferred)
+    let scale = max(renderSize.width / upright.width, renderSize.height / upright.height)
+    let transform = preferred
+        .concatenating(CGAffineTransform(translationX: -upright.minX, y: -upright.minY))
+        .concatenating(CGAffineTransform(scaleX: scale, y: scale))
+        .concatenating(CGAffineTransform(translationX: (renderSize.width - upright.width * scale) / 2,
+                                         y: (renderSize.height - upright.height * scale) / 2))
+
+    let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: video)
+    layer.setTransform(transform, at: .zero)
+    let instruction = AVMutableVideoCompositionInstruction()
+    instruction.timeRange = range
+    instruction.layerInstructions = [layer]
+    let videoComposition = AVMutableVideoComposition()
+    videoComposition.renderSize = renderSize
+    videoComposition.frameDuration = CMTime(value: 1, timescale: 30)
+    videoComposition.instructions = [instruction]
+
+    guard let session = AVAssetExportSession(asset: composition,
+                                             presetName: AVAssetExportPresetHighestQuality)
+    else { throw CocoaError(.featureUnsupported) }
+    session.videoComposition = videoComposition
+    try await session.export(to: output, as: .mp4)
+}
+
+try await exportVertical(source: droneURL, to: outputURL)
+```
+
+</details>
+
+### Compared with the alternatives
 
 | | Kadr | AVFoundation (raw) | VideoLab | FFmpegKit |
 |---|---|---|---|---|
@@ -144,182 +341,22 @@ cannot drift out of date here either.
 
 See [ROADMAP.md](ROADMAP.md) for the full version plan.
 
-## Examples
+## Companion packages
 
-### Slideshow with background music
+Kadr is the engine. Five packages consume its public
+surface for specific jobs — pull in only what you need; none are required for
+composition or export.
 
-```swift
-let url = try await Video {
-    ImageClip(photo1)
-    ImageClip(photo2)
-    ImageClip(photo3)
-}
-.audio(url: musicURL)
-.export(to: outputURL)
-```
+| Package | Purpose |
+|---|---|
+| [`kadr-ui`](https://github.com/SteliyanH/kadr-ui) | SwiftUI components — `VideoPreview`, `ThumbnailStrip`, multi-lane `TimelineView` (selection / reorder / trim / scrub / audio waveforms), `OverlayHost` with gesture-routed `LayerID` hit-testing, `InspectorPanel` with filter authoring, `TransitionPicker`, `ClipSplitter`, `KeyframeEditor`. |
+| [`kadr-persistence`](https://github.com/SteliyanH/kadr-persistence) | Save a composition to a file and open it again — refusing, rather than silently dropping, whatever a file cannot hold. Content-addressed image storage; a completeness guard that fails when kadr grows a field. |
+| [`kadr-audio`](https://github.com/SteliyanH/kadr-audio) | Music-library resolution, in-app voiceover recording, audio session policy, and ITU-R BS.1770-4 (LUFS) loudness measurement. |
+| [`kadr-captions`](https://github.com/SteliyanH/kadr-captions) | Caption parsing and authoring for SRT, VTT, iTT, ASS and SSA, plus a styled-VTT bridge onto `TextOverlay` + `textAnimation` for burned-in animated captions. |
+| [`kadr-photos`](https://github.com/SteliyanH/kadr-photos) | Photos library integration — resolves video / image / Live Photo `PHAsset`s into kadr clip types, wraps `PHPickerViewController` for SwiftUI, bridges assets to `ImageOverlay` / `StickerOverlay`. |
 
-### Merge and trim video clips for Reels
-
-```swift
-let url = try await Video {
-    VideoClip(url: clip1URL).trimmed(to: 0...10)
-    VideoClip(url: clip2URL).trimmed(to: 5...15)
-}
-.preset(.reelsAndShorts)
-.export(to: outputURL)
-```
-
-### Replace audio on a video
-
-```swift
-let url = try await Video {
-    VideoClip(url: originalURL).muted()
-}
-.audio(url: newSoundtrackURL)
-.export(to: outputURL)
-```
-
-### Transitions, slow-mo, and ducking music (v0.2)
-
-```swift
-let url = try await Video {
-    VideoClip(url: introURL).trimmed(to: 0...3)
-    Transition.dissolve(duration: 0.5)
-    VideoClip(url: actionURL).trimmed(to: 0...4).speed(0.5)  // half-speed slow-mo
-    Transition.slide(direction: .fromRight, duration: 0.4)
-    VideoClip(url: outroURL).trimmed(to: 0...3)
-}
-.audio { AudioTrack(url: musicURL).volume(0.8).ducking(0.2) }  // music dips when clips speak
-.export(to: outputURL)
-```
-
-### Title card, color-graded clip, watermark, and music (v0.3)
-
-```swift
-let url = try await Video {
-    TitleSequence("MY MOVIE",
-                  duration: 2.0,
-                  style: TextStyle(fontSize: 96, alignment: .center, weight: .bold))
-    Transition.fade(duration: 0.5)
-    VideoClip(url: clipURL).trimmed(to: 0...10)
-        .filter(.brightness(0.05), .contrast(1.1), .saturation(1.2))
-}
-.overlay(
-    TextOverlay("LOCATION: HQ", style: TextStyle(fontSize: 40, weight: .medium))
-        .position(.bottom)
-        .anchor(.bottom)
-)
-.watermark(logo, position: .topRight, opacity: 0.5)
-.crop(at: .center, size: .normalized(width: 0.9, height: 0.9))
-.backgroundMusic(url: musicURL)  // defaults: 60% volume, fades, ducking
-.export(to: outputURL)
-```
-
-### Multi-track timeline with PiP and a parallel Track block (v0.6)
-
-```swift
-let url = try await Video {
-    VideoClip(url: mainURL).trimmed(to: 0...10)
-    VideoClip(url: pipURL).trimmed(to: 0...3).at(time: 2.0)
-    Track(at: 5.0, name: "B-Roll") {
-        VideoClip(url: rollA).trimmed(to: 0...2)
-        Transition.dissolve(duration: 0.3)
-        VideoClip(url: rollB).trimmed(to: 0...2)
-    }
-}
-.export(to: outputURL)
-```
-
-### Time-pinned sound effects + windowed multi-input compositor (v0.7)
-
-```swift
-// A custom blend: multiply the top layer onto the one below it.
-struct MultiplyBlend: MultiInputCompositor {
-    func process(images: [CIImage], context: CompositorContext) -> CIImage {
-        guard images.count >= 2 else { return images.first ?? .empty() }
-        let filter = CIFilter(name: "CIMultiplyBlendMode")
-        filter?.setValue(images[1], forKey: kCIInputImageKey)
-        filter?.setValue(images[0], forKey: kCIInputBackgroundImageKey)
-        return filter?.outputImage ?? images[0]
-    }
-}
-
-let url = try await Video {
-    VideoClip(url: baseURL).trimmed(to: 0...8)
-    VideoClip(url: overlayURL).trimmed(to: 0...8).at(time: 0)
-}
-.compositor(MultiplyBlend(), during: 2.0...5.0)   // custom blend in window
-.audio {
-    AudioTrack(url: musicURL).volume(0.6).ducking(0.2)
-    AudioTrack(url: stingURL).at(time: 5.0).duration(0.5)  // SFX punches in
-}
-.export(to: outputURL)
-```
-
-### Animated filter sweep + animated text reveal + audio crossfade (v0.8)
-
-```swift
-let url = try await Video {
-    VideoClip(url: clipURL).trimmed(to: 0...4)
-        .filter(.gaussianBlur(radius: 0), animation: .keyframes([
-            .at(0.0, value: 20),   // start blurred
-            .at(2.0, value: 0),    // focus pulls in
-        ], timing: .easeOut))
-}
-.overlay(
-    TextOverlay("CHAPTER ONE", style: TextStyle(fontSize: 80, weight: .bold))
-        .position(.center)
-        .visible(during: 0.0...2.0)
-        .animation(.scaleUp(duration: 0.5))
-)
-.audio {
-    AudioTrack(url: musicAURL).at(time: 0).duration(3.0).crossfade(0.5)
-    AudioTrack(url: musicBURL).at(time: 2.5)
-}
-.export(to: outputURL)
-```
-
-### Export with progress tracking
-
-```swift
-let exporter = Video {
-    VideoClip(url: longVideoURL)
-}
-.preset(.cinema)
-.exporter(to: outputURL)
-
-for try await progress in exporter.run() {
-    print("\(Int(progress.fractionCompleted * 100))%")
-}
-```
-
-## Installation
-
-### Swift Package Manager
-
-Add to your `Package.swift`:
-
-<!-- readme-snippets: skip -->
-```swift
-dependencies: [
-    .package(url: "https://github.com/SteliyanH/kadr.git", from: "1.0.0")
-]
-```
-
-**`from:` is now the correct form.** It means `.upToNextMajor` — `>=1.0.0,
-<2.0.0` — and from v1.0.0 onward nothing in that range breaks you. That is the
-whole content of the 1.0 promise; see [API stability](#api-stability).
-
-Before 1.0 this README told you to pin `.upToNextMinor`, because `from:` does
-not special-case `0.x`: `from: "0.15.0"` resolved as `>=0.15.0, <1.0.0` and
-accepted every 0.x release, breaking ones included — and minors did break, as
-when v0.15.0 raised the platform floor to iOS 17. That advice is no longer
-needed, and if you are still pinned to a `0.x` minor you can move to `from:
-"1.0.0"` in one step.
-
-Or in Xcode: File > Add Package Dependencies > enter the repository URL.
-
-**Requires:** Xcode 26 or later (Swift 6.2). Xcode 16 cannot build kadr: the image types it stores are only `Sendable` in the Xcode 26 SDKs.
+And a reference application: [**Kadr Studio**](https://github.com/SteliyanH/kadr-reels-studio),
+a short-form vertical video editor built on all six.
 
 ## API stability
 
@@ -332,11 +369,6 @@ From **v1.0.0**, kadr follows semantic versioning without asterisks:
 - **Deprecation before removal.** Anything on its way out is marked
   `@available(*, deprecated:)` for at least one minor with a named replacement,
   and can only actually disappear in a major.
-
-The surface frozen here is the one as of v0.22.0, not v0.14 as an earlier
-roadmap said — v0.15 through v0.22 added the platform floor, per-clip volume,
-waveform resampling, export quality, and the filter catalogue, and all of that
-is inside the commitment.
 
 What this does *not* promise: `internal` symbols, the exact bytes an export
 produces (encoders change under us), and performance figures — those are tracked
@@ -351,8 +383,6 @@ as a contract.
 | macOS | 14.0 |
 | tvOS | 17.0 |
 | visionOS | 1.0 |
-
-> **Platform floor raised in v0.15.0** (was iOS 16 / macOS 13 / tvOS 16). Aligns the ecosystem on the iOS 17 baseline for the `@Observable` migration in `kadr-reels-studio`. Stay on `0.14.x` if you need the iOS 16 floor.
 
 ## Architecture
 

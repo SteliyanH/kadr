@@ -33,6 +33,14 @@ let package = Package(
             path: "Examples",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
+        // Renders the README's GIFs by running the README's own snippets. Run
+        // deliberately (`swift run KadrReadmeMedia`), never by `swift test`.
+        .executableTarget(
+            name: "KadrReadmeMedia",
+            dependencies: ["KadrExamples"],
+            path: "Tools/ReadmeMedia",
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
         // Benchmarks are an executable rather than a test target: they are run
         // deliberately, on real hardware, not as part of `swift test`. Export
         // needs hardware encode, which hosted CI runners do not have.
