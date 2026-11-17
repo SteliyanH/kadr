@@ -50,6 +50,11 @@ Hotfixes branch from `main` directly (e.g. `fix/v0.X.Y-something`), merge into `
 `Tools/readme-snippets.sh` and commit the regenerated
 `Examples/ReadmeSnippets.swift`. CI fails if the two disagree, and the build
 fails if an example does not compile.
+**README GIFs:** if you change a recipe that has a GIF, run
+`swift run -c release KadrReadmeMedia` (or name the recipes, e.g.
+`swift run -c release KadrReadmeMedia pip titles`) and commit `docs/media/`.
+It renders each GIF from the snippet beside it, and checks that the README's
+raw AVFoundation comparison still produces the same frames as kadr.
 
 ## Guidelines
 

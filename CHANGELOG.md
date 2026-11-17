@@ -79,6 +79,16 @@ own build, the extra builder overload adds no type-checking time.
 
 ### Documentation
 
+- **The README shows what kadr makes.** A demo video at the top, rendered by
+  kadr from the code beside it, a Quick Start that needs no media files, and
+  six recipes, each with its output GIF: slideshow with music, vertical video
+  for Reels, picture-in-picture, green screen, speed ramp and animated titles.
+  Every GIF is rendered by running the snippet printed next to it
+  (`swift run KadrReadmeMedia`), from media drawn in code, so the repository
+  carries no stock footage. A side-by-side with raw AVFoundation replaces the
+  table that mapped a private predecessor's functions, and the renderer checks
+  that both produce the same frames. Installation states the real requirements
+  and the iOS Simulator overlay limitation.
 - **Every README example compiles.** Four did not: `Transform`'s arguments were
   out of order, `.speed(0.5)` did not compile (it does now; see Added), the
   merge example mapped an array inside `Video {}` (also fixed by Added; the
