@@ -42,8 +42,7 @@ Hotfixes branch from `main` directly (e.g. `fix/v0.X.Y-something`), merge into `
 ## Development
 
 **Requirements:**
-- Xcode 16+ / Swift 6.0+
-- macOS 13+
+- Xcode 26+ / Swift 6.2+ (the floor CI checks)
 
 **Build:** `swift build`
 **Test:** `swift test`

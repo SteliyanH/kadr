@@ -319,7 +319,7 @@ needed, and if you are still pinned to a `0.x` minor you can move to `from:
 
 Or in Xcode: File > Add Package Dependencies > enter the repository URL.
 
-**Requires:** Xcode 16+ / Swift 6.0+
+**Requires:** Xcode 26 or later (Swift 6.2). Xcode 16 cannot build kadr: the image types it stores are only `Sendable` in the Xcode 26 SDKs.
 
 ## API stability
 

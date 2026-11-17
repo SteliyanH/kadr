@@ -23,6 +23,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 Both are additive: no existing call changes meaning. Measured on this package's
 own build, the extra builder overload adds no type-checking time.
 
+### Changed
+
+- **The manifest states the real toolchain floor: Swift 6.2 (Xcode 26).** It
+  said `swift-tools-version: 6.0`, but kadr has not built with Xcode 16 for a
+  while. Its public types store `UIImage`, `NSImage` and `CIImage` in
+  `Sendable` structs, and those are only `Sendable` in the Xcode 26 SDKs. On
+  Xcode 16 the build failed with Sendable errors. It now fails with
+  SwiftPM's plain "requires Swift 6.2". Nothing changes for anyone on Xcode
+  26, and CI now builds with the oldest Xcode 26 on every pull request.
+
 ### Documentation
 
 - **Every README example compiles.** Four did not: `Transform`'s arguments were

@@ -1,4 +1,8 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
+// 6.2 is the real floor, not a preference: kadr's public types store
+// UIImage / NSImage / CIImage in Sendable structs, and those types are only
+// Sendable in the Xcode 26 SDKs. Under Xcode 16 (Swift 6.0 / 6.1) the build
+// fails with Sendable errors; declaring 6.2 makes SwiftPM say so plainly.
 import PackageDescription
 
 let package = Package(
