@@ -303,15 +303,15 @@ struct OverlayTests {
         #expect((textLayer as? CATextLayer)?.string as? String == "hi")
     }
 
-    @Test func textOverlayDefaultSizeFillsRenderArea() {
+    /// 1.2: the default box fits the text. It used to be the whole render area,
+    /// which made position and anchor all but meaningless for text.
+    @Test func textOverlayDefaultSizeFitsTheText() {
         let renderSize = CGSize(width: 1080, height: 1920)
-        let tree = OverlayRenderer.buildLayerTree(
-            overlays: [TextOverlay("x").position(.topLeft).anchor(.topLeft)],
-            renderSize: renderSize
-        )
+        let overlay = TextOverlay("x").position(.topLeft).anchor(.topLeft)
+        let tree = OverlayRenderer.buildLayerTree(overlays: [overlay], renderSize: renderSize)
         let textLayer = tree.parent.sublayers?[1] as? CATextLayer
-        // Default size = full render area, anchored top-left at (0,0) → frame is (0,0,1080,1920)
-        #expect(textLayer?.frame == CGRect(origin: .zero, size: renderSize))
+        #expect(textLayer?.frame == CGRect(origin: .zero, size: overlay.naturalSize(in: renderSize)))
+        #expect((textLayer?.frame.width ?? .infinity) < renderSize.width / 4)
     }
 
     @Test func textOverlayStyleAppliesToLayer() {
