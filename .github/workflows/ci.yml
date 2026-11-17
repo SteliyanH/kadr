@@ -98,3 +98,27 @@ jobs:
       # not a fix.
       - name: Build for iOS
         run: xcodebuild -scheme Kadr -destination 'generic/platform=iOS' -quiet build
+
+  # Package.swift says `swift-tools-version: 6.0`, which promises that kadr
+  # builds with Swift 6.0. The `test` job above only ever uses Xcode 26, so
+  # nothing checked that promise, and a report from the Swift Package Index
+  # said 6.1 builds failed. This job builds the library — what a consumer
+  # compiles — with the oldest toolchains the manifest claims.
+  #
+  # Build only, no tests: the question is "does it compile", and the test job
+  # already answers "does it work" on the current toolchain.
+  toolchain-floor:
+    runs-on: macos-15
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        xcode: ['16.2', '16.4']   # Swift 6.0.3 and Swift 6.1.2
+    name: build (Xcode ${{ matrix.xcode }})
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ matrix.xcode }}
+      - run: swift --version
+      - run: swift build --target Kadr
