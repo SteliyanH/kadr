@@ -44,6 +44,15 @@ own build, the extra builder overload adds no type-checking time.
   other filters keep the faster H.264 pre-render. If no alpha encoder is
   available, export throws `KadrError.exportFailed` rather than writing black.
 
+- **A Ken Burns slideshow with dissolves no longer hangs.** Any clip with a
+  transform or keyframe animation in a chain that also had a transition made
+  export (and preview) run forever: the transform sent the chain down the
+  multi-track path, which pre-rendered a chain with transitions by building the
+  same clips again, which took the multi-track path again. Such clips are now
+  rendered to their own file first, which costs one extra encode per
+  transformed clip in that chain. A depth limit turns any future runaway
+  pre-render into `KadrError.exportFailed` instead of a hang.
+
 ### Documentation
 
 - **Every README example compiles.** Four did not: `Transform`'s arguments were
