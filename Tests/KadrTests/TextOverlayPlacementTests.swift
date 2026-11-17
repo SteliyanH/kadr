@@ -3,6 +3,7 @@ import Foundation
 @testable import Kadr
 import AVFoundation
 import CoreGraphics
+import CoreText
 #if canImport(UIKit)
 import UIKit
 #else
@@ -107,6 +108,63 @@ struct TextOverlayPlacementTests {
         #expect(box.minY < 30, "a full-canvas box draws its text at the top, got top \(box.minY)")
     }
 
+    // MARK: - Visibility window with a text animation
+
+    /// Bright pixels in the frame at `seconds`, on a 4 s black composition.
+    private func brightPixels(_ overlay: TextOverlay, at times: [Double]) async throws -> [Int] {
+        let output = FileManager.default.temporaryDirectory
+            .appendingPathComponent("text_vis_\(UUID().uuidString).mp4")
+        defer { try? FileManager.default.removeItem(at: output) }
+        _ = try await Video { ImageClip(black, duration: 4) }
+            .overlay(overlay)
+            .preset(preset)
+            .export(to: output)
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: output))
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        var counts: [Int] = []
+        for seconds in times {
+            let (image, _) = try await generator.image(at: CMTime(seconds: seconds, preferredTimescale: 600))
+            var pixels = [UInt8](repeating: 0, count: image.width * image.height * 4)
+            let context = CGContext(data: &pixels, width: image.width, height: image.height, bitsPerComponent: 8,
+                                    bytesPerRow: image.width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+            counts.append(stride(from: 0, to: pixels.count, by: 4).filter { pixels[$0] > 160 }.count)
+        }
+        return counts
+    }
+
+    /// Before 1.2 this text never appeared: the fade was built after the window
+    /// had set the layer's opacity to 0, so it faded from 0 to 0.
+    @Test func fadeInInsideAVisibilityWindow() async throws {
+        let overlay = TextOverlay("Hello", style: style)
+            .visible(during: 1.0...3.0)
+            .animation(.fadeIn(duration: 0.5))
+        let counts = try await brightPixels(overlay, at: [0.5, 1.05, 2.0, 3.5])
+        #expect(counts[0] == 0, "hidden before the window")
+        #expect(counts[2] > 100, "shown in the window, got \(counts[2]) bright pixels")
+        #expect(counts[1] < counts[2] / 2, "fading in when it appears, not at zero: \(counts[1]) vs \(counts[2])")
+        #expect(counts[3] == 0, "hidden after the window")
+    }
+
+    @Test func slideInInsideAVisibilityWindow() async throws {
+        let overlay = TextOverlay("Hello", style: style)
+            .visible(during: 1.0...3.0)
+            .animation(.slideIn(from: .fromLeft, duration: 0.4))
+        let counts = try await brightPixels(overlay, at: [0.5, 2.0, 3.5])
+        #expect(counts[0] == 0)
+        #expect(counts[1] > 100)
+        #expect(counts[2] == 0)
+    }
+
+    @Test func fadeInWithoutAWindowIsUnchanged() async throws {
+        let counts = try await brightPixels(TextOverlay("Hello", style: style).animation(.fadeIn(duration: 0.5)),
+                                            at: [0.05, 2.0])
+        #expect(counts[0] < counts[1] / 2)
+        #expect(counts[1] > 100)
+    }
+
     // MARK: - naturalSize
 
     @Test func naturalSizeFitsOneLine() {
@@ -133,6 +191,17 @@ struct TextOverlayPlacementTests {
         let stroked = TextOverlay("Hello", style: TextStyle(fontSize: 36, weight: .bold, stroke: TextStroke(width: 6)))
             .naturalSize(in: canvas)
         #expect(stroked.width > plain.width)
+    }
+
+    /// `.bold` and `.medium` render at their weight, in the system font. Before
+    /// 1.2 every weight came out as Helvetica Regular.
+    @Test(arguments: [(TextStyle.Weight.regular, 0.0), (.medium, 0.23), (.bold, 0.4)])
+    func weightIsHonoured(_ weight: TextStyle.Weight, _ expected: Double) {
+        let font = TextMetrics.font(for: TextStyle(fontSize: 40, weight: weight))
+        let traits = CTFontCopyTraits(font) as NSDictionary
+        let actual = (traits[kCTFontWeightTrait] as? NSNumber)?.doubleValue ?? -1
+        #expect(abs(actual - expected) < 0.05, "weight \(weight) rendered at \(actual)")
+        #expect(!(CTFontCopyFamilyName(font) as String).contains("Helvetica"))
     }
 
     @Test func emptyTextHasNoSize() {

@@ -58,38 +58,64 @@ internal enum OverlayRenderer {
             if let layerID = overlay.layerID {
                 sublayer.name = layerID.rawValue
             }
-            if let range = overlay.visibilityRange {
-                applyVisibilityTiming(
-                    to: sublayer,
-                    range: range,
-                    baseOpacity: baseOpacity,
-                    compositionDuration: compositionDuration
-                )
-            }
-            // v0.8: text animation. The recipe builds CAAnimation(s) targeting the
-            // overlay's text layer; we add them with stable keys so they don't collide
-            // with the visibility-timing animation. The recipe is responsible for its
-            // own beginTime / fillMode / removedOnCompletion semantics.
+            // The layer that carries the overlay's frame, visibility window and
+            // layout animation. Usually the content layer itself.
+            var host: CALayer = sublayer
+            var hostOpacity = baseOpacity
+
+            // v0.8: text animation, on the text layer. Built before the visibility
+            // window hides anything, so an opacity recipe reads the overlay's real
+            // opacity. Before 1.2 it was built after, read 0, and `.fadeIn` faded
+            // from 0 to 0, so a text overlay with both `.visible(during:)` and
+            // `.fadeIn` never appeared.
             if let textOverlay = overlay as? TextOverlay,
                let textAnim = textOverlay.textAnimation {
                 let animations = textAnim.makeAnimations(for: sublayer)
+                // A recipe left at its default start begins when the text appears,
+                // not at composition zero, which may be long before.
+                if let range = overlay.visibilityRange {
+                    let appears = max(0, CMTimeGetSeconds(range.start))
+                    for anim in animations where appears > 0 && anim.beginTime == AVCoreAnimationBeginTimeAtZero {
+                        anim.beginTime = appears
+                    }
+                }
                 for (i, anim) in animations.enumerated() {
                     sublayer.add(anim, forKey: "kadr.textAnimation.\(i)")
                 }
+                // Both the window and an opacity recipe animate `opacity`, and on one
+                // layer the later animation replaces the earlier for the whole
+                // timeline. Give the window its own container so the two multiply.
+                if overlay.visibilityRange != nil {
+                    let container = CALayer()
+                    container.frame = sublayer.frame
+                    container.name = sublayer.name
+                    sublayer.frame = container.bounds
+                    container.addSublayer(sublayer)
+                    host = container
+                    hostOpacity = 1   // the text layer already carries the overlay's opacity
+                }
+            }
+            if let range = overlay.visibilityRange {
+                applyVisibilityTiming(
+                    to: host,
+                    range: range,
+                    baseOpacity: hostOpacity,
+                    compositionDuration: compositionDuration
+                )
             }
             // v0.8.1: position / size animation on image / sticker overlays. Sample at
             // 30fps within the composition duration; emit position + bounds.size
             // CAKeyframeAnimations. Composition-relative timing.
             if overlay.positionAnimation != nil || overlay.sizeAnimation != nil {
                 applyOverlayLayoutAnimation(
-                    to: sublayer,
+                    to: host,
                     overlay: overlay,
                     renderSize: renderSize,
                     compositionDuration: compositionDuration,
                     fallbackSize: overlay.size ?? naturalSize(of: overlay, in: renderSize, cache: imageCache)
                 )
             }
-            parent.addSublayer(sublayer)
+            parent.addSublayer(host)
         }
 
         return LayerTree(parent: parent, videoLayer: videoLayer)

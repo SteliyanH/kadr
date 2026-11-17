@@ -30,7 +30,14 @@ enum TextMetrics {
         if let name = style.fontName {
             return CTFontCreateWithName(name as CFString, size, nil)
         }
-        let descriptor = CTFontDescriptorCreateWithAttributes([
+        // Start from the system UI font and ask for the weight. A descriptor with
+        // only a weight trait, which is what this did before 1.2, matches no family:
+        // CoreText fell back to Helvetica Regular for every weight, so `.bold` and
+        // `.medium` never rendered, and kadr's text was not in the system font.
+        guard let system = CTFontCreateUIFontForLanguage(.system, size, nil) else {
+            return CTFontCreateWithName("Helvetica" as CFString, size, nil)
+        }
+        let descriptor = CTFontDescriptorCreateCopyWithAttributes(CTFontCopyFontDescriptor(system), [
             kCTFontTraitsAttribute: [kCTFontWeightTrait: weight(style.weight)],
         ] as CFDictionary)
         return CTFontCreateWithFontDescriptor(descriptor, size, nil)
