@@ -33,6 +33,17 @@ own build, the extra builder overload adds no type-checking time.
   SwiftPM's plain "requires Swift 6.2". Nothing changes for anyone on Xcode
   26, and CI now builds with the oldest Xcode 26 on every pull request.
 
+### Fixed
+
+- **Green screen shows what is behind it.** A clip with `.chromaKey` placed over
+  another clip exported black where the key colour had been, not the clip
+  beneath. Filtered clips are pre-rendered to a temporary file, and that file
+  was always H.264, which has no alpha channel. A clip with a chroma key is now
+  pre-rendered with alpha (HEVC with alpha, or ProRes 4444 where the system has
+  it), so export, preview and thumbnails all show the background. Clips with
+  other filters keep the faster H.264 pre-render. If no alpha encoder is
+  available, export throws `KadrError.exportFailed` rather than writing black.
+
 ### Documentation
 
 - **Every README example compiles.** Four did not: `Transform`'s arguments were

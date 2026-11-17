@@ -79,6 +79,14 @@ public enum Filter: Sendable, Equatable {
     case glow(intensity: Double = 1.0)
 
     /// The underlying CIFilter name. Internal — used by ``FilterProcessor``.
+    /// Whether this filter can make pixels transparent. The filter pre-render
+    /// keeps an alpha channel only for these, because an alpha-capable encode is
+    /// slower and larger than H.264.
+    internal var producesTransparency: Bool {
+        if case .chromaKey = self { return true }
+        return false
+    }
+
     internal var ciFilterName: String {
         switch self {
         case .brightness, .contrast, .saturation: return "CIColorControls"

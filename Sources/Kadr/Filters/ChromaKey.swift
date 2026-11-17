@@ -23,6 +23,22 @@ import AppKit
 /// VideoClip(url: subjectURL).filter(.chromaKey(color: .green, threshold: 0.35))
 /// ```
 ///
+/// **Layering.** Keyed pixels are transparent, so put the keyed clip above what
+/// should show through: in a ``Track`` or with `.at(time:)`, over the main chain.
+///
+/// ```swift
+/// Video {
+///     ImageClip(backdrop, duration: 5)
+///     VideoClip(url: subjectURL)
+///         .filter(.chromaKey(color: .green, threshold: 0.35))
+///         .at(time: 0)
+/// }
+/// ```
+///
+/// A keyed clip is pre-rendered with an alpha channel (HEVC with alpha, or ProRes
+/// 4444 where available). If the device has neither encoder, export throws rather
+/// than writing a black background.
+///
 /// **Algorithm.** Per cube entry, the (R, G, B) sample is converted to ITU-R BT.601
 /// `(Cb, Cr)` chroma coordinates; the Euclidean distance from the target's `(Cb, Cr)`
 /// is compared to `threshold`. Inside → alpha 0 (premultiplied RGB also zeroed; required
