@@ -23,6 +23,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 Both are additive: no existing call changes meaning. Measured on this package's
 own build, the extra builder overload adds no type-checking time.
 
+- **`TextOverlay.naturalSize(in:)`.** The size a text overlay's box takes
+  when it has no explicit `.size`: the text's own size, wrapping at the canvas
+  width. Public so a preview (kadr-ui) can lay text out exactly as the export
+  does.
+
 ### Changed
 
 - **The manifest states the real toolchain floor: Swift 6.2 (Xcode 26).** It
@@ -52,6 +57,25 @@ own build, the extra builder overload adds no type-checking time.
   rendered to their own file first, which costs one extra encode per
   transformed clip in that chain. A depth limit turns any future runaway
   pre-render into `KadrError.exportFailed` instead of a hang.
+
+- **Text lands where `.position` and `.anchor` put it.** A `TextOverlay`
+  without an explicit `.size` was laid out in a box the size of the whole
+  canvas, and Core Animation draws text at the top of its box. So
+  `.position(.bottom).anchor(.bottom)`, the example in `TextOverlay`'s own
+  docs, showed the text at the top, and `.position(.center)` showed it near
+  the top. The default box now fits the text. **Visible change:** exported text
+  without an explicit size moves to the place its position and anchor name.
+  Text with an explicit `.size` is unchanged. Image and sticker overlays with
+  an animated position no longer jump to a quarter-canvas size while they move.
+- **`TextStyle.weight` renders.** `.bold` and `.medium` were ignored: the font
+  lookup matched no family, so every text overlay came out in Helvetica
+  Regular. Text now uses the system font at the requested weight, as kadr-ui's
+  preview always has.
+- **A fade-in inside a visibility window shows.** A text overlay with both
+  `.visible(during:)` and `.fadeIn` never appeared: the fade read the opacity
+  the window had just set to 0, then overrode the window for the whole video.
+  Text animations left at their default start now begin when the text
+  appears.
 
 ### Documentation
 
