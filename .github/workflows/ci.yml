@@ -98,3 +98,26 @@ jobs:
       # not a fix.
       - name: Build for iOS
         run: xcodebuild -scheme Kadr -destination 'generic/platform=iOS' -quiet build
+
+  # Package.swift declares `swift-tools-version: 6.2`, which promises that kadr
+  # builds with the first Xcode 26. The `test` job above pins a later 26.x, so
+  # this job holds the floor: it builds the library — what a consumer
+  # compiles — with the oldest toolchain the manifest admits.
+  #
+  # The floor was measured, not guessed. Xcode 16.2 and 16.4 (Swift 6.0 and
+  # 6.1) fail: UIImage / NSImage / CIImage are only Sendable in the Xcode 26
+  # SDKs, and kadr's public structs store them.
+  #
+  # Build only, no tests: the question is "does it compile", and the test job
+  # already answers "does it work".
+  toolchain-floor:
+    runs-on: macos-15
+    timeout-minutes: 15
+    name: build (oldest Xcode 26)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.0'
+      - run: swift --version
+      - run: swift build --target Kadr
