@@ -17,7 +17,7 @@ In Xcode, choose **File › Add Package Dependencies…** and enter
 <!-- readme-snippets: skip -->
 ```swift
 dependencies: [
-    .package(url: "https://github.com/SteliyanH/kadr.git", from: "1.2.0")
+    .package(url: "https://github.com/SteliyanH/kadr.git", from: "1.2.1")
 ]
 ```
 

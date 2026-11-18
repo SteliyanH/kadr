@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-18
+
+Documentation release. No code changes.
+
 ### Documentation
 
 - **Getting Started and Cookbook articles.** Getting Started goes from adding
