@@ -7,7 +7,7 @@ import Foundation
 /// — there is no single `.brightness` to list, only `.brightness(0.2)`. Any UI
 /// offering "add a filter" therefore has to hard-code the menu, and every
 /// hard-coded menu goes stale the moment a filter is added here. This type is
-/// the fix: iterate ``FilterKind/allCases``, and a filter added to kadr appears
+/// the fix: iterate `FilterKind.allCases`, and a filter added to kadr appears
 /// in the menu without the consumer changing anything.
 ///
 /// ```swift
@@ -68,7 +68,7 @@ public enum FilterKind: String, Sendable, Equatable, Hashable, CaseIterable {
 
     /// An English name, for menus.
     ///
-    /// kadr ships no localisation. ``rawValue`` is a stable key, so a localised
+    /// kadr ships no localisation. `rawValue` is a stable key, so a localised
     /// app can look up its own string by it and fall back to this.
     public var displayName: String {
         switch self {
@@ -107,7 +107,7 @@ extension Filter {
     /// Which ``FilterKind`` this filter is.
     ///
     /// Exhaustive by construction: a new `Filter` case fails to compile here
-    /// until it is given a kind, which is what keeps ``FilterKind/allCases``
+    /// until it is given a kind, which is what keeps `FilterKind.allCases`
     /// honest.
     ///
     /// Added in v0.22.

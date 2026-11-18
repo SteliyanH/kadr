@@ -19,6 +19,11 @@ let url = try await Video {
 
 ## Topics
 
+### Start Here
+
+- <doc:GettingStarted>
+- <doc:Cookbook>
+
 ### Guides
 
 - <doc:Slideshows>
@@ -45,33 +50,40 @@ let url = try await Video {
 - ``ImageClip``
 - ``VideoClipMetadata``
 - ``ClipID``
+- ``Speed``
 
-### Multi-track Timeline (v0.6+)
+### Multi-track Timeline
 
 - ``Track``
 - ``VideoClip/at(time:)-(CMTime)``
 - ``VideoClip/at(time:)-(TimeInterval)``
 - ``MultiInputCompositor``
-- ``Video/compositor(_:)-(any)``
-- ``Video/compositor(_:)-(closure)``
+- ``Video/compositor(_:)-(MultiInputCompositor)``
+- ``Video/compositor(_:)-(([CIImage],CompositorContext)->CIImage)``
 
 ### Audio
 
 - ``AudioTrack``
+- ``AudioTimePitchAlgorithm``
+
+### Captions
+
+- ``Caption``
 
 ### Transitions
 
 - ``Transition``
 - ``SlideDirection``
 
-### Layout (v0.3+)
+### Layout
 
 - ``Position``
 - ``Size``
 - ``Anchor``
+- ``Transform``
 - ``LayerID``
 
-### Overlays (v0.3+)
+### Overlays
 
 - ``Overlay``
 - ``ImageOverlay``
@@ -81,14 +93,29 @@ let url = try await Video {
 - ``TextShadow``
 - ``StickerOverlay``
 
-### Filters (v0.3+)
+### Text Animation
+
+- ``TextAnimation``
+- ``FadeIn``
+- ``SlideIn``
+- ``ScaleUp``
+
+### Keyframe Animation
+
+- ``Animation``
+- ``Animatable``
+- ``TimingFunction``
+
+### Filters
 
 - ``Filter``
+- ``FilterID``
+- ``FilterKind``
 - ``LUT``
 - ``ChromaKey``
 - ``ColorComponents``
 
-### Cropping (v0.3+)
+### Cropping
 
 - ``Video/crop(at:size:anchor:)``
 - ``VideoClip/crop(at:size:anchor:)``
@@ -96,14 +123,14 @@ let url = try await Video {
 - ``VideoClip/mask(_:)-(PlatformImage)``
 - ``CropRegion``
 
-### Custom Processing (v0.5+)
+### Custom Processing
 
 - ``Compositor``
 - ``CompositorContext``
-- ``VideoClip/compositor(_:)-(any)``
-- ``VideoClip/compositor(_:)-(closure)``
+- ``VideoClip/compositor(_:)-(Compositor)``
+- ``VideoClip/compositor(_:)-((CIImage,CompositorContext)->CIImage)``
 
-### Preview & Introspection (v0.4+)
+### Preview & Introspection
 
 - ``Video/makePlayerItem()``
 - ``Video/thumbnail(at:)-(CMTime)``
@@ -117,7 +144,7 @@ let url = try await Video {
 - ``Layout``
 - ``Layout/resolveFrame(position:size:anchor:in:)``
 
-### Sugar (v0.3+)
+### Sugar
 
 - ``BackgroundMusic``
 - ``TitleSequence``
@@ -128,6 +155,7 @@ let url = try await Video {
 - ``Exporter``
 - ``ExportProgress``
 - ``Preset``
+- ``ExportQuality``
 - ``Codec``
 
 ### Platform Support

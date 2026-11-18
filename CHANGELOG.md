@@ -4,6 +4,27 @@ All notable changes to Kadr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Documentation
+
+- **Getting Started and Cookbook articles.** Getting Started goes from adding
+  the package to a previewed, exported video with progress and errors. The
+  Cookbook answers seventeen common "how do I…" questions (merge, trim, music,
+  slow motion, text, a logo, green screen, file size, thumbnails, subtitles)
+  in a few lines each.
+- **Every DocC example compiles.** `Tools/readme-snippets.sh` now copies the
+  articles' Swift blocks into `Examples/DocCSnippets.swift` as well, and CI
+  fails if they are stale or do not build. Four would not compile as written:
+  three used `...` as code, and the custom compositor example stored a `CIFilter` in a
+  `Sendable` type, which Swift 6 rejects. It is replaced by a colour grade that
+  builds its table once and is safe to run on several frames at once.
+- **The cost of a slow compositor was overstated 30 times.** 10 ms per frame
+  adds 1.5 seconds to a 5-second export at 30 fps, not 45.
+- **The documentation home lists every public type.** Fourteen were missing,
+  among them `Transform`, `Animation` and `Speed`. The documentation builds
+  with no warnings; it had 32 broken or ambiguous links.
+
 ## [1.2.0] - 2026-11-17
 
 ### Added

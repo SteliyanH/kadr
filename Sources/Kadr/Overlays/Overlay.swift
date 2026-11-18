@@ -28,7 +28,7 @@ public protocol Overlay: Sendable {
 
     /// Composition time range during which this overlay is visible. `nil` (the default)
     /// means the overlay is visible for the entire composition. Set via
-    /// ``visible(during:)-(CMTimeRange)`` or ``visible(during:)-(ClosedRange<TimeInterval>)``
+    /// `visible(during:)`, with a `CMTimeRange` or a `ClosedRange<TimeInterval>`,
     /// on the concrete overlay types.
     ///
     /// Outside the range the overlay's CALayer renders at zero opacity (transition is
@@ -49,7 +49,7 @@ public extension Overlay {
     var visibilityRange: CMTimeRange? { nil }
 
     /// Default: nil. ``ImageOverlay`` and ``StickerOverlay`` override with storage;
-    /// ``TextOverlay`` and ``Watermark`` keep the default in v0.8.1.
+    /// ``TextOverlay`` keeps the default.
     var positionAnimation: Animation<Position>? { nil }
 
     /// Default: nil. See ``positionAnimation`` for the contract.

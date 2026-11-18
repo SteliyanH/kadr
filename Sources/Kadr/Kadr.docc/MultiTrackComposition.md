@@ -13,11 +13,11 @@ are placing *one* clip or *several*.
 
 ## One clip, placed by time
 
-``Clip/at(time:)`` pins a clip to an absolute composition time. It leaves the
+``VideoClip/at(time:)-(TimeInterval)`` pins a clip to an absolute composition time. It leaves the
 chain — the clips around it behave as though it were not there:
 
 ```swift
-Video {
+let video = Video {
     VideoClip(url: main).trimmed(to: 0...10)     // the spine
     VideoClip(url: inset).trimmed(to: 0...3)
         .at(time: 2.0)                            // floats above it
@@ -35,7 +35,7 @@ was wanted — placement and scale usually travel together.
 while the track as a whole sits at one point in the parent:
 
 ```swift
-Video {
+let video = Video {
     VideoClip(url: main).trimmed(to: 0...20)
 
     Track(at: 2.0) {
@@ -68,9 +68,7 @@ is not a reason to avoid layering, but it is a reason not to reach for
 exists so a consuming editor can show something meaningful in a timeline UI
 instead of *Track 2*.
 
-## Topics
-
-### Related
+## See Also
 
 - ``Track``
 - ``Transform``

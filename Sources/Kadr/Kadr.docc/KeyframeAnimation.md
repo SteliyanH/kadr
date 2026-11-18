@@ -31,7 +31,7 @@ which is what lets the same animation be reused across clips.
 ## Applying it
 
 ```swift
-VideoClip(url: url).opacity(1.0, animation: fade)
+let clip = VideoClip(url: url).opacity(1.0, animation: fade)
 ```
 
 The first argument is the base: the value used outside the animation's range.
@@ -49,7 +49,7 @@ let drift = Animation<Transform>.keyframes([
     .at(4.0, value: Transform(scale: 1.15)),
 ])
 
-ImageClip(photo, duration: 4.0)
+let clip = ImageClip(photo, duration: 4.0)
     .transform(Transform(scale: 1.0), animation: drift)
 ```
 
@@ -65,7 +65,7 @@ let ramp = Animation<Double>.keyframes([
     .at(2.0, value: 0.6),
 ])
 
-VideoClip(url: url).filter(.brightness(0.0), animation: ramp)
+let clip = VideoClip(url: url).filter(.brightness(0.0), animation: ramp)
 ```
 
 ### Prefer the keyed surface
@@ -92,9 +92,7 @@ default and is the right choice more often than it looks: eased motion on a
 2-second clip is largely indistinguishable from linear, and easing is most
 visible on long, slow moves.
 
-## Topics
-
-### Related
+## See Also
 
 - ``Animation``
 - ``TimingFunction``

@@ -43,8 +43,8 @@ public struct Video: Sendable {
     /// The active crop region, or `nil` if no crop is applied. Set via ``crop(at:size:anchor:)``.
     public internal(set) var crop: CropRegion?
 
-    /// Optional multi-track blender. Set via ``compositor(_:)-(any)`` /
-    /// ``compositor(_:)-(closure)``. `nil` (default) means the engine will use its
+    /// Optional multi-track blender. Set via ``compositor(_:)-(MultiInputCompositor)`` /
+    /// ``compositor(_:)-(([CIImage],CompositorContext)->CIImage)``. `nil` (default) means the engine will use its
     /// built-in alpha-composite later-over-earlier blender when the composition has
     /// multiple parallel tracks.
     public internal(set) var multiInputCompositor: (any MultiInputCompositor)?
@@ -53,7 +53,7 @@ public struct Video: Sendable {
     /// `nil` (default), the compositor runs for the entire composition. When set, the
     /// engine consults each frame's composition time — inside the window the user's
     /// compositor runs; outside it, the default alpha-composite blender runs. Set via
-    /// ``compositor(_:during:)-(CMTimeRange)`` / ``compositor(_:during:)-(closedrange)``.
+    /// ``compositor(_:during:)-(_,CMTimeRange)`` / ``compositor(_:during:)-(_,ClosedRange<TimeInterval>)``.
     /// Added in v0.7.
     public internal(set) var compositorWindow: CMTimeRange?
 
@@ -284,12 +284,12 @@ public struct Video: Sendable {
         return self.compositor(compositor, during: CMTimeRange(start: start, end: end))
     }
 
-    /// Closure form of ``compositor(_:during:)-(CMTimeRange)``. Added in v0.7.
+    /// Closure form of ``compositor(_:during:)-(_,CMTimeRange)``. Added in v0.7.
     public func compositor(during range: CMTimeRange, _ body: @Sendable @escaping ([CIImage], CompositorContext) -> CIImage) -> Video {
         compositor(ClosureMultiInputCompositor(body: body), during: range)
     }
 
-    /// Closure form of ``compositor(_:during:)-(closedrange)``. Added in v0.7.
+    /// Closure form of ``compositor(_:during:)-(_,ClosedRange<TimeInterval>)``. Added in v0.7.
     public func compositor(during range: ClosedRange<TimeInterval>, _ body: @Sendable @escaping ([CIImage], CompositorContext) -> CIImage) -> Video {
         compositor(ClosureMultiInputCompositor(body: body), during: range)
     }

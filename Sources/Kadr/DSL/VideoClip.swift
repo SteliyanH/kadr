@@ -38,7 +38,7 @@ public struct VideoClip: Clip, Sendable {
     public internal(set) var url: URL
 
     /// The active trim range in source-asset time, or `nil` if the full asset is used.
-    /// Set via ``trimmed(to:)`` (CMTimeRange or ClosedRange<TimeInterval>).
+    /// Set via ``trimmed(to:)-(CMTimeRange)`` (CMTimeRange or ClosedRange<TimeInterval>).
     public internal(set) var trimRange: CMTimeRange?
 
     /// `true` if the clip is played in reverse. Set via ``reversed()``.
@@ -68,8 +68,8 @@ public struct VideoClip: Clip, Sendable {
     /// over ``speedRate`` — values in the animation are speed multipliers (1.0 = normal,
     /// 0.5 = half-speed, 2.0 = 2×). The engine integrates the curve into a piecewise-linear
     /// time map and applies via repeated `scaleTimeRange` segments. Composes with
-    /// ``trimmed(to:)``: trim is applied first (selects the source range), then the speed
-    /// curve maps that range to the timeline. Set via ``speed(curve:)``. Added in v0.9.
+    /// ``trimmed(to:)-(CMTimeRange)``: trim is applied first (selects the source range), then the speed
+    /// curve maps that range to the timeline. Set via ``speed(_:)`` with ``Speed/curved(_:)``. Added in v0.9.
     public internal(set) var speedCurve: Animation<Double>?
 
     /// Filters applied to this clip in declaration order. Set via ``filter(_:)``.
@@ -99,7 +99,7 @@ public struct VideoClip: Clip, Sendable {
     public internal(set) var filterAnimations: [Animation<Double>?]
 
     /// User-supplied compositors applied to this clip in declaration order, after
-    /// ``filters``. Set via ``compositor(_:)-(any)`` or ``compositor(_:)-(closure)``.
+    /// ``filters``. Set via ``compositor(_:)-(Compositor)`` or ``compositor(_:)-((CIImage,CompositorContext)->CIImage)``.
     public internal(set) var compositors: [any Compositor]
 
     /// Stable identifier for addressing this clip across reorders or trims, set via

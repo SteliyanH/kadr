@@ -24,13 +24,13 @@ let slideshow = Video {
 }
 .preset(.reelsAndShorts)
 
-try await slideshow.export(to: outputURL)
+let file = try await slideshow.export(to: outputURL)
 ```
 
 If you have no images to hand, ``SampleMedia`` generates them:
 
 ```swift
-Video {
+let video = Video {
     for index in 0..<4 {
         ImageClip(SampleMedia.image(index: index), duration: 2.0)
     }
@@ -43,7 +43,7 @@ A hard cut between two stills reads as a glitch rather than an edit. Place a
 ``Transition`` between clips — it is a clip in the builder, not a modifier on one:
 
 ```swift
-Video {
+let video = Video {
     ImageClip(first, duration: 3.0)
     Transition.dissolve(duration: 0.5)
     ImageClip(second, duration: 3.0)
@@ -69,7 +69,7 @@ let push = Animation<Transform>.keyframes([
     .at(3.0, value: Transform(scale: 1.12)),
 ])
 
-ImageClip(photo, duration: 3.0)
+let clip = ImageClip(photo, duration: 3.0)
     .transform(Transform(scale: 1.0), animation: push)
 ```
 
@@ -87,7 +87,7 @@ See <doc:KeyframeAnimation> for what else can be driven this way.
 clip, so it takes transitions and transforms on the same terms:
 
 ```swift
-Video {
+let video = Video {
     TitleSequence("Summer", duration: 2.0)
     Transition.fade(duration: 0.5)
     ImageClip(beach, duration: 3.0)
@@ -99,7 +99,7 @@ Video {
 Background music attaches to the composition rather than to a clip:
 
 ```swift
-slideshow.audio {
+let scored = slideshow.audio {
     AudioTrack(url: musicURL)
         .volume(0.6)
         .fadeIn(1.0)
@@ -110,9 +110,7 @@ slideshow.audio {
 A fade out matters more than it sounds: music that stops dead at the last frame
 is the most common way an otherwise finished slideshow feels unfinished.
 
-## Topics
-
-### Related
+## See Also
 
 - ``ImageClip``
 - ``TitleSequence``

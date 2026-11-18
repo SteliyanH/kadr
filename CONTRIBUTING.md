@@ -46,10 +46,12 @@ Hotfixes branch from `main` directly (e.g. `fix/v0.X.Y-something`), merge into `
 
 **Build:** `swift build`
 **Test:** `swift test`
-**README examples:** after editing a Swift block in `README.md`, run
-`Tools/readme-snippets.sh` and commit the regenerated
-`Examples/ReadmeSnippets.swift`. CI fails if the two disagree, and the build
-fails if an example does not compile.
+**Documentation examples:** after editing a Swift block in `README.md` or in an
+article under `Sources/Kadr/Kadr.docc`, run `Tools/readme-snippets.sh` and
+commit the regenerated `Examples/ReadmeSnippets.swift` and
+`Examples/DocCSnippets.swift`. CI fails if they disagree with the docs, and the
+build fails if an example does not compile. Names an article assumes (`url`,
+`photo`, `clip`) live in `Examples/DocCSnippetAssets.swift`.
 **README GIFs:** if you change a recipe that has a GIF, run
 `swift run -c release KadrReadmeMedia` (or name the recipes, e.g.
 `swift run -c release KadrReadmeMedia pip titles`) and commit `docs/media/`.
