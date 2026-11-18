@@ -44,7 +44,7 @@ public protocol MultiInputCompositor: Sendable {
 
 /// Default multi-track blender: alpha-composite later-over-earlier. Used when a
 /// composition has multiple parallel tracks but no custom ``MultiInputCompositor`` is
-/// attached via ``Video/compositor(_:)-(any)``.
+/// attached via ``Video/compositor(_:)-(MultiInputCompositor)``.
 ///
 /// Internal — users get this implicitly. Custom blends override via the public modifier.
 internal struct AlphaCompositeBlender: MultiInputCompositor {
@@ -74,7 +74,7 @@ internal struct AlphaCompositeBlender: MultiInputCompositor {
 }
 
 /// Closure-backed `MultiInputCompositor` conformance. Internal — public construction
-/// goes through ``Video/compositor(_:)-(closure)`` which wraps the closure into one of
+/// goes through ``Video/compositor(_:)-(([CIImage],CompositorContext)->CIImage)`` which wraps the closure into one of
 /// these.
 internal struct ClosureMultiInputCompositor: MultiInputCompositor {
     let body: @Sendable ([CIImage], CompositorContext) -> CIImage

@@ -52,7 +52,7 @@ must export on the Simulator during development, leave the overlays out of
 Simulator builds:
 
 ```swift
-var video = Video { ... }
+var video = Video { VideoClip(url: clipURL) }
 #if !targetEnvironment(simulator)
 video = video.overlay(TextOverlay("Title"))
 #endif

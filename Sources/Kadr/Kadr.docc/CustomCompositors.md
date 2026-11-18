@@ -16,7 +16,7 @@ unusably slow, so the constraints are worth understanding before the syntax.
 For anything stateless, pass a closure:
 
 ```swift
-VideoClip(url: url).compositor { image, context in
+let blurred = VideoClip(url: url).compositor { image, context in
     image.applyingFilter("CIGaussianBlur", parameters: [
         kCIInputRadiusKey: 8.0
     ])
@@ -28,7 +28,7 @@ and the engine's ``CompositorContext/renderSize`` in pixels, post-crop and
 post-preset. Time is what makes an effect animate:
 
 ```swift
-VideoClip(url: url).compositor { image, context in
+let focusPull = VideoClip(url: url).compositor { image, context in
     let radius = min(20.0, context.time.seconds * 4.0)
     return image.applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: radius])
 }
@@ -37,25 +37,47 @@ VideoClip(url: url).compositor { image, context in
 ## The protocol form
 
 When the effect needs setup, conform a type instead. Anything expensive belongs
-in the initialiser, not in `process`:
+in the initialiser, not in `process`. Here the expensive part is a 32×32×32
+colour table, built once and then applied to every frame:
 
 ```swift
-struct Vignette: Compositor {
-    let filter: CIFilter          // built once
+struct WarmGrade: Compositor {
+    private let cube: Data          // built once, read by every frame
 
-    init(intensity: Double) {
-        filter = CIFilter(name: "CIVignette")!
-        filter.setValue(intensity, forKey: kCIInputIntensityKey)
+    init(warmth: Float) {
+        let size = 32, top = Float(size - 1)
+        var table: [Float] = []
+        table.reserveCapacity(size * size * size * 4)
+        for blue in 0..<size {
+            for green in 0..<size {
+                for red in 0..<size {
+                    table += [
+                        min(1, Float(red) / top + warmth),
+                        Float(green) / top,
+                        max(0, Float(blue) / top - warmth),
+                        1,
+                    ]
+                }
+            }
+        }
+        cube = table.withUnsafeBufferPointer { Data(buffer: $0) }
     }
 
     func process(image: CIImage, context: CompositorContext) -> CIImage {
-        filter.setValue(image, forKey: kCIInputImageKey)
-        return filter.outputImage ?? image
+        image.applyingFilter("CIColorCube", parameters: [
+            "inputCubeDimension": 32,
+            "inputCubeData": cube,
+        ])
     }
 }
 
-VideoClip(url: url).compositor(Vignette(intensity: 1.4))
+let graded = VideoClip(url: url).compositor(WarmGrade(warmth: 0.08))
 ```
+
+Keep what you store immutable. A `CIFilter` is a mutable object, so a stored
+one that `process` configures per frame is shared state, and Swift 6 rejects it
+in a `Sendable` type. Store the inputs (numbers, `Data`, a `CIImage`) and call
+`applyingFilter` in `process`; creating the filter there is cheap.
 
 ## The three constraints
 
@@ -67,10 +89,10 @@ rate and duration, so a 5-second clip at 30 fps would suspend 150 times.
 **It must be `Sendable`.** The engine crosses actor boundaries while running
 compositors. Capture value types; do not reach for a shared mutable cache.
 
-**Cost multiplies by frame count.** A 10 ms operation is invisible in isolation
-and adds 45 seconds to a 5-second export at 30 fps. Preload at construction,
-reuse `CIFilter` instances, and prefer `applyingFilter` chains over building
-images by hand.
+**Cost multiplies by frame count.** A 10 ms operation is invisible in isolation,
+yet adds 1.5 seconds to a 5-second export at 30 fps and 18 seconds to a
+one-minute one. Build tables and images once at construction, and prefer
+`applyingFilter` chains over building images by hand.
 
 ## Order
 
@@ -89,9 +111,7 @@ sources — a custom transition, a chroma composite over a second clip — needs
 `AVVideoCompositing` path and is applied to the composition rather than to a
 clip.
 
-## Topics
-
-### Related
+## See Also
 
 - ``Compositor``
 - ``CompositorContext``

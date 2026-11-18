@@ -30,15 +30,15 @@ fractional second of slop is acceptable.
 
 ```swift
 // Frame-accurate (CMTime):
-clip.trimmed(to: CMTimeRange(
+let exact = clip.trimmed(to: CMTimeRange(
     start:    CMTime(value: 30, timescale: 30),    // exactly second 1
     duration: CMTime(value: 90, timescale: 30)     // exactly 3 seconds
 ))
-Transition.fade(duration: CMTime(value: 1, timescale: 30))   // exactly 1 frame at 30fps
+let oneFrame = Transition.fade(duration: CMTime(value: 1, timescale: 30))   // exactly 1 frame at 30fps
 
 // Ergonomic (TimeInterval):
-clip.trimmed(to: 0...3)                                       // close enough
-Transition.fade(duration: 0.5)                                // close enough
+let roughly = clip.trimmed(to: 0...3)                         // close enough
+let halfSecond = Transition.fade(duration: 0.5)               // close enough
 ```
 
 ## Wall-clock time vs media-timeline time
