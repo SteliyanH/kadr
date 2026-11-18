@@ -39,7 +39,7 @@ import AppKit
 /// > `AVAssetImageGenerator` is thread-safe for image generation, and a value type keeps
 /// > the batch ``thumbnails(at:)`` stream (which drives `images(for:)` from a producer
 /// > task) free of actor-isolation friction. Matches the engine's other AVFoundation
-/// > wrappers (``KadrVideoCompositor``).
+/// > wrappers (`KadrVideoCompositor`).
 public final class ThumbnailGenerator: @unchecked Sendable {
 
     private let generator: AVAssetImageGenerator

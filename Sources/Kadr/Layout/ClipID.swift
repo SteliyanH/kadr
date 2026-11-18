@@ -22,7 +22,7 @@ import Foundation
 /// any consumer that holds a reference. Pass an explicit string and you stay in control.
 ///
 /// `Transition` deliberately doesn't carry a `ClipID` — it sits between media clips
-/// and isn't an addressable unit. ``Clip/clipID-7m1ip`` returns `nil` for transitions.
+/// and isn't an addressable unit. ``Clip/clipID`` returns `nil` for transitions.
 public struct ClipID: Hashable, Sendable, ExpressibleByStringLiteral, CustomStringConvertible {
     /// The wrapped string identifier.
     public let rawValue: String

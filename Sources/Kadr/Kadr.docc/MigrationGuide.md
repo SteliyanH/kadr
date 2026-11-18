@@ -23,6 +23,7 @@ still compiling does not, and there are three of those.
 This applies to every consumer regardless of version, and it is the change most
 likely to bite silently.
 
+<!-- readme-snippets: skip -->
 ```swift
 // Wrong, and probably what you have
 .package(url: "...kadr.git", from: "0.14.0")
@@ -45,14 +46,19 @@ then means what semver says it means.
 and curved speed mutually exclusive at the type level rather than by
 documentation.
 
+<!-- readme-snippets: skip -->
 ```swift
 // Before
 let rate = clip.speed            // Double
+```
 
+```swift
 // After
 switch clip.speed {
-case .flat(let rate): ...
-case .curved(let animation): ...
+case .flat(let rate):
+    print("plays at \(rate)x")
+case .curved(let animation):
+    print("ramps through \(animation.keyframes.count) keyframes")
 }
 ```
 
@@ -95,12 +101,20 @@ observably — from `"The operation couldn't be completed. (Kadr.KadrError error
 **If you match on error strings, that matching breaks.** Switch on the case
 instead, which was always the supported approach:
 
+<!-- readme-snippets: skip -->
 ```swift
 // Fragile before, broken now
 if error.localizedDescription.contains("error 6") { ... }
+```
 
+```swift
 // Correct
-if case .invalidTransition = error as? KadrError { ... }
+do {
+    let file = try await video.export(to: outputURL)
+    print(file)
+} catch KadrError.invalidTransition(let reason) {
+    print(reason)   // e.g. a transition longer than a clip it joins
+}
 ```
 
 If you *display* `localizedDescription`, you get better text for free — and
@@ -136,9 +150,7 @@ the surface 1.0 commits to.
 Additions will continue as minors. A `1.x` release may add API; it will not
 remove or change the meaning of what is here.
 
-## Topics
-
-### Related
+## See Also
 
 - ``Speed``
 - ``FilterID``

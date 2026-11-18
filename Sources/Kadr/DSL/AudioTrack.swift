@@ -26,11 +26,11 @@ public struct AudioTrack: Sendable {
     public let volumeLevel: Double
 
     /// Fade-in duration applied at the start of the track. `.zero` if no fade-in.
-    /// Set via ``fadeIn(_:)`` (CMTime or TimeInterval).
+    /// Set via ``fadeIn(_:)-(CMTime)`` (CMTime or TimeInterval).
     public let fadeInDuration: CMTime
 
     /// Fade-out duration applied at the end of the track. `.zero` if no fade-out.
-    /// Set via ``fadeOut(_:)`` (CMTime or TimeInterval).
+    /// Set via ``fadeOut(_:)-(CMTime)`` (CMTime or TimeInterval).
     public let fadeOutDuration: CMTime
 
     /// Auto-ducking target level in `0.0...1.0`, or `nil` if ducking is disabled. When set,
@@ -54,14 +54,14 @@ public struct AudioTrack: Sendable {
     /// exists, the engine emits matching volume ramps — fade out on this track and
     /// fade in on the next — over `min(crossfadeDuration, overlapDuration)`. The
     /// crossfade overrides any explicit `fadeIn` / `fadeOut` at that boundary so
-    /// AVFoundation doesn't see overlapping ramps. Set via ``crossfade(_:)``.
+    /// AVFoundation doesn't see overlapping ramps. Set via ``crossfade(_:)-(CMTime)``.
     /// Added in v0.8.
     public let crossfadeDuration: CMTime?
 
     /// Granular volume automation curves between two points, in track-relative time
     /// (0 = the audio's start in the composition, i.e. ``startTime``). Each ramp
     /// linearly interpolates from `startVolume` to `endVolume` across `range`. Set
-    /// via ``volumeRamp(start:end:during:)``. Added in v0.8.3.
+    /// via ``volumeRamp(start:end:during:)-(_,_,CMTimeRange)``. Added in v0.8.3.
     ///
     /// Engine consumers must avoid overlap between ramps and the implicit fade-in /
     /// fade-out / crossfade ranges. The engine drops ramps that would overlap (with

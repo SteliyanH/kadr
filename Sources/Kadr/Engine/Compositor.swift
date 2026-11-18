@@ -34,7 +34,7 @@ public struct CompositorContext: Sendable {
 /// VideoClip(url: clipURL).compositor(InvertColors())
 /// ```
 ///
-/// For ad-hoc use, prefer the closure form on ``VideoClip/compositor(_:)-(closure)``.
+/// For ad-hoc use, prefer the closure form on ``VideoClip/compositor(_:)-((CIImage,CompositorContext)->CIImage)``.
 ///
 /// **Constraints**
 /// - Synchronous return — Kadr wraps the call in
@@ -42,15 +42,14 @@ public struct CompositorContext: Sendable {
 ///   `async` would multiply with frame rate and clip duration; preload state at
 ///   construction time and keep `process` cheap.
 /// - `Sendable` — the engine crosses actor boundaries while running compositors.
-/// - Single-clip / single-input — multi-input compositing (e.g. blending two source
-///   images for a custom transition) is scoped to v0.6 alongside the multi-track
-///   timeline; that work needs the lower-level `AVVideoCompositing` path.
+/// - Single-clip / single-input — to combine several tracks' frames (a custom
+///   blend or transition), use ``MultiInputCompositor`` instead.
 public protocol Compositor: Sendable {
     func process(image: CIImage, context: CompositorContext) -> CIImage
 }
 
 /// Closure-backed `Compositor` conformance. Internal — public construction goes through
-/// ``VideoClip/compositor(_:)-(closure)`` which wraps a closure into one of these.
+/// ``VideoClip/compositor(_:)-((CIImage,CompositorContext)->CIImage)`` which wraps a closure into one of these.
 internal struct ClosureCompositor: Compositor {
     let body: @Sendable (CIImage, CompositorContext) -> CIImage
 

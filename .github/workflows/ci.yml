@@ -64,11 +64,12 @@ jobs:
           # the last green run used.
           xcode-version: '26.3'
       # The README is the first code anyone runs, and it had four snippets that
-      # did not compile. Tools/readme-snippets.sh copies every ```swift block
-      # into Examples/ReadmeSnippets.swift, which `swift test` builds with the
-      # rest of the Examples target. This step fails if that copy is stale, so
-      # a README edit cannot skip the compiler.
-      - name: README snippets are current
+      # did not compile; the DocC articles had more. Tools/readme-snippets.sh
+      # copies every ```swift block in both into Examples/ReadmeSnippets.swift
+      # and Examples/DocCSnippets.swift, which `swift test` builds with the rest
+      # of the Examples target. This step fails if either copy is stale, so a
+      # docs edit cannot skip the compiler.
+      - name: README and DocC snippets are current
         run: Tools/readme-snippets.sh --check
 
       # `--no-parallel` is load-bearing, not a preference.

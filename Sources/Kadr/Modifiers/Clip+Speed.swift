@@ -1,7 +1,7 @@
 import Foundation
 
 /// Canonical representation of a clip's playback speed. v0.11 collapse of
-/// the two-method ``VideoClip/speed(_:)`` / ``VideoClip/speed(curve:)``
+/// the two-method `VideoClip.speed(_:)` / `VideoClip.speed(curve:)`
 /// pair into a single enum, making the previously-documented
 /// mutual-exclusion compile-time-checked.
 ///
