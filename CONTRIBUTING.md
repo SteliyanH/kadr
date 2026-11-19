@@ -52,6 +52,9 @@ commit the regenerated `Examples/ReadmeSnippets.swift` and
 `Examples/DocCSnippets.swift`. CI fails if they disagree with the docs, and the
 build fails if an example does not compile. Names an article assumes (`url`,
 `photo`, `clip`) live in `Examples/DocCSnippetAssets.swift`.
+**Markdown copies for language models:** after editing the README, an article
+or `docs/llms.txt`, run `Tools/llms-docs.sh` and commit `docs/articles/` and
+`docs/llms-full.txt`. CI fails if they are stale.
 **README GIFs:** if you change a recipe that has a GIF, run
 `swift run -c release KadrReadmeMedia` (or name the recipes, e.g.
 `swift run -c release KadrReadmeMedia pip titles`) and commit `docs/media/`.
