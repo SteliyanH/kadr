@@ -346,3 +346,43 @@ footer.site a { color: var(--ink-2); }
 .count b { display: block; font-family: ui-monospace, "SF Mono", Menlo, monospace;
            font-size: 2rem; line-height: 1; color: var(--accent); }
 .count span { font-size: .8rem; color: var(--ink-3); }
+
+/* --- landing page --- */
+.actions { display: flex; flex-wrap: wrap; gap: .7rem; margin: 0 0 1.8rem; }
+.button {
+  display: inline-block; padding: .55rem 1.1rem; border-radius: 6px;
+  border: 1px solid var(--rule); background: var(--surface);
+  color: var(--ink); font-weight: 600; font-size: .95rem; text-decoration: none;
+}
+.button:hover { border-color: var(--ink-3); }
+.button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.button.primary:hover { filter: brightness(1.08); }
+.meta code { background: none; padding: 0; overflow-wrap: anywhere; }
+img { max-width: 100%; height: auto; border-radius: 6px; display: block; }
+figure { margin: 0; }
+figcaption { font-size: .85rem; color: var(--ink-3); margin-top: .6rem; }
+.hero, .recipe {
+  display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.45fr);
+  gap: 1.6rem 2.2rem; align-items: start;
+}
+.hero pre, .recipe pre { margin: 0; }
+.recipe { padding: 2rem 0; border-top: 1px solid var(--rule); }
+.recipe h3 { margin-top: 0; }
+.recipe p { color: var(--ink-2); }
+.recipe.tall img { max-width: 240px; justify-self: center; }
+.packages { list-style: none; padding: 0; max-width: none; }
+.packages li {
+  display: grid; grid-template-columns: 11rem 1fr; gap: .2rem 1.4rem;
+  padding: .9rem 0; border-top: 1px solid var(--rule); margin: 0;
+}
+.packages li:last-child { border-bottom: 1px solid var(--rule); }
+.packages span { color: var(--ink-2); }
+.built { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1.2rem; }
+.built > div { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 1.2rem 1.4rem; }
+.built h3 { margin-top: 0; }
+.built p:last-child { margin-bottom: 0; }
+@media (max-width: 760px) {
+  .wrap { padding-left: 16px; padding-right: 16px; }
+  .hero, .recipe, .packages li { grid-template-columns: minmax(0, 1fr); }
+}
+.hero pre, .recipe pre { font-size: 12px; }
