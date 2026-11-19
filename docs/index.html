@@ -3,38 +3,248 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Kadr — writing</title>
-<meta name="description" content="Notes from building a declarative video composition library for Apple platforms.">
+<title>Kadr — SwiftUI for video</title>
+<meta name="description" content="A declarative Swift library for composing, transforming and exporting video on Apple platforms. A result-builder DSL, async/await, and nothing underneath but AVFoundation.">
 <link rel="canonical" href="https://steliyanh.github.io/kadr/">
-<meta property="og:type" content="article">
-<meta property="og:title" content="Kadr — writing">
-<meta property="og:description" content="Notes from building a declarative video composition library for Apple platforms.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Kadr — SwiftUI for video">
+<meta property="og:description" content="A declarative Swift library for composing, transforming and exporting video on Apple platforms. A result-builder DSL, async/await, and nothing underneath but AVFoundation.">
 <meta property="og:url" content="https://steliyanh.github.io/kadr/">
 <meta property="og:image" content="https://raw.githubusercontent.com/SteliyanH/kadr/main/.github/branding/social-card.png">
 <meta name="twitter:card" content="summary_large_image">
+<link rel="alternate" type="text/plain" title="kadr for language models" href="llms.txt">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div class="wrap">
 <nav class="sitenav">
   <a class="brand" href="/kadr/">Kadr</a>
-  <a href="https://github.com/SteliyanH/kadr">GitHub</a>
   <a href="https://swiftpackageindex.com/SteliyanH/kadr/documentation/kadr">Documentation</a>
-  <a href="/kadr/">Writing</a>
+  <a href="https://github.com/SteliyanH/kadr">GitHub</a>
+  <a href="#writing">Writing</a>
 </nav>
-</div>
-<div class="wrap">
+
 <header class="masthead">
-  <p class="eyebrow">Writing</p>
-  <h1>Kadr</h1>
-  <p class="standfirst">Notes from building a declarative video composition library for Apple platforms — and the reference editor that keeps finding its holes.</p>
+  <p class="eyebrow">Open source · Swift 6 · Apple platforms</p>
+  <h1>SwiftUI for video.</h1>
+  <p class="standfirst">kadr composes, transforms and exports video on Apple platforms.
+  A result-builder DSL, async/await throughout, and nothing underneath but AVFoundation.</p>
+  <p class="actions">
+    <a class="button primary" href="https://swiftpackageindex.com/SteliyanH/kadr/documentation/kadr/gettingstarted">Get started</a>
+    <a class="button" href="https://swiftpackageindex.com/SteliyanH/kadr/documentation/kadr/cookbook">Cookbook</a>
+    <a class="button" href="https://github.com/SteliyanH/kadr">GitHub</a>
+  </p>
   <div class="meta">
-    <span><b>Library</b> <a href="https://github.com/SteliyanH/kadr">github.com/SteliyanH/kadr</a></span>
-    <span><b>Docs</b> <a href="https://swiftpackageindex.com/SteliyanH/kadr/documentation/kadr">Swift Package Index</a></span>
+    <span><b>Install</b> <code>.package(url: "https://github.com/SteliyanH/kadr.git", from: "1.2.1")</code></span>
+    <span><b>Runs on</b> iOS 17 · macOS 14 · tvOS 17 · visionOS 1</span>
+    <span><b>License</b> Apache 2.0</span>
   </div>
 </header>
 
-<section>
+<section class="hero">
+  <figure>
+    <img src="media/hero.gif" width="560" alt="An illustrated coastline slowly zooms in under a bouncing &quot;kadr&quot; title, dissolves into a flight over mountains, and a talking cartoon face pops into the top-right corner.">
+    <figcaption>This video is the code beside it, rendered by kadr. So is every video on this page.</figcaption>
+  </figure>
+  <pre><code>let video = Video {
+    ImageClip(coast, duration: 4)
+        .transform(.identity, animation: .keyframes([                 // Ken Burns
+            .at(0.0, value: Transform(scale: 1.0)),
+            .at(4.0, value: Transform(center: .normalized(x: 0.6, y: 0.45), scale: 1.3)),
+        ], timing: .easeInOut))
+    Transition.dissolve(duration: 0.8)
+    VideoClip(url: droneURL).trimmed(to: 0...5)
+    VideoClip(url: reactionURL).trimmed(to: 0...3)                    // picture-in-picture
+        .at(time: 4.5)
+        .transform(Transform(center: .normalized(x: 0.96, y: 0.06), scale: 0.32, anchor: .topRight))
+}
+.overlay(
+    TextOverlay(&quot;kadr&quot;, style: TextStyle(fontSize: 240, alignment: .center, weight: .bold))
+        .position(.center)
+        .visible(during: 0.4...3.2)
+        .animation(.scaleUp(duration: 0.6))
+)
+.audio(url: musicURL)
+.preset(.cinema)
+
+let url = try await video.export(to: outputURL)</code></pre>
+</section>
+
+<section id="recipes">
+  <h2>Recipes</h2>
+  <p class="sectionlead">Each is the whole program, under 20 lines, and CI compiles every one.
+  The <a href="https://swiftpackageindex.com/SteliyanH/kadr/documentation/kadr/cookbook">Cookbook</a> has seventeen more.</p>
+  <article class="recipe">
+    <img src="media/slideshow.gif" alt="Three illustrated landscapes, each slowly zooming in, dissolving into the next." loading="lazy">
+    <div>
+      <h3>Slideshow with music</h3>
+      <p>Three photos, each slowly zooming in, dissolving into the next.</p>
+      <pre><code>let kenBurns = Animation&lt;Transform&gt;.keyframes([
+    .at(0.0, value: Transform(scale: 1.0)),
+    .at(3.0, value: Transform(scale: 1.15)),
+])
+
+let url = try await Video {
+    ImageClip(coast, duration: 3).transform(.identity, animation: kenBurns)
+    Transition.dissolve(duration: 0.6)
+    ImageClip(mountains, duration: 3).transform(.identity, animation: kenBurns)
+    Transition.dissolve(duration: 0.6)
+    ImageClip(lake, duration: 3).transform(.identity, animation: kenBurns)
+}
+.audio(url: musicURL)
+.preset(.cinema)
+.export(to: outputURL)</code></pre>
+    </div>
+  </article>
+  <article class="recipe tall">
+    <img src="media/vertical.gif" alt="Landscape mountain footage reframed to a tall 9:16 video with a title at the top." loading="lazy">
+    <div>
+      <h3>Vertical video for Reels, Shorts and TikTok</h3>
+      <p>Landscape footage in, 1080×1920 out.</p>
+      <pre><code>// Landscape footage in, 1080×1920 out: the clip is scaled to fill the frame.
+let url = try await Video {
+    VideoClip(url: droneURL).trimmed(to: 0...6)
+}
+.overlay(
+    TextOverlay(&quot;Above the Alps&quot;, style: TextStyle(fontSize: 104, alignment: .center,
+                                                   weight: .bold, shadow: TextShadow()))
+        .position(.normalized(x: 0.5, y: 0.14))
+)
+.preset(.reelsAndShorts)
+.export(to: outputURL)</code></pre>
+    </div>
+  </article>
+  <article class="recipe">
+    <img src="media/pip.gif" alt="Mountain footage with a small talking cartoon face in the top-right corner." loading="lazy">
+    <div>
+      <h3>Picture-in-picture reaction</h3>
+      <p>A second clip as a layer, from half a second in.</p>
+      <pre><code>let url = try await Video {
+    VideoClip(url: droneURL).trimmed(to: 0...6)
+    VideoClip(url: reactionURL).trimmed(to: 0...5)      // a second layer, from 0.5 s
+        .at(time: 0.5)
+        .transform(Transform(center: .normalized(x: 0.96, y: 0.06), scale: 0.35, anchor: .topRight))
+}
+.preset(.cinema)
+.export(to: outputURL)</code></pre>
+    </div>
+  </article>
+  <article class="recipe">
+    <img src="media/greenScreen.gif" alt="A waving cartoon presenter, filmed on green, standing in front of a dusk landscape." loading="lazy">
+    <div>
+      <h3>Green screen</h3>
+      <p>A presenter filmed on green, in front of a backdrop.</p>
+      <pre><code>let url = try await Video {
+    ImageClip(dusk, duration: 5)                        // the backdrop
+    VideoClip(url: presenterURL)                        // filmed on green
+        .filter(.chromaKey(color: .green, threshold: 0.35))
+        .at(time: 0)
+}
+.preset(.cinema)
+.export(to: outputURL)</code></pre>
+    </div>
+  </article>
+  <article class="recipe">
+    <img src="media/speedRamp.gif" alt="A ball rolling across a field slows to a crawl, then speeds past the fence posts." loading="lazy">
+    <div>
+      <h3>Speed ramp</h3>
+      <p>Into slow motion, then double speed, with the audio following.</p>
+      <pre><code>let ramp = Animation&lt;Double&gt;.keyframes([
+    .at(0.0, value: 1.0),
+    .at(1.2, value: 0.25),      // into slow motion…
+    .at(2.4, value: 2.0),       // …then double speed
+    .at(4.0, value: 1.0),
+])
+
+let url = try await Video {
+    VideoClip(url: rollURL).speed(.curved(ramp))
+}
+.preset(.cinema)
+.export(to: outputURL)</code></pre>
+    </div>
+  </article>
+  <article class="recipe">
+    <img src="media/titles.gif" alt="Mountain footage with a bold outlined title sliding in from the left, then a subtitle fading in under it." loading="lazy">
+    <div>
+      <h3>Animated titles</h3>
+      <p>Outlined text that slides in, and a subtitle that fades in under it.</p>
+      <pre><code>let title = TextStyle(fontSize: 132, weight: .bold, stroke: TextStroke(width: 4), shadow: TextShadow(blur: 8))
+let subtitle = TextStyle(fontSize: 64, weight: .medium, shadow: TextShadow(blur: 6))
+
+let url = try await Video {
+    VideoClip(url: droneURL).trimmed(to: 0...5)
+}
+.overlay(
+    TextOverlay(&quot;Chapter one&quot;, style: title)
+        .position(.normalized(x: 0.06, y: 0.72)).anchor(.bottomLeft)
+        .visible(during: 0.3...5.0)
+        .animation(.slideIn(from: .fromLeft, duration: 0.6))
+)
+.overlay(
+    TextOverlay(&quot;The long way up&quot;, style: subtitle)
+        .position(.normalized(x: 0.06, y: 0.82)).anchor(.bottomLeft)
+        .visible(during: 1.0...5.0)
+        .animation(.fadeIn(duration: 0.6))
+)
+.preset(.cinema)
+.export(to: outputURL)</code></pre>
+    </div>
+  </article>
+</section>
+
+<section id="why">
+  <h2>Why kadr</h2>
+  <p class="sectionlead">FFmpegKit retired in January 2025, and Pixel SDK followed a month later.
+  AVFoundation can do it all, but a crossfade there is 120 lines of bookkeeping.</p>
+  <div class="count">
+    <div><b>3</b><span>lines of kadr to turn one clip into an upright, filled 9:16 export</span></div>
+    <div><b>40</b><span>lines of raw AVFoundation for the same frames, <a href="https://github.com/SteliyanH/kadr#why-kadr">side by side in the README</a></span></div>
+    <div><b>0</b><span>third-party dependencies</span></div>
+  </div>
+  <pre><code>let url = try await Video { VideoClip(url: droneURL).trimmed(to: 0...6) }
+    .preset(.reelsAndShorts)
+    .export(to: outputURL)</code></pre>
+</section>
+
+<section id="packages">
+  <h2>Packages</h2>
+  <p class="sectionlead">kadr is the engine. Add only the companions you need.</p>
+  <ul class="packages">
+    <li><a href="https://github.com/SteliyanH/kadr-ui"><code>kadr-ui</code></a><span>SwiftUI editor components: preview, multi-lane timeline with trim and reorder, thumbnail strip, overlay handles, inspector, keyframe editor.</span></li>
+    <li><a href="https://github.com/SteliyanH/kadr-captions"><code>kadr-captions</code></a><span>Caption parsing and authoring for SRT, WebVTT, iTT, ASS and SSA, and burned-in animated captions.</span></li>
+    <li><a href="https://github.com/SteliyanH/kadr-photos"><code>kadr-photos</code></a><span>Photos library integration: videos, images and Live Photos as kadr clips, and a SwiftUI picker.</span></li>
+    <li><a href="https://github.com/SteliyanH/kadr-audio"><code>kadr-audio</code></a><span>Music library tracks, in-app voiceover recording, audio session policy, and LUFS loudness measurement.</span></li>
+    <li><a href="https://github.com/SteliyanH/kadr-persistence"><code>kadr-persistence</code></a><span>Save a composition to a file and open it again, refusing rather than silently dropping what a file cannot hold.</span></li>
+  </ul>
+</section>
+
+<section id="built-with">
+  <h2>Built with kadr</h2>
+  <div class="built">
+    <div>
+      <h3><a href="https://github.com/SteliyanH/kadr-reels-studio">Kadr Studio</a></h3>
+      <p>An open-source editor for short vertical videos, built on all six packages. It is
+      kadr's reference app, and the place its rough edges show up first.</p>
+    </div>
+    <div>
+      <h3>Yours?</h3>
+      <p>Made something with kadr? Post it in
+      <a href="https://github.com/SteliyanH/kadr/discussions/categories/show-and-tell">Show and tell</a>,
+      and it can be listed here.</p>
+    </div>
+  </div>
+</section>
+
+<section id="support">
+  <h2>Support kadr</h2>
+  <p class="sectionlead">kadr is free and maintained by one person. If it saves you time,
+  <a href="https://github.com/sponsors/SteliyanH">sponsor it on GitHub</a> or
+  <a href="https://buymeacoffee.com/steliyanh">buy a coffee</a>. Questions go to
+  <a href="https://github.com/SteliyanH/kadr/discussions">Discussions</a>.</p>
+</section>
+
+<section id="writing">
+  <h2>Writing</h2>
 <ul class="postlist">
   <li>
     <p class="when">1 September 2026</p>
@@ -46,13 +256,12 @@
   </li>
 </ul>
 </section>
-</div>
 
-<div class="wrap">
 <footer class="site">
   <p><a href="https://github.com/SteliyanH/kadr">kadr</a> is a declarative video
   composition library for Apple platforms, by
-  <a href="https://github.com/SteliyanH">Steliyan Hadzhidenev</a>. Apache 2.0.</p>
+  <a href="https://github.com/SteliyanH">Steliyan Hadzhidenev</a>. Apache 2.0.
+  For language models: <a href="llms.txt">llms.txt</a>.</p>
 </footer>
 </div>
 </body>
