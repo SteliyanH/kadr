@@ -71,6 +71,10 @@ jobs:
       # docs edit cannot skip the compiler.
       - name: README and DocC snippets are current
         run: Tools/readme-snippets.sh --check
+      # docs/articles and docs/llms-full.txt are the same documentation as
+      # Markdown, for language models. They are copies, so they must not drift.
+      - name: Markdown copies of the docs are current
+        run: Tools/llms-docs.sh --check
 
       # `--no-parallel` is load-bearing, not a preference.
       #

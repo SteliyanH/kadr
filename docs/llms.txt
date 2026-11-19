@@ -1,0 +1,58 @@
+# kadr
+
+> kadr is a declarative Swift library for composing, transforming and exporting video on Apple platforms (iOS 17, macOS 14, tvOS 17, visionOS 1). A result-builder DSL (`Video { … }`) describes the timeline, `async`/`await` runs the export, and nothing underneath it but AVFoundation. It needs Xcode 26 (Swift 6.2) and has no third-party dependencies.
+
+Install with Swift Package Manager: `.package(url: "https://github.com/SteliyanH/kadr.git", from: "1.2.1")`, product `Kadr`. kadr follows semantic versioning: nothing public breaks within 1.x.
+
+A complete program:
+
+```swift
+import Kadr
+
+let url = try await Video {
+    VideoClip(url: clipURL).trimmed(to: 0...4)
+    Transition.dissolve(duration: 0.5)
+    ImageClip(photo, duration: 3)
+}
+.overlay(TextOverlay("Hello", style: TextStyle(fontSize: 96, weight: .bold)).position(.bottom))
+.audio(url: musicURL)
+.preset(.cinema)          // 1920×1080, 24 fps. The default, .auto, is vertical 1080×1920.
+.export(to: outputURL)
+```
+
+## Things that trip people up
+
+- **The default output is vertical.** Without `.preset(_:)`, a video exports at 1080×1920. Use `.preset(.cinema)` for landscape 1920×1080, `.square` for 1080×1080, or `.custom(width:height:frameRate:codec:)`. Clips are scaled to fill the frame and centred.
+- **`Transform` arguments go in declaration order**: `Transform(center:rotation:scale:anchor:)`, each optional. `Transform(scale: 0.5, center: …)` does not compile. Positions are `.normalized(x:y:)` from the top-left, 0...1.
+- **Keyframe times are clip-relative.** A keyframe `.at(0.0, …)` is the clip's first frame, not the start of the video.
+- **Speed takes a `Speed`.** `.speed(0.5)` works for a number literal, but a rate in a variable needs `.speed(.flat(rate))`. A changing rate is `.speed(.curved(animation))`. The range is 0.25 to 4.
+- **Overlays don't export in the iOS Simulator.** Exports with text or image overlays throw `KadrError` there, because Core Animation export is broken on the Simulator. They work on devices and macOS. Previews are unaffected.
+- **Transitions sit between two clips**, never first or last, and must be shorter than the clips beside them. A dissolve overlaps its clips, so it shortens the video; a fade does not.
+- **`try` goes outside the builder.** Build a throwing value such as `try LUT(url:)` before `Video { … }` and use it inside.
+- **Lists work inside `Video {}`**: `Video { urls.map { VideoClip(url: $0) } }`.
+
+## Docs
+
+- [Getting Started](https://steliyanh.github.io/kadr/articles/GettingStarted.md): from adding the package to a previewed export with progress, cancellation and errors
+- [Cookbook](https://steliyanh.github.io/kadr/articles/Cookbook.md): seventeen "how do I…" recipes, each a few lines: merge, trim, crossfade, slideshow, music, mute, slow motion, reverse, text, watermark, picture-in-picture, green screen, filters and LUTs, crop, file size, thumbnails, subtitles
+- [Keyframe Animation](https://steliyanh.github.io/kadr/articles/KeyframeAnimation.md): animating transforms, opacity and filters over time
+- [Multi-Track Composition](https://steliyanh.github.io/kadr/articles/MultiTrackComposition.md): layers, picture-in-picture, named tracks
+- [Slideshows](https://steliyanh.github.io/kadr/articles/Slideshows.md): photos with Ken Burns motion and transitions
+- [Custom Compositors](https://steliyanh.github.io/kadr/articles/CustomCompositors.md): per-frame Core Image processing
+- [Frame Accuracy](https://steliyanh.github.io/kadr/articles/FrameAccuracy.md): times, rounding and frame boundaries
+- [Known Platform Issues](https://steliyanh.github.io/kadr/articles/KnownPlatformIssues.md): Simulator limits and workarounds
+- [API reference](https://swiftpackageindex.com/SteliyanH/kadr/documentation/kadr): every public type, hosted on the Swift Package Index
+- [README](https://raw.githubusercontent.com/SteliyanH/kadr/main/README.md): recipes with the GIFs they render
+
+## Companion packages
+
+- [kadr-ui](https://github.com/SteliyanH/kadr-ui): SwiftUI editor components: `VideoPreview`, `TimelineView`, `ThumbnailStrip`, `OverlayHost`, `InspectorPanel`, `KeyframeEditor`
+- [kadr-captions](https://github.com/SteliyanH/kadr-captions): parse and write SRT, WebVTT, iTT, ASS and SSA captions
+- [kadr-photos](https://github.com/SteliyanH/kadr-photos): Photos library assets as kadr clips, and a SwiftUI picker
+- [kadr-audio](https://github.com/SteliyanH/kadr-audio): music library tracks, voiceover recording, loudness measurement
+- [kadr-persistence](https://github.com/SteliyanH/kadr-persistence): save and open compositions
+
+## Optional
+
+- [Migration Guide](https://steliyanh.github.io/kadr/articles/MigrationGuide.md): moving from 0.x to 1.0
+- [llms-full.txt](https://steliyanh.github.io/kadr/llms-full.txt): this file, the README and every article in one file
