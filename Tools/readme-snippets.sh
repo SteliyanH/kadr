@@ -89,11 +89,12 @@ readme() {
 # Articles are taken in name order so the output is stable. Each article's
 # functions are prefixed with its name: doccSnippet_Slideshows_1, ...
 articles() {
-    header "the DocC articles in Sources/Kadr/Kadr.docc" AVKit SwiftUI
+    header "the DocC articles in Sources/Kadr/Kadr.docc and docs/llms.txt" AVKit SwiftUI
     for article in "$docc"/*.md; do
         name=$(basename "$article" .md)
         blocks "$article" "Kadr.docc/$name.md" "doccSnippet_${name}_"
     done
+    blocks "$root/docs/llms.txt" docs/llms.txt llmsSnippet
 }
 
 status=0

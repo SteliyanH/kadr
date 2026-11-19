@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Documentation
+
+- **A landing page** at <https://steliyanh.github.io/kadr/>, in place of the
+  blog index: the hero video beside its code, the six README recipes, the
+  companion packages, Kadr Studio, and the writing. Its code is copied from the
+  README, which CI compiles.
+- **Documentation for language models.** `llms.txt` sums up kadr, its common
+  mistakes and where the docs are; `llms-full.txt` adds the README and every
+  article in one file; and each DocC article is published as Markdown under
+  `/articles/`. `Tools/llms-docs.sh` builds them, CI checks they are current,
+  and the example in `llms.txt` is compiled with the other snippets.
+
 ## [1.2.1] - 2026-11-18
 
 Documentation release. No code changes.
