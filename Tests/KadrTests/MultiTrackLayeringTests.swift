@@ -170,4 +170,21 @@ struct MultiTrackLayeringTests {
         #expect(try await dominantColor(of: url, at: 0.5) == .green)
         #expect(try await dominantColor(of: url, at: 2.0) == .red)
     }
+    /// A custom compositor's inputs carry their clip's opacity, as the default
+    /// compositor draws them: a transparent green clip over red composites to red.
+    @Test func customCompositorInputsCarryClipOpacity() async throws {
+        let red = try solidImage(.red), green = try solidImage(.green)
+        let url = try await Video {
+            ImageClip(red, duration: 1.0)
+            Track(at: 0) { ImageClip(green, duration: 1.0).opacity(0) }
+        }
+        .compositor { images, context in
+            images.dropFirst().reduce(images.first ?? .empty()) { $1.composited(over: $0) }
+        }
+        .preset(preset)
+        .export(to: outputURL("custom_opacity"))
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        #expect(try await dominantColor(of: url, at: 0.5) == .red)
+    }
 }

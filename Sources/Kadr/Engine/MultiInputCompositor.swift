@@ -38,6 +38,11 @@ import CoreGraphics
 ///   different conventions internally, but Kadr passes them in declaration order.
 /// - When only one track is active at a frame, `images` has exactly one element.
 ///   A single-element pass-through is the obvious default.
+/// - Each input arrives as the default compositor would draw it, in a frame of
+///   `context.renderSize`: upright (a portrait iPhone clip is not sideways), scaled to
+///   fill and centred, cropped, with its clip's transform, keyframes and opacity
+///   applied. Areas a clip doesn't cover are transparent. Blend the images as they are;
+///   don't rescale them.
 public protocol MultiInputCompositor: Sendable {
     func process(images: [CIImage], context: CompositorContext) -> CIImage
 }
