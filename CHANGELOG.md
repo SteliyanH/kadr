@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Changed
+
+- **The package checkout is 31 MB smaller.** The SimpleEditor example bundled a
+  31 MB sample video, which every app depending on kadr checked out. It now
+  generates its demo video with `SampleMedia` on the first export. Git history
+  still holds the old file, so the first clone is no smaller, but each
+  checkout of 1.2.2 or later is.
+
 ### Fixed
 
 - **A custom `MultiInputCompositor` gets its inputs as they appear on screen.**
