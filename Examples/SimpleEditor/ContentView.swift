@@ -9,7 +9,9 @@
 // Bundled resources:
 //   - sample_sunset.png, sample_ocean.png, sample_forest.png, sample_purple.png
 //   - sample_audio.mp3
-//   - sample_video.mp4
+//
+// The demo video is not bundled: it is generated with `SampleMedia` on the first
+// export, so the package carries no large media.
 
 #if canImport(SwiftUI) && canImport(AVKit)
 import SwiftUI
@@ -23,6 +25,8 @@ struct SimpleEditorView: View {
     @State private var outputURL: URL?
     @State private var errorMessage: String?
     @State private var selectedDemo: DemoType = .singleImage
+    /// Generated on the first export and reused after that.
+    @State private var generatedVideoURL: URL?
 
     // Parametric controls (visible only for the demos that use them)
     @State private var slideDirection: SlideDirectionChoice = .fromRight
@@ -316,7 +320,8 @@ struct SimpleEditorView: View {
         try? FileManager.default.removeItem(at: url)
 
         do {
-            let exporter = makeExporter(outputURL: url)
+            let sampleVideoURL = try await sampleVideo()
+            let exporter = makeExporter(outputURL: url, sampleVideoURL: sampleVideoURL)
             for try await p in exporter.run() {
                 progress = p.fractionCompleted
             }
@@ -329,7 +334,7 @@ struct SimpleEditorView: View {
     }
 
     // swiftlint:disable:next cyclomatic_complexity function_body_length
-    private func makeExporter(outputURL url: URL) -> Exporter {
+    private func makeExporter(outputURL url: URL, sampleVideoURL: URL) -> Exporter {
         switch selectedDemo {
         // v0.1
         case .singleImage:
@@ -528,9 +533,15 @@ struct SimpleEditorView: View {
 
     // MARK: - Resource URLs
 
-    private var sampleVideoURL: URL {
-        Bundle.main.url(forResource: "sample_video", withExtension: "mp4")
-            ?? URL(fileURLWithPath: "sample_video.mp4")
+    /// A 16-second landscape movie, long enough for every demo's trims (the longest
+    /// reads 10–15 s). Generated once, the first time it's needed.
+    private func sampleVideo() async throws -> URL {
+        if let url = generatedVideoURL, FileManager.default.fileExists(atPath: url.path) {
+            return url
+        }
+        let url = try await SampleMedia.movieFileURL(seconds: 16, preset: .cinema)
+        generatedVideoURL = url
+        return url
     }
 
     private var sampleAudioURL: URL {
