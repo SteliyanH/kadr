@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Fixed
+
+- **A custom `MultiInputCompositor` gets its inputs as they appear on screen.**
+  It used to get raw source frames: stored pixels at their stored size, with
+  nothing from the layout applied. A portrait iPhone clip arrived sideways, a
+  landscape clip in a vertical video sat at its own size in the bottom-left
+  corner, and clip transforms, keyframes, opacity and the crop were ignored.
+  Each input is now drawn as the default compositor draws it: upright, filled
+  to the frame, cropped, with its transform and opacity. So a compositor that
+  passes an input straight through exports what no compositor would.
+  Frames outside a `compositor(_:during:)` window, which the built-in blender
+  draws, now match the rest of the video instead of falling back to raw frames.
+  If your compositor scaled or rotated its inputs itself to make up for this,
+  remove that code: the inputs now arrive at the render size.
+
 ### Documentation
 
 - **A landing page** at <https://steliyanh.github.io/kadr/>, in place of the

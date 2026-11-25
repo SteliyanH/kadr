@@ -104,6 +104,10 @@ internal final class KadrVideoCompositor: NSObject, AVVideoCompositing, @uncheck
         // returns the buffer in the format we requested via `sourcePixelBufferAttributes`.
         // A track outside its content window is skipped: AVFoundation keeps handing out
         // its last frame after the media ends (issue #206).
+        //
+        // Source frames arrive raw — stored pixels at their stored size — so each is
+        // drawn through its layer instruction first (orientation, fill, crop, clip
+        // transforms, opacity), as the built-in compositor would.
         var images: [CIImage] = []
         let trackIDs = (instruction?.requiredSourceTrackIDs ?? []).compactMap { $0 as? CMPersistentTrackID }
         for trackID in trackIDs {
@@ -112,7 +116,12 @@ internal final class KadrVideoCompositor: NSObject, AVVideoCompositing, @uncheck
                 continue
             }
             guard let pixelBuffer = request.sourceFrame(byTrackID: trackID) else { continue }
-            images.append(CIImage(cvPixelBuffer: pixelBuffer))
+            let image = CIImage(cvPixelBuffer: pixelBuffer)
+            if let geometry = instruction.flatMap({ geometry(for: trackID, in: $0) }) {
+                images.append(geometry.place(image, at: request.compositionTime, renderSize: renderContext.size))
+            } else {
+                images.append(image)
+            }
         }
 
         // Run the user's (or default) compositor.
@@ -138,6 +147,31 @@ internal final class KadrVideoCompositor: NSObject, AVVideoCompositing, @uncheck
             colorSpace: outputColorSpace
         )
         request.finish(withComposedVideoFrame: outputBuffer)
+    }
+
+    // MARK: - Layer geometry
+
+    private struct GeometryKey: Hashable {
+        let instruction: ObjectIdentifier
+        let trackID: CMPersistentTrackID
+    }
+
+    /// Geometry read from each track's layer instruction. Keyed by the composition
+    /// instruction rather than the layer instruction, whose array may be handed out as
+    /// fresh copies. Only touched from `renderQueue`, which is serial.
+    private var geometryCache: [GeometryKey: LayerGeometry?] = [:]
+
+    private func geometry(
+        for trackID: CMPersistentTrackID,
+        in instruction: KadrVideoCompositionInstruction
+    ) -> LayerGeometry? {
+        let key = GeometryKey(instruction: ObjectIdentifier(instruction), trackID: trackID)
+        if let cached = geometryCache[key] { return cached }
+        let geometry = instruction.layerInstructions
+            .first { $0.trackID == trackID }
+            .map(LayerGeometry.init)
+        geometryCache[key] = geometry
+        return geometry
     }
 }
 
