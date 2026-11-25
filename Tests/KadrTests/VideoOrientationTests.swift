@@ -3,6 +3,7 @@ import Foundation
 @testable import Kadr
 import AVFoundation
 import CoreGraphics
+import CoreImage
 import CoreMedia
 
 /// Rotated and mirrored sources must come out the way they are meant to be seen.
@@ -295,5 +296,93 @@ struct VideoOrientationTests {
             VideoClip(url: clip).reversed()
         }.preset(portrait))
         #expect(try await layout(of: out, at: 0.5) == want)
+    }
+
+    // MARK: - Custom multi-input compositor
+
+    /// Shows only the topmost input, so the export is exactly what the compositor was given.
+    private struct TopmostInput: MultiInputCompositor {
+        func process(images: [CIImage], context: CompositorContext) -> CIImage {
+            images.last ?? CIImage(color: .black).cropped(to: CGRect(origin: .zero, size: context.renderSize))
+        }
+    }
+
+    /// A custom compositor receives each source as the default compositor would draw it,
+    /// so passing an input straight through changes nothing.
+    @Test func customCompositorReceivesRotatedSourceUpright() async throws {
+        let chain = try await makeClip(transform: .identity)
+        let top = try await makeClip(transform: quarterTurn)
+        let want = try await expected(top)
+        let out = try await export(Video {
+            VideoClip(url: chain)
+            Track(at: .zero) { VideoClip(url: top) }
+        }.compositor(TopmostInput()).preset(portrait))
+        #expect(try await layout(of: out, at: 0.5) == want)
+    }
+
+    @Test(arguments: ["quarter", "threeQuarter", "mirrored"])
+    func customCompositorMatchesDefaultCompositor(_ name: String) async throws {
+        let transform: CGAffineTransform = switch name {
+        case "quarter": quarterTurn
+        case "threeQuarter": threeQuarterTurn
+        default: mirroredQuarterTurn
+        }
+        let chain = try await makeClip(transform: halfTurn)
+        let top = try await makeClip(transform: transform)
+        func video() -> Video {
+            Video {
+                VideoClip(url: chain)
+                Track(at: .zero) { VideoClip(url: top) }
+            }.preset(portrait)
+        }
+        let plain = try await layout(of: try await export(video()), at: 0.5)
+        let custom = try await layout(of: try await export(video().compositor(TopmostInput())), at: 0.5)
+        #expect(custom == plain)
+    }
+
+    /// The base layout also scales a source to fill the frame: a landscape source in a
+    /// portrait frame arrives filled and centred, not at its stored size in a corner.
+    @Test func customCompositorReceivesSourceFilledToFrame() async throws {
+        let chain = try await makeClip(transform: .identity)
+        let top = try await makeClip(transform: .identity)
+        let out = try await export(Video {
+            VideoClip(url: chain)
+            Track(at: .zero) { VideoClip(url: top) }
+        }.compositor(TopmostInput()).preset(portrait))
+        // Filling 128×64 into 64×128 keeps the middle quarter of the width: the inner
+        // edges of all four quadrants, in their original places.
+        #expect(try await layout(of: out, at: 0.5) == [.red, .green, .blue, .yellow])
+    }
+
+    /// Per-clip transforms live in the layer instructions too.
+    @Test func customCompositorReceivesClipTransform() async throws {
+        let chain = try await makeClip(transform: .identity)
+        let top = try await makeClip(transform: quarterTurn)
+        func video() -> Video {
+            Video {
+                VideoClip(url: chain)
+                Track(at: .zero) { VideoClip(url: top).transform(Transform(rotation: .pi)) }
+            }.preset(portrait)
+        }
+        let plain = try await layout(of: try await export(video()), at: 0.5)
+        let custom = try await layout(of: try await export(video().compositor(TopmostInput())), at: 0.5)
+        #expect(custom == plain)
+        #expect(custom != (try await expected(top)))
+    }
+
+    /// Outside a compositor's window the engine blends with its built-in compositor,
+    /// which must draw the same frame the default path does.
+    @Test func framesOutsideCompositorWindowMatchDefaultCompositor() async throws {
+        let chain = try await makeClip(transform: quarterTurn, seconds: 2)
+        let top = try await makeClip(transform: threeQuarterTurn, seconds: 2)
+        func video() -> Video {
+            Video {
+                VideoClip(url: chain)
+                Track(at: .zero) { VideoClip(url: top) }
+            }.preset(portrait)
+        }
+        let plain = try await layout(of: try await export(video()), at: 1.5)
+        let windowed = try await export(video().compositor(TopmostInput(), during: 0...0.5))
+        #expect(try await layout(of: windowed, at: 1.5) == plain)
     }
 }
