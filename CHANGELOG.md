@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-11-25
+
 ### Changed
 
 - **The package checkout is 31 MB smaller.** The SimpleEditor example bundled a

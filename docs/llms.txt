@@ -2,7 +2,7 @@
 
 > kadr is a declarative Swift library for composing, transforming and exporting video on Apple platforms (iOS 17, macOS 14, tvOS 17, visionOS 1). A result-builder DSL (`Video { … }`) describes the timeline, `async`/`await` runs the export, and nothing underneath it but AVFoundation. It needs Xcode 26 (Swift 6.2) and has no third-party dependencies.
 
-Install with Swift Package Manager: `.package(url: "https://github.com/SteliyanH/kadr.git", from: "1.2.1")`, product `Kadr`. kadr follows semantic versioning: nothing public breaks within 1.x.
+Install with Swift Package Manager: `.package(url: "https://github.com/SteliyanH/kadr.git", from: "1.2.2")`, product `Kadr`. kadr follows semantic versioning: nothing public breaks within 1.x.
 
 A complete program:
 
