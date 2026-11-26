@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Added
+
+- **`VideoClipMetadata.displaySize`**, the size a clip appears on screen.
+  `resolution` is the stored size, and cameras store portrait video as
+  landscape pixels plus a rotation, so a portrait iPhone clip reported
+  `1920×1080`. `displaySize` applies the rotation and reports `1080×1920`.
+  `resolution` is unchanged, and its documentation now says which size it is.
+
 ## [1.2.2] - 2026-11-25
 
 ### Changed

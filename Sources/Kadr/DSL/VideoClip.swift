@@ -13,8 +13,16 @@ import AppKit
 public struct VideoClipMetadata: Sendable {
     /// Total duration of the source asset (before any trim or speed adjustment).
     public let duration: CMTime
-    /// Native resolution of the source video track, in pixels.
+    /// Size of the source video track as stored, in pixels.
+    ///
+    /// Cameras store a portrait recording as landscape pixels and a rotation, so a
+    /// portrait iPhone clip reports `1920×1080` here. For the size it appears on
+    /// screen, use ``displaySize``.
     public let resolution: CGSize
+    /// Size of the source video as it appears on screen, in pixels: ``resolution``
+    /// with the track's rotation applied, so a portrait iPhone clip reports
+    /// `1080×1920`. This is the size kadr fits into the export frame.
+    public let displaySize: CGSize
     /// Nominal frame rate reported by the source video track, in frames per second.
     public let frameRate: Double
     /// `true` if the source asset contains at least one audio track.
@@ -154,8 +162,8 @@ public struct VideoClip: Clip, Sendable {
         return CMTimeMultiplyByFloat64(trimRange.duration, multiplier: 1.0 / speedRate)
     }
 
-    /// Asynchronously load the source asset's metadata: duration, native resolution,
-    /// nominal frame rate, and whether it has audio. Throws `KadrError.invalidURL`
+    /// Asynchronously load the source asset's metadata: duration, stored and on-screen
+    /// size, nominal frame rate, and whether it has audio. Throws `KadrError.invalidURL`
     /// if the asset has no video track.
     public var metadata: VideoClipMetadata {
         get async throws {
@@ -166,11 +174,14 @@ public struct VideoClip: Clip, Sendable {
             guard let videoTrack = tracks.first else {
                 throw KadrError.invalidURL(url)
             }
-            let size = try await videoTrack.load(.naturalSize)
-            let frameRate = try await videoTrack.load(.nominalFrameRate)
+            let (size, preferredTransform, frameRate) = try await videoTrack.load(
+                .naturalSize, .preferredTransform, .nominalFrameRate
+            )
+            let orientation = SourceOrientation(preferredTransform: preferredTransform, naturalSize: size)
             return VideoClipMetadata(
                 duration: duration,
                 resolution: size,
+                displaySize: orientation.displaySize,
                 frameRate: Double(frameRate),
                 hasAudio: !audioTracks.isEmpty
             )
