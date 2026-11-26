@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-27
+
 ### Added
 
 - **`VideoClipMetadata.displaySize`**, the size a clip appears on screen.
