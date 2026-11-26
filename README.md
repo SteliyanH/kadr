@@ -74,7 +74,7 @@ Add kadr to your `Package.swift`:
 <!-- readme-snippets: skip -->
 ```swift
 dependencies: [
-    .package(url: "https://github.com/SteliyanH/kadr.git", from: "1.2.2")
+    .package(url: "https://github.com/SteliyanH/kadr.git", from: "1.3.0")
 ]
 ```
 
