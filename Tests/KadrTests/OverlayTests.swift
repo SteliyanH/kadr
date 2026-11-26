@@ -212,7 +212,7 @@ struct OverlayTests {
         let outputURL = testOutputURL("overlay_export")
 
         let result = try await Video {
-            VideoClip(url: videoURL).trimmed(to: 0...3)
+            VideoClip(url: videoURL).trimmed(to: 0...1)
         }
         .overlay(
             ImageOverlay(img)
@@ -225,8 +225,8 @@ struct OverlayTests {
         #expect(FileManager.default.fileExists(atPath: result.path))
         let asset = AVURLAsset(url: result)
         let dur = try await asset.load(.duration)
-        #expect(CMTimeGetSeconds(dur) > 2.5)
-        #expect(CMTimeGetSeconds(dur) < 3.5)
+        #expect(CMTimeGetSeconds(dur) > 0.5)
+        #expect(CMTimeGetSeconds(dur) < 1.5)
         try? FileManager.default.removeItem(at: result)
     }
 
@@ -236,7 +236,7 @@ struct OverlayTests {
         let outputURL = testOutputURL("multi_overlay")
 
         let result = try await Video {
-            VideoClip(url: videoURL).trimmed(to: 0...3)
+            VideoClip(url: videoURL).trimmed(to: 0...1)
         }
         .overlay(ImageOverlay(img).position(.topLeft).anchor(.topLeft).size(.normalized(width: 0.2, height: 0.2)))
         .overlay(ImageOverlay(img).position(.bottomRight).anchor(.bottomRight).size(.normalized(width: 0.2, height: 0.2)).opacity(0.5))
@@ -332,7 +332,7 @@ struct OverlayTests {
         let outputURL = testOutputURL("text_export")
 
         let result = try await Video {
-            VideoClip(url: videoURL).trimmed(to: 0...3)
+            VideoClip(url: videoURL).trimmed(to: 0...1)
         }
         .overlay(
             TextOverlay("HELLO WORLD", style: TextStyle(fontSize: 80, alignment: .center, weight: .bold))
@@ -352,7 +352,7 @@ struct OverlayTests {
         let outputURL = testOutputURL("text_and_image")
 
         let result = try await Video {
-            VideoClip(url: videoURL).trimmed(to: 0...3)
+            VideoClip(url: videoURL).trimmed(to: 0...1)
         }
         .overlay(ImageOverlay(img).position(.topRight).anchor(.topRight).size(.normalized(width: 0.15, height: 0.15)))
         .overlay(TextOverlay("CAPTION").position(.bottom).anchor(.bottom).size(.normalized(width: 1.0, height: 0.15)))
@@ -452,7 +452,7 @@ struct OverlayTests {
         let outputURL = testOutputURL("sticker_export")
 
         let result = try await Video {
-            VideoClip(url: videoURL).trimmed(to: 0...3)
+            VideoClip(url: videoURL).trimmed(to: 0...1)
         }
         .overlay(
             StickerOverlay(img)
@@ -473,7 +473,7 @@ struct OverlayTests {
         let outputURL = testOutputURL("mixed_overlays")
 
         let result = try await Video {
-            VideoClip(url: videoURL).trimmed(to: 0...3)
+            VideoClip(url: videoURL).trimmed(to: 0...1)
         }
         .overlay(ImageOverlay(img).position(.topRight).anchor(.topRight).size(.normalized(width: 0.15, height: 0.15)))
         .overlay(StickerOverlay(img).position(.center).size(.normalized(width: 0.2, height: 0.2)).rotation(degrees: 20))
@@ -558,7 +558,7 @@ struct OverlayTests {
         let outputURL = testOutputURL("watermark_export")
 
         let result = try await Video {
-            VideoClip(url: videoURL).trimmed(to: 0...3)
+            VideoClip(url: videoURL).trimmed(to: 0...1)
         }
         .watermark(img, size: .normalized(width: 0.15, height: 0.05))
         .export(to: outputURL)
@@ -573,9 +573,9 @@ struct OverlayTests {
         let outputURL = testOutputURL("overlay_transition")
 
         let result = try await Video {
-            VideoClip(url: videoURL).trimmed(to: 0...3)
+            VideoClip(url: videoURL).trimmed(to: 0...1)
             Transition.dissolve(duration: 0.4)
-            VideoClip(url: videoURL).trimmed(to: 0...3)
+            VideoClip(url: videoURL).trimmed(to: 0...1)
         }
         .overlay(ImageOverlay(img).position(.center).size(.normalized(width: 0.2, height: 0.2)))
         .export(to: outputURL)

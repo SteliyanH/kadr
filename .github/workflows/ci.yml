@@ -28,12 +28,18 @@ jobs:
   test:
     runs-on: macos-15
 
-    # The suite takes ~30s locally and ~3-4 min on a runner. Without a cap, a
-    # hung process runs to GitHub's 360-minute default — six hours of macOS
-    # runner time, billed at 10x the Linux rate, for a job that should be over
-    # in minutes. That is not hypothetical: a run on 2026-08-17 sat for 33
-    # minutes after its tests had already finished, and had to be cancelled by
-    # hand. 15 is generous against the real 3-4.
+    # Without a cap, a hung process runs to GitHub's 360-minute default — six
+    # hours of macOS runner time, billed at 10x the Linux rate, for a job that
+    # should be over in minutes. That is not hypothetical: a run on 2026-08-17
+    # sat for 33 minutes after its tests had already finished, and had to be
+    # cancelled by hand.
+    #
+    # By November 2026 the job took 10-11 minutes against this cap, and one
+    # run was cut off at 15 with its logs lost. Overlay exports were most of
+    # it: Core Animation renders each overlay frame about 70x slower on these
+    # runners than on a Mac (30s for a 3-second clip, 0.4s locally), and nine
+    # tests exported 3 seconds where 1 proves the same thing. The test step
+    # below has its own, shorter cap so the timings step still gets to run.
     timeout-minutes: 15
 
       # Export itself works here — crop, overlays, transitions, speed and
@@ -92,7 +98,19 @@ jobs:
       #
       # Serialised, all 562 pass on a machine that previously failed 9 of them.
       # Cost is wall-clock: ~25s parallel against ~60s serialised.
-      - run: swift test --no-parallel
+      #
+      # The log is kept for the next step. `shell: bash` matters: it adds
+      # `-o pipefail`, without which `tee` would swallow a failing exit code.
+      - name: swift test --no-parallel
+        shell: bash
+        timeout-minutes: 12
+        run: swift test --no-parallel 2>&1 | tee test.log
+
+      # The slowest tests, and any test that started but never finished. Runs
+      # when the suite fails or hits its cap too: that is when it is needed.
+      - name: Test timings
+        if: always()
+        run: Tools/test-timings.sh test.log
 
       # `swift test` runs on macOS, where every `#if os(iOS)` and
       # `#if canImport(UIKit)` body is excluded — 192 lines here. This package

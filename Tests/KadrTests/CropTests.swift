@@ -206,7 +206,7 @@ struct CropTests {
         let outputURL = testOutputURL("crop_overlay_smoke")
 
         let result = try await Video {
-            VideoClip(url: videoURL).trimmed(to: 0...3)
+            VideoClip(url: videoURL).trimmed(to: 0...1)
         }
         .preset(.cinema)
         .crop(at: .center, size: .normalized(width: 0.6, height: 0.6))
