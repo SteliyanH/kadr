@@ -1230,3 +1230,104 @@ Call-site migration (all internal — examples + tests; no consumer code in this
 - **Downstream breakage from the removals.** reels-studio / kadr-ui may still call `.speed(Double)` or the index-based `filterAnimation`. They're separate repos on their own version tracks; the deprecation has shipped since v0.11, and the migration is a mechanical find-replace. Flag in the release notes; those repos bump their kadr floor to 0.14 when they migrate.
 - **Thumbnail surface lock-in.** Whatever `ThumbnailGenerator` ships here is frozen at v1.0. Keep it minimal and obvious (single + batch + cancel); resist adding caching / pre-warming knobs now — additive later if a real need appears.
 - **Actor + `AsyncThrowingStream` + non-Sendable `AVAssetImageGenerator`.** `images(for:)` is the supported batch path and is safe to drive from the stream's producer; the actor serializes single-frame calls. Pin a test that a batch stream and the actor don't deadlock when interleaved.
+
+## v1.4 — `Video.diagnose()`
+
+**Status:** RFC. No code yet.
+
+### Motivation
+
+AVFoundation fails late and opaquely. A portrait clip used to come out sideways with no
+error; a 60 fps source quietly becomes 30 fps; an HDR clip is converted to SDR; an
+export on the iOS Simulator with an overlay throws only after the whole composition is
+built; `-11800` explains nothing. Every one of these is knowable *before* rendering, from
+the composition and its sources' metadata.
+
+`diagnose()` reports them up front, each with a fix. It serves three readers:
+
+- **People**, who see "source is 60 fps, export is 30 fps: use `.preset(.custom(…frameRate: 60…))`"
+  instead of filing an issue.
+- **Coding agents**, which can run it after writing a composition and correct themselves.
+  This is the point of Plan C in the growth plan.
+- **kadr itself**: the planned `kadr inspect` CLI and `kadr-mcp` server print the same list.
+
+### API
+
+```swift
+extension Video {
+    /// Reads every source's metadata and reports anything that will make the export differ
+    /// from what the composition seems to ask for. Never renders, never throws: a source
+    /// it can't read is itself a diagnostic.
+    public func diagnose() async -> [Diagnostic]
+}
+
+public struct Diagnostic: Sendable, Hashable, CustomStringConvertible {
+    public enum Severity: Int, Sendable, Comparable { case info, warning, error }
+
+    /// What was found. A struct, not an enum, so new checks can ship in a minor
+    /// release without breaking anyone's exhaustive `switch`.
+    public struct Kind: RawRepresentable, Sendable, Hashable {
+        public let rawValue: String
+        public init(rawValue: String)
+    }
+
+    public let kind: Kind
+    public let severity: Severity
+    /// One sentence on what will happen.
+    public let message: String
+    /// One sentence on what to change, with the modifier to use. `nil` when there is
+    /// nothing to change (an `.info`).
+    public let fix: String?
+    /// The clip it concerns, when it concerns one: its ``ClipID`` if it has one, and its
+    /// position in the builder (`[2]`, `[3].clips[0]` inside a Track) either way.
+    public let clip: ClipReference?
+}
+```
+
+`description` is the single line a person or agent reads:
+`warning [frameRateDowngrade] clip [1]: source is 59.94 fps, export is 30 fps. Fix: …`
+
+### The first checks
+
+All of them read metadata only (`AVURLAsset` tracks, format descriptions, the DSL tree).
+
+| Kind | Severity | Condition | Fix |
+|---|---|---|---|
+| `unreadableSource` | error | A `VideoClip` URL is missing, not a file URL, or has no video track | Check the URL; `SampleMedia.movieFileURL()` for a placeholder |
+| `overlaysOnSimulator` | error | Overlays or a watermark, on the iOS Simulator (the export will throw, see <doc:KnownPlatformIssues>) | Export on a device or macOS; previews still work |
+| `frameRateDowngrade` | warning | A source's nominal frame rate is above the preset's | `.preset(.custom(…, frameRate: 60, …))` |
+| `variableFrameRate` | warning | A source's frame durations vary (`minFrameDuration` well below `1 / nominalFrameRate`) | None needed for correctness; frames are resampled to the preset's rate. Explains stutter |
+| `hdrToSDR` | warning | A source's transfer function is HLG or PQ; export is 8-bit SDR until 1.5 | None yet (kadr 1.5 adds HDR export) |
+| `ignoredCompositor` | warning | `compositor(_:)` is set but the composition is single-track, so the engine never runs it | Put the clips on a `Track` or use `.at(time:)` |
+| `aspectFillCrop` | info | A source's displayed aspect differs from the preset's by more than 10%, so filling crops it | `.preset(…)` with a matching shape, or a clip `Transform` with a smaller `scale` |
+| `filterPreRender` | info | Clip filters run in a separate pre-render pass (one extra encode) | Nothing; it's a cost note |
+
+`rotatedSource` from the original list is left out on purpose: since 1.1.2 rotated
+sources export upright, so there's nothing left to warn about.
+
+### Decisions
+
+- **Never throws.** A diagnostic tool that fails on the input it's meant to diagnose is no
+  use. Unreadable sources become `.error` diagnostics.
+- **Sorted by severity, then builder order**, so `diagnose().first` is the worst problem.
+- **Messages are API-adjacent, not API.** `kind` and `severity` are stable; message and
+  fix wording may improve in any release. Tests and agents should match on `kind`.
+- **No automatic call from `export(to:)`.** Exports already throw on the `.error` cases.
+  Running the checks on every export would add metadata loads to the hot path.
+  `Exporter` may grow an opt-in later.
+- **`ClipReference`**: a small public struct (`id: ClipID?`, `path: [Int]`) rather than
+  an existential `any Clip`, so a diagnostic stays `Sendable` and `Hashable`.
+
+### Out of scope
+
+- Fixing anything automatically. `diagnose()` reports; it doesn't rewrite the `Video`.
+- Audio checks (sample-rate mismatches, clipping): kadr-audio owns loudness, so they
+  belong with its 0.8 shims.
+- The CLI and MCP server (`kadr-arp`), which build on this.
+
+### Tests
+
+One fixture per check, in the style of `VideoOrientationTests`: a generated clip with the
+property (60 fps, VFR timestamps, HLG-tagged format description), and an assertion on
+`kind` and `severity`. A clean composition must return `[]`. The Simulator check is
+covered by the existing `SimulatorOverlayExportTests` conditions.
