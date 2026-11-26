@@ -1231,7 +1231,7 @@ Call-site migration (all internal — examples + tests; no consumer code in this
 - **Thumbnail surface lock-in.** Whatever `ThumbnailGenerator` ships here is frozen at v1.0. Keep it minimal and obvious (single + batch + cancel); resist adding caching / pre-warming knobs now — additive later if a real need appears.
 - **Actor + `AsyncThrowingStream` + non-Sendable `AVAssetImageGenerator`.** `images(for:)` is the supported batch path and is safe to drive from the stream's producer; the actor serializes single-frame calls. Pin a test that a batch stream and the actor don't deadlock when interleaved.
 
-## v1.3 — `Video.diagnose()`
+## v1.4 — `Video.diagnose()`
 
 **Status:** RFC. No code yet.
 
@@ -1297,7 +1297,7 @@ All of them read metadata only (`AVURLAsset` tracks, format descriptions, the DS
 | `overlaysOnSimulator` | error | Overlays or a watermark, on the iOS Simulator (the export will throw, see <doc:KnownPlatformIssues>) | Export on a device or macOS; previews still work |
 | `frameRateDowngrade` | warning | A source's nominal frame rate is above the preset's | `.preset(.custom(…, frameRate: 60, …))` |
 | `variableFrameRate` | warning | A source's frame durations vary (`minFrameDuration` well below `1 / nominalFrameRate`) | None needed for correctness; frames are resampled to the preset's rate. Explains stutter |
-| `hdrToSDR` | warning | A source's transfer function is HLG or PQ; export is 8-bit SDR until 1.4 | None yet (kadr 1.4 adds HDR export) |
+| `hdrToSDR` | warning | A source's transfer function is HLG or PQ; export is 8-bit SDR until 1.5 | None yet (kadr 1.5 adds HDR export) |
 | `ignoredCompositor` | warning | `compositor(_:)` is set but the composition is single-track, so the engine never runs it | Put the clips on a `Track` or use `.at(time:)` |
 | `aspectFillCrop` | info | A source's displayed aspect differs from the preset's by more than 10%, so filling crops it | `.preset(…)` with a matching shape, or a clip `Transform` with a smaller `scale` |
 | `filterPreRender` | info | Clip filters run in a separate pre-render pass (one extra encode) | Nothing; it's a cost note |
