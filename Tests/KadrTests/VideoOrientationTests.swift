@@ -140,6 +140,31 @@ struct VideoOrientationTests {
         return try await video.export(to: url)
     }
 
+    // MARK: - Metadata
+
+    /// `resolution` is the stored size; `displaySize` is the size on screen.
+    @Test(arguments: ["quarter", "quarterAboutOrigin", "threeQuarter", "mirrored"])
+    func metadataReportsRotatedDisplaySize(_ name: String) async throws {
+        let transform: CGAffineTransform = switch name {
+        case "quarter": quarterTurn
+        case "quarterAboutOrigin": quarterTurnAboutOrigin
+        case "threeQuarter": threeQuarterTurn
+        default: mirroredQuarterTurn
+        }
+        let metadata = try await VideoClip(url: makeClip(transform: transform)).metadata
+        #expect(metadata.resolution == CGSize(width: 128, height: 64))
+        #expect(metadata.displaySize == CGSize(width: 64, height: 128))
+    }
+
+    @Test(arguments: ["identity", "half"])
+    func metadataDisplaySizeKeepsUnrotatedShape(_ name: String) async throws {
+        let metadata = try await VideoClip(
+            url: makeClip(transform: name == "half" ? halfTurn : .identity)
+        ).metadata
+        #expect(metadata.resolution == CGSize(width: 128, height: 64))
+        #expect(metadata.displaySize == CGSize(width: 128, height: 64))
+    }
+
     // MARK: - Single clip, simple path
 
     @Test(arguments: ["quarter", "quarterAboutOrigin", "threeQuarter", "mirrored"])
